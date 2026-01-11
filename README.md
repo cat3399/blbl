@@ -39,6 +39,9 @@
 ./gradlew assembleRelease -PversionName=0.1.1 -PversionCode=2
 ```
 
+## 临时更新方案
+**目前在代码中内置了国内环境可直接访问的直链,用于在测试阶段方便的覆盖更新,待后续稳定之后将会移除**,介意者请从release中下载action编译的安装包
+
 ## GitHub Actions
 
 仓库包含两套手动触发的工作流：
@@ -53,8 +56,3 @@
 - `RELEASE_KEY_ALIAS`
 - `RELEASE_KEY_PASSWORD`
 
-生成 keystore 的 base64 示例：
-
-```
-base64 -w 0 keystore/release.keystore
-```
