@@ -113,6 +113,7 @@ class SidebarNavAdapter(
         const val ID_HOME = 1
         const val ID_CATEGORY = 2
         const val ID_DYNAMIC = 3
-        const val ID_MY = 4
+        const val ID_LIVE = 4
+        const val ID_MY = 5
     }
 }

@@ -26,6 +26,10 @@
             android:name=".feature.player.PlayerActivity"
             android:configChanges="keyboardHidden|orientation|screenSize" />
 
+        <activity
+            android:name=".feature.live.LivePlayerActivity"
+            android:configChanges="keyboardHidden|orientation|screenSize" />
+
         <activity android:name=".feature.settings.SettingsActivity" />
         <activity android:name=".feature.login.QrLoginActivity" />
 

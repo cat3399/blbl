@@ -8,6 +8,7 @@ import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewTreeObserver
+import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AlertDialog
@@ -23,16 +24,21 @@ import blbl.cat3399.core.net.BiliClient
 import blbl.cat3399.core.tv.TvMode
 import blbl.cat3399.core.ui.Immersive
 import blbl.cat3399.databinding.ActivityMainBinding
+import blbl.cat3399.databinding.DialogUserInfoBinding
 import blbl.cat3399.feature.category.CategoryFragment
 import blbl.cat3399.feature.dynamic.DynamicFragment
 import blbl.cat3399.feature.home.HomeFragment
+import blbl.cat3399.feature.live.LiveFragment
 import blbl.cat3399.feature.login.QrLoginActivity
 import blbl.cat3399.feature.my.MyFragment
 import blbl.cat3399.feature.search.SearchFragment
 import blbl.cat3399.feature.settings.SettingsActivity
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import org.json.JSONObject
 import java.lang.ref.WeakReference
+import java.util.Locale
 
 class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
@@ -43,6 +49,9 @@ class MainActivity : AppCompatActivity() {
     private var pausedFocusWasInMain: Boolean = false
     private var focusListener: ViewTreeObserver.OnGlobalFocusChangeListener? = null
     private var exitDialog: AlertDialog? = null
+    private lateinit var userInfoOverlay: DialogUserInfoBinding
+    private var userInfoPrevFocus: WeakReference<View>? = null
+    private var userInfoLoadJob: Job? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -52,13 +61,16 @@ class MainActivity : AppCompatActivity() {
         Immersive.apply(this, BiliClient.prefs.fullscreenEnabled)
         applyUiMode()
 
+        userInfoOverlay = binding.userInfoOverlay
+        initUserInfoOverlay()
+
         binding.btnSidebarLogin.setOnClickListener { openQrLogin() }
         binding.ivSidebarUser.setOnClickListener {
             if (!BiliClient.cookies.hasSessData()) {
                 openQrLogin()
                 return@setOnClickListener
             }
-            UserInfoDialogFragment.show(supportFragmentManager)
+            showUserInfoOverlay()
         }
         binding.btnSidebarSettings.setOnClickListener { startActivity(Intent(this, SettingsActivity::class.java)) }
 
@@ -70,6 +82,7 @@ class MainActivity : AppCompatActivity() {
                     SidebarNavAdapter.ID_HOME -> showRoot(HomeFragment.newInstance())
                     SidebarNavAdapter.ID_CATEGORY -> showRoot(CategoryFragment.newInstance())
                     SidebarNavAdapter.ID_DYNAMIC -> showRoot(DynamicFragment.newInstance())
+                    SidebarNavAdapter.ID_LIVE -> showRoot(LiveFragment.newInstance())
                     SidebarNavAdapter.ID_MY -> showRoot(MyFragment.newInstance())
                     else -> false
                 }
@@ -84,6 +97,7 @@ class MainActivity : AppCompatActivity() {
                 SidebarNavAdapter.NavItem(SidebarNavAdapter.ID_HOME, getString(R.string.tab_recommend), R.drawable.ic_nav_home),
                 SidebarNavAdapter.NavItem(SidebarNavAdapter.ID_CATEGORY, getString(R.string.tab_category), R.drawable.ic_nav_category),
                 SidebarNavAdapter.NavItem(SidebarNavAdapter.ID_DYNAMIC, getString(R.string.tab_dynamic), R.drawable.ic_nav_dynamic),
+                SidebarNavAdapter.NavItem(SidebarNavAdapter.ID_LIVE, getString(R.string.tab_live), R.drawable.ic_nav_live),
                 SidebarNavAdapter.NavItem(SidebarNavAdapter.ID_MY, getString(R.string.tab_my), R.drawable.ic_nav_my),
             ),
             selectedId = SidebarNavAdapter.ID_HOME,
@@ -104,6 +118,10 @@ class MainActivity : AppCompatActivity() {
             this,
             object : OnBackPressedCallback(true) {
                 override fun handleOnBackPressed() {
+                    if (isUserInfoOverlayVisible()) {
+                        hideUserInfoOverlay()
+                        return
+                    }
                     val current = supportFragmentManager.findFragmentById(R.id.main_container)
                     val handled = (current as? BackPressHandler)?.handleBackPressed() == true
                     AppLog.d("Back", "back current=${current?.javaClass?.simpleName} handled=$handled")
@@ -144,6 +162,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (isUserInfoOverlayVisible()) {
+            return super.dispatchKeyEvent(event)
+        }
         if (event.action == KeyEvent.ACTION_DOWN) {
             val focused = currentFocus
             if (focused == null && isNavKey(event.keyCode)) {
@@ -189,6 +210,166 @@ class MainActivity : AppCompatActivity() {
             }
         }
         return super.dispatchKeyEvent(event)
+    }
+
+    private fun initUserInfoOverlay() {
+        userInfoOverlay.root.visibility = View.GONE
+
+        userInfoOverlay.root.setOnClickListener { hideUserInfoOverlay() }
+        userInfoOverlay.card.setOnClickListener { /* consume */ }
+        userInfoOverlay.btnFollowing.setOnClickListener { /* TODO */ }
+        userInfoOverlay.btnFollower.setOnClickListener { /* TODO */ }
+        userInfoOverlay.btnLogout.setOnClickListener { showLogoutConfirm() }
+
+        val invalidateOverlay = View.OnFocusChangeListener { _, _ ->
+            userInfoOverlay.card.invalidate()
+            userInfoOverlay.root.invalidate()
+        }
+        userInfoOverlay.btnFollowing.onFocusChangeListener = invalidateOverlay
+        userInfoOverlay.btnFollower.onFocusChangeListener = invalidateOverlay
+        userInfoOverlay.btnLogout.onFocusChangeListener = invalidateOverlay
+    }
+
+    private fun isUserInfoOverlayVisible(): Boolean = userInfoOverlay.root.visibility == View.VISIBLE
+
+    private fun showUserInfoOverlay() {
+        if (isUserInfoOverlayVisible()) return
+        userInfoPrevFocus = currentFocus?.let { WeakReference(it) }
+
+        binding.sidebar.descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
+        binding.mainContainer.descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
+
+        userInfoOverlay.root.visibility = View.VISIBLE
+        resetUserInfoUi()
+        loadUserInfo()
+
+        userInfoOverlay.root.post {
+            userInfoOverlay.btnFollowing.requestFocus()
+        }
+    }
+
+    private fun hideUserInfoOverlay() {
+        if (!isUserInfoOverlayVisible()) return
+        userInfoLoadJob?.cancel()
+        userInfoLoadJob = null
+        userInfoOverlay.root.visibility = View.GONE
+
+        binding.sidebar.descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
+        binding.mainContainer.descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
+
+        val desired = userInfoPrevFocus?.get()
+        userInfoPrevFocus = null
+        if (desired != null && desired.isAttachedToWindow && desired.isShown) {
+            binding.root.post { desired.requestFocus() }
+        }
+    }
+
+    private fun resetUserInfoUi() {
+        userInfoOverlay.tvName.text = ""
+        userInfoOverlay.tvMid.text = ""
+        userInfoOverlay.tvFollowing.text = "--"
+        userInfoOverlay.tvFollower.text = "--"
+        userInfoOverlay.tvCoins.text = "--"
+        userInfoOverlay.tvLevel.text = ""
+        userInfoOverlay.tvExp.text = ""
+        userInfoOverlay.progressExp.visibility = View.GONE
+        userInfoOverlay.pbLoading.visibility = View.GONE
+    }
+
+    private fun loadUserInfo() {
+        userInfoLoadJob?.cancel()
+        userInfoOverlay.pbLoading.visibility = View.VISIBLE
+        userInfoLoadJob =
+            lifecycleScope.launch {
+                runCatching {
+                    val nav = BiliApi.nav()
+                    val data = nav.optJSONObject("data")
+                    val isLogin = data?.optBoolean("isLogin") ?: false
+                    if (!isLogin) {
+                        hideUserInfoOverlay()
+                        return@launch
+                    }
+
+                    val mid = data?.optLong("mid") ?: 0L
+                    val name = data?.optString("uname", "").orEmpty()
+                    val avatarUrl = data?.optString("face")?.takeIf { it.isNotBlank() }
+
+                    val coins = parseCoins(data)
+                    val levelInfo = data?.optJSONObject("level_info")
+                    val level = levelInfo?.optInt("current_level") ?: 0
+                    val currentExp = parseInt(levelInfo, "current_exp") ?: 0
+                    val nextExp = parseInt(levelInfo, "next_exp")
+
+                    val stat = if (mid > 0) BiliApi.relationStat(mid) else null
+
+                    userInfoOverlay.tvName.text = name
+                    userInfoOverlay.tvMid.text = getString(R.string.label_uid_fmt, mid.toString())
+                    val normalizedUrl = blbl.cat3399.core.image.ImageUrl.avatar(avatarUrl)
+                    blbl.cat3399.core.image.ImageLoader.loadInto(userInfoOverlay.ivAvatar, normalizedUrl)
+
+                    userInfoOverlay.tvFollowing.text = (stat?.following ?: 0L).toString()
+                    userInfoOverlay.tvFollower.text = (stat?.follower ?: 0L).toString()
+                    userInfoOverlay.tvCoins.text = formatCoins(coins)
+
+                    userInfoOverlay.tvLevel.text = getString(R.string.label_level_fmt, level)
+                    val expText = if (nextExp != null && nextExp > 0) "$currentExp/$nextExp" else "已满级"
+                    userInfoOverlay.tvExp.text = getString(R.string.label_exp_fmt, expText)
+
+                    if (nextExp != null && nextExp > 0) {
+                        userInfoOverlay.progressExp.visibility = View.VISIBLE
+                        userInfoOverlay.progressExp.max = nextExp
+                        userInfoOverlay.progressExp.progress = currentExp.coerceIn(0, nextExp)
+                    } else {
+                        userInfoOverlay.progressExp.visibility = View.GONE
+                    }
+                }.onFailure {
+                    AppLog.w("MainActivity", "loadUserInfo failed", it)
+                    if (!isUserInfoOverlayVisible()) return@launch
+                    userInfoOverlay.tvName.text = "加载失败"
+                    userInfoOverlay.tvMid.text = it.message.orEmpty()
+                }
+                userInfoOverlay.pbLoading.visibility = View.GONE
+            }
+    }
+
+    private fun showLogoutConfirm() {
+        MaterialAlertDialogBuilder(this)
+            .setTitle("退出登录")
+            .setMessage("将清除 Cookie（SESSDATA 等），需要重新登录。确定继续吗？")
+            .setPositiveButton("确定退出") { _, _ ->
+                BiliClient.cookies.clearAll()
+                BiliClient.prefs.webRefreshToken = null
+                BiliClient.prefs.webCookieRefreshCheckedEpochDay = -1L
+                BiliClient.prefs.biliTicketCheckedEpochDay = -1L
+                Toast.makeText(this, "已退出登录", Toast.LENGTH_SHORT).show()
+                hideUserInfoOverlay()
+                refreshSidebarUser()
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    private fun parseCoins(data: JSONObject?): Double {
+        if (data == null) return 0.0
+        val money = data.optDouble("money", Double.NaN)
+        if (!money.isNaN()) return money
+        val coins = data.optDouble("coins", Double.NaN)
+        if (!coins.isNaN()) return coins
+        return 0.0
+    }
+
+    private fun formatCoins(value: Double): String {
+        val v = value.coerceAtLeast(0.0)
+        return if (v >= 1000) String.format(Locale.getDefault(), "%.0f", v) else String.format(Locale.getDefault(), "%.1f", v)
+    }
+
+    private fun parseInt(obj: JSONObject?, key: String): Int? {
+        val any = obj?.opt(key) ?: return null
+        return when (any) {
+            is Number -> any.toInt()
+            is String -> any.toIntOrNull()
+            else -> null
+        }
     }
 
     private fun showRoot(fragment: androidx.fragment.app.Fragment): Boolean {

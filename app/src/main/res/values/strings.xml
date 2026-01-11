@@ -6,6 +6,7 @@
     <string name="tab_search">搜索</string>
     <string name="tab_category">分类</string>
     <string name="tab_dynamic">动态</string>
+    <string name="tab_live">直播</string>
     <string name="tab_my">我的</string>
     <string name="tab_settings">设置</string>
     <string name="sidebar_login">登录</string>
@@ -49,4 +50,5 @@
     <string name="label_uid_fmt">UID %1$s</string>
     <string name="label_level_fmt">等级 Lv%1$d</string>
     <string name="label_exp_fmt">经验 %1$s</string>
+    <string name="action_logout">退出登录</string>
 </resources>
