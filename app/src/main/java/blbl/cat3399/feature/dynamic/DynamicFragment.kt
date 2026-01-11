@@ -10,9 +10,9 @@ import android.view.ViewGroup
 import android.widget.Toast
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
+import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import androidx.recyclerview.widget.StaggeredGridLayoutManager
 import blbl.cat3399.core.api.BiliApi
 import blbl.cat3399.core.log.AppLog
 import blbl.cat3399.core.net.BiliClient
@@ -70,9 +70,7 @@ class DynamicFragment : Fragment() {
             )
         }
         binding.recyclerDynamic.setHasFixedSize(true)
-        binding.recyclerDynamic.layoutManager = StaggeredGridLayoutManager(spanCountForWidth(), StaggeredGridLayoutManager.VERTICAL).apply {
-            gapStrategy = StaggeredGridLayoutManager.GAP_HANDLING_NONE
-        }
+        binding.recyclerDynamic.layoutManager = GridLayoutManager(requireContext(), spanCountForWidth())
         binding.recyclerDynamic.adapter = videoAdapter
         (binding.recyclerDynamic.itemAnimator as? androidx.recyclerview.widget.SimpleItemAnimator)?.supportsChangeAnimations = false
         binding.recyclerDynamic.addOnChildAttachStateChangeListener(
@@ -103,15 +101,13 @@ class DynamicFragment : Fragment() {
         )
         binding.recyclerDynamic.addOnScrollListener(
             object : RecyclerView.OnScrollListener() {
-                private val tmp = IntArray(8)
-
                 override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
                     if (dy <= 0) return
                     if (isLoadingMore || endReached) return
                     if (binding.swipeRefresh.isRefreshing) return
 
-                    val lm = recyclerView.layoutManager as? StaggeredGridLayoutManager ?: return
-                    val lastVisible = lm.findLastVisibleItemPositions(tmp).maxOrNull() ?: return
+                    val lm = recyclerView.layoutManager as? GridLayoutManager ?: return
+                    val lastVisible = lm.findLastVisibleItemPosition()
                     val total = videoAdapter.itemCount
                     if (total <= 0) return
 
@@ -238,7 +234,7 @@ class DynamicFragment : Fragment() {
 
     override fun onResume() {
         super.onResume()
-        (_binding?.recyclerDynamic?.layoutManager as? StaggeredGridLayoutManager)?.spanCount = spanCountForWidth()
+        (_binding?.recyclerDynamic?.layoutManager as? GridLayoutManager)?.spanCount = spanCountForWidth()
     }
 
     companion object {

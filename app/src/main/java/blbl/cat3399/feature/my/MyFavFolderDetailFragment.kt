@@ -10,9 +10,9 @@ import android.view.ViewGroup
 import android.widget.Toast
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
+import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.recyclerview.widget.SimpleItemAnimator
-import androidx.recyclerview.widget.StaggeredGridLayoutManager
 import blbl.cat3399.core.api.BiliApi
 import blbl.cat3399.core.log.AppLog
 import blbl.cat3399.R
@@ -58,20 +58,16 @@ class MyFavFolderDetailFragment : Fragment() {
         }
         binding.recycler.adapter = adapter
         binding.recycler.setHasFixedSize(true)
-        binding.recycler.layoutManager = StaggeredGridLayoutManager(spanCountForWidth(resources), StaggeredGridLayoutManager.VERTICAL).apply {
-            gapStrategy = StaggeredGridLayoutManager.GAP_HANDLING_NONE
-        }
+        binding.recycler.layoutManager = GridLayoutManager(requireContext(), spanCountForWidth(resources))
         (binding.recycler.itemAnimator as? SimpleItemAnimator)?.supportsChangeAnimations = false
         binding.recycler.clearOnScrollListeners()
         binding.recycler.addOnScrollListener(
             object : RecyclerView.OnScrollListener() {
-                private val tmp = IntArray(8)
-
                 override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
                     if (dy <= 0) return
                     if (isLoadingMore || endReached) return
-                    val lm = recyclerView.layoutManager as? StaggeredGridLayoutManager ?: return
-                    val lastVisible = lm.findLastVisibleItemPositions(tmp).maxOrNull() ?: return
+                    val lm = recyclerView.layoutManager as? GridLayoutManager ?: return
+                    val lastVisible = lm.findLastVisibleItemPosition()
                     val total = adapter.itemCount
                     if (total <= 0) return
                     if (total - lastVisible - 1 <= 8) loadNextPage()
@@ -86,12 +82,10 @@ class MyFavFolderDetailFragment : Fragment() {
                         when (keyCode) {
                             KeyEvent.KEYCODE_DPAD_UP -> {
                                 if (!binding.recycler.canScrollVertically(-1)) {
-                                    val lm = binding.recycler.layoutManager as? StaggeredGridLayoutManager ?: return@setOnKeyListener false
+                                    val lm = binding.recycler.layoutManager as? GridLayoutManager ?: return@setOnKeyListener false
                                     val holder = binding.recycler.findContainingViewHolder(v) ?: return@setOnKeyListener false
                                     val pos = holder.bindingAdapterPosition.takeIf { it != RecyclerView.NO_POSITION } ?: return@setOnKeyListener false
-                                    val first = IntArray(lm.spanCount)
-                                    lm.findFirstVisibleItemPositions(first)
-                                    if (first.any { it == pos }) {
+                                    if (pos < lm.spanCount) {
                                         binding.btnBack.requestFocus()
                                         return@setOnKeyListener true
                                     }
@@ -150,7 +144,7 @@ class MyFavFolderDetailFragment : Fragment() {
 
     override fun onResume() {
         super.onResume()
-        (binding.recycler.layoutManager as? StaggeredGridLayoutManager)?.spanCount = spanCountForWidth(resources)
+        (binding.recycler.layoutManager as? GridLayoutManager)?.spanCount = spanCountForWidth(resources)
     }
 
     private fun resetAndLoad() {

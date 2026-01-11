@@ -11,6 +11,7 @@ import android.view.ViewGroup
 import android.widget.Toast
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
+import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.recyclerview.widget.SimpleItemAnimator
 import androidx.recyclerview.widget.StaggeredGridLayoutManager
@@ -307,9 +308,7 @@ class SearchFragment : Fragment(), BackPressHandler {
             }
         binding.recyclerResults.adapter = resultAdapter
         binding.recyclerResults.setHasFixedSize(true)
-        binding.recyclerResults.layoutManager = StaggeredGridLayoutManager(spanCountForWidth(), StaggeredGridLayoutManager.VERTICAL).apply {
-            gapStrategy = StaggeredGridLayoutManager.GAP_HANDLING_NONE
-        }
+        binding.recyclerResults.layoutManager = GridLayoutManager(requireContext(), spanCountForWidth())
         (binding.recyclerResults.itemAnimator as? SimpleItemAnimator)?.supportsChangeAnimations = false
         binding.recyclerResults.addOnChildAttachStateChangeListener(
             object : RecyclerView.OnChildAttachStateChangeListener {
@@ -318,16 +317,14 @@ class SearchFragment : Fragment(), BackPressHandler {
 	                        if (event.action != KeyEvent.ACTION_DOWN) return@setOnKeyListener false
 	                        if (binding.panelResults.visibility != View.VISIBLE) return@setOnKeyListener false
 
-	                        val lm = binding.recyclerResults.layoutManager as? StaggeredGridLayoutManager ?: return@setOnKeyListener false
+	                        val lm = binding.recyclerResults.layoutManager as? GridLayoutManager ?: return@setOnKeyListener false
 	                        val holder = binding.recyclerResults.findContainingViewHolder(v) ?: return@setOnKeyListener false
 	                        val pos = holder.bindingAdapterPosition.takeIf { it != RecyclerView.NO_POSITION } ?: return@setOnKeyListener false
 
 	                        when (keyCode) {
 	                            KeyEvent.KEYCODE_DPAD_UP -> {
 	                                if (!binding.recyclerResults.canScrollVertically(-1)) {
-	                                    val first = IntArray(lm.spanCount)
-	                                    lm.findFirstVisibleItemPositions(first)
-	                                    if (first.any { it == pos }) {
+	                                    if (pos < lm.spanCount) {
 	                                        focusSelectedTab()
 	                                        return@setOnKeyListener true
 	                                    }
@@ -377,13 +374,11 @@ class SearchFragment : Fragment(), BackPressHandler {
         binding.recyclerResults.clearOnScrollListeners()
         binding.recyclerResults.addOnScrollListener(
             object : RecyclerView.OnScrollListener() {
-                private val tmp = IntArray(8)
-
                 override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
                     if (dy <= 0) return
                     if (isLoadingMore || endReached) return
-                    val lm = recyclerView.layoutManager as? StaggeredGridLayoutManager ?: return
-                    val lastVisible = lm.findLastVisibleItemPositions(tmp).maxOrNull() ?: return
+                    val lm = recyclerView.layoutManager as? GridLayoutManager ?: return
+                    val lastVisible = lm.findLastVisibleItemPosition()
                     val total = resultAdapter.itemCount
                     if (total <= 0) return
                     if (total - lastVisible - 1 <= 8) loadNextPage()
@@ -709,9 +704,6 @@ class SearchFragment : Fragment(), BackPressHandler {
 
 	                val filtered = list.filter { loadedBvids.add(it.bvid) }
 	                if (page == 1) resultAdapter.submit(filtered) else resultAdapter.append(filtered)
-	                binding.recyclerResults.post {
-	                    (binding.recyclerResults.layoutManager as? StaggeredGridLayoutManager)?.invalidateSpanAssignments()
-	                }
 	                page++
 
                 if (res.pages in 1..page && page > res.pages) endReached = true
@@ -765,7 +757,7 @@ class SearchFragment : Fragment(), BackPressHandler {
 
     override fun onResume() {
         super.onResume()
-        (binding.recyclerResults.layoutManager as? StaggeredGridLayoutManager)?.spanCount = spanCountForWidth()
+        (binding.recyclerResults.layoutManager as? GridLayoutManager)?.spanCount = spanCountForWidth()
     }
 
     override fun onDestroyView() {
