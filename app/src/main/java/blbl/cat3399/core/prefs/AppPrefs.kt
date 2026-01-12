@@ -6,6 +6,10 @@ import org.json.JSONArray
 class AppPrefs(context: Context) {
     private val prefs = context.getSharedPreferences("blbl_prefs", Context.MODE_PRIVATE)
 
+    var disclaimerAccepted: Boolean
+        get() = prefs.getBoolean(KEY_DISCLAIMER_ACCEPTED, false)
+        set(value) = prefs.edit().putBoolean(KEY_DISCLAIMER_ACCEPTED, value).apply()
+
     var webRefreshToken: String?
         get() = prefs.getString(KEY_WEB_REFRESH_TOKEN, null)?.trim()?.takeIf { it.isNotBlank() }
         set(value) = prefs.edit().putString(KEY_WEB_REFRESH_TOKEN, value?.trim()).apply()
@@ -175,6 +179,7 @@ class AppPrefs(context: Context) {
         const val UI_MODE_TV = "tv"
         const val UI_MODE_NORMAL = "normal"
 
+        private const val KEY_DISCLAIMER_ACCEPTED = "disclaimer_accepted"
         private const val KEY_WEB_REFRESH_TOKEN = "web_refresh_token"
         private const val KEY_WEB_COOKIE_REFRESH_CHECKED_EPOCH_DAY = "web_cookie_refresh_checked_epoch_day"
         private const val KEY_BILI_TICKET_CHECKED_EPOCH_DAY = "bili_ticket_checked_epoch_day"

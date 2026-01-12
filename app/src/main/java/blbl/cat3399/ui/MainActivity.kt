@@ -49,6 +49,7 @@ class MainActivity : AppCompatActivity() {
     private var pausedFocusWasInMain: Boolean = false
     private var focusListener: ViewTreeObserver.OnGlobalFocusChangeListener? = null
     private var exitDialog: AlertDialog? = null
+    private var disclaimerDialog: AlertDialog? = null
     private lateinit var userInfoOverlay: DialogUserInfoBinding
     private var userInfoPrevFocus: WeakReference<View>? = null
     private var userInfoLoadJob: Job? = null
@@ -132,6 +133,7 @@ class MainActivity : AppCompatActivity() {
         )
 
         refreshSidebarUser()
+        showFirstLaunchDisclaimerIfNeeded()
     }
 
     override fun onResume() {
@@ -400,6 +402,31 @@ class MainActivity : AppCompatActivity() {
         }
         dialog.show()
         exitDialog = dialog
+    }
+
+    private fun showFirstLaunchDisclaimerIfNeeded() {
+        if (BiliClient.prefs.disclaimerAccepted) return
+        if (disclaimerDialog?.isShowing == true) return
+
+        val dialog =
+            MaterialAlertDialogBuilder(this)
+                .setTitle(getString(R.string.disclaimer_title))
+                .setMessage(getString(R.string.disclaimer_message))
+                .setCancelable(false)
+                .setNegativeButton(getString(R.string.disclaimer_exit)) { _, _ -> finish() }
+                .setPositiveButton(getString(R.string.disclaimer_accept)) { _, _ ->
+                    BiliClient.prefs.disclaimerAccepted = true
+                }
+                .create()
+        dialog.setOnDismissListener {
+            disclaimerDialog = null
+            if (!BiliClient.prefs.disclaimerAccepted && !isChangingConfigurations) finish()
+        }
+        dialog.setOnShowListener {
+            dialog.getButton(DialogInterface.BUTTON_POSITIVE)?.requestFocus()
+        }
+        dialog.show()
+        disclaimerDialog = dialog
     }
 
     private fun refreshSidebarUser() {
