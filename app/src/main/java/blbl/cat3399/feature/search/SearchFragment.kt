@@ -107,6 +107,8 @@ class SearchFragment : Fragment(), BackPressHandler {
             setQuery(keyword)
             performSearch()
         }
+        suggestAdapter.setTvMode(isTvMode)
+        hotAdapter.setTvMode(isTvMode)
 
         binding.recyclerKeys.adapter = keyAdapter
         binding.recyclerKeys.layoutManager = androidx.recyclerview.widget.GridLayoutManager(requireContext(), 6)
@@ -382,6 +384,7 @@ class SearchFragment : Fragment(), BackPressHandler {
                         .putExtra(PlayerActivity.EXTRA_CID, card.cid ?: -1L),
                 )
             }
+        resultAdapter.setTvMode(isTvMode)
         binding.recyclerResults.adapter = resultAdapter
         binding.recyclerResults.setHasFixedSize(true)
         binding.recyclerResults.layoutManager = GridLayoutManager(requireContext(), spanCountForWidth())
@@ -953,6 +956,10 @@ class SearchFragment : Fragment(), BackPressHandler {
 
     override fun onResume() {
         super.onResume()
+        isTvMode = TvMode.isEnabled(requireContext())
+        resultAdapter.setTvMode(isTvMode)
+        suggestAdapter.setTvMode(isTvMode)
+        hotAdapter.setTvMode(isTvMode)
         (binding.recyclerResults.layoutManager as? GridLayoutManager)?.spanCount = spanCountForWidth()
         maybeConsumePendingFocusFirstResultCardFromTabSwitch()
     }

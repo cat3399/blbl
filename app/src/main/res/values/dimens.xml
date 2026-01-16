@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Sidebar -->
+    <dimen name="sidebar_width_normal">48dp</dimen>
+    <dimen name="sidebar_width_tv">96dp</dimen>
+    <dimen name="sidebar_user_size">32dp</dimen>
+    <dimen name="sidebar_user_margin_top">8dp</dimen>
+    <dimen name="sidebar_login_size">40dp</dimen>
+    <dimen name="sidebar_login_margin_top">8dp</dimen>
+    <dimen name="sidebar_login_text_size">12sp</dimen>
+    <dimen name="sidebar_nav_margin_top">12dp</dimen>
+    <dimen name="sidebar_settings_size">32dp</dimen>
+    <dimen name="sidebar_settings_padding">4dp</dimen>
+    <dimen name="sidebar_settings_margin_bottom">8dp</dimen>
+
+    <!-- Sidebar nav item -->
+    <dimen name="sidebar_nav_card_margin_v">1dp</dimen>
+    <dimen name="sidebar_nav_card_margin_h">2dp</dimen>
+    <dimen name="sidebar_nav_container_padding_v">4dp</dimen>
+    <dimen name="sidebar_nav_icon_size">22dp</dimen>
+    <dimen name="sidebar_nav_label_margin_top">2dp</dimen>
+    <dimen name="sidebar_nav_label_text_size">11sp</dimen>
+    <dimen name="sidebar_nav_item_height_default">32dp</dimen>
+    <dimen name="sidebar_nav_item_height_selected">56dp</dimen>
+    <dimen name="sidebar_nav_item_height_labeled">52dp</dimen>
+
+    <!-- Video card -->
+    <dimen name="video_card_margin">5dp</dimen>
+    <dimen name="video_card_text_margin">8dp</dimen>
+    <dimen name="video_card_duration_text_size">12sp</dimen>
+    <dimen name="video_card_duration_padding_h">6dp</dimen>
+    <dimen name="video_card_duration_padding_v">2dp</dimen>
+    <dimen name="video_card_stat_icon_size">14dp</dimen>
+    <dimen name="video_card_stat_text_size">12sp</dimen>
+    <dimen name="video_card_title_text_size">14sp</dimen>
+    <dimen name="video_card_subtitle_text_size">12sp</dimen>
+
+    <!-- TV mode overrides (applied at runtime via TvMode) -->
+    <dimen name="sidebar_user_size_tv">48dp</dimen>
+    <dimen name="sidebar_user_margin_top_tv">12dp</dimen>
+    <dimen name="sidebar_login_size_tv">56dp</dimen>
+    <dimen name="sidebar_login_margin_top_tv">12dp</dimen>
+    <dimen name="sidebar_login_text_size_tv">16sp</dimen>
+    <dimen name="sidebar_nav_margin_top_tv">16dp</dimen>
+    <dimen name="sidebar_settings_size_tv">44dp</dimen>
+    <dimen name="sidebar_settings_padding_tv">6dp</dimen>
+    <dimen name="sidebar_settings_margin_bottom_tv">12dp</dimen>
+
+    <dimen name="sidebar_nav_card_margin_v_tv">2dp</dimen>
+    <dimen name="sidebar_nav_card_margin_h_tv">6dp</dimen>
+    <dimen name="sidebar_nav_container_padding_v_tv">8dp</dimen>
+    <dimen name="sidebar_nav_icon_size_tv">32dp</dimen>
+    <dimen name="sidebar_nav_label_margin_top_tv">4dp</dimen>
+    <dimen name="sidebar_nav_label_text_size_tv">14sp</dimen>
+    <dimen name="sidebar_nav_item_height_default_tv">48dp</dimen>
+    <dimen name="sidebar_nav_item_height_selected_tv">84dp</dimen>
+    <dimen name="sidebar_nav_item_height_labeled_tv">72dp</dimen>
+
+    <dimen name="video_card_margin_tv">8dp</dimen>
+    <dimen name="video_card_text_margin_tv">10dp</dimen>
+    <dimen name="video_card_duration_text_size_tv">14sp</dimen>
+    <dimen name="video_card_duration_padding_h_tv">8dp</dimen>
+    <dimen name="video_card_duration_padding_v_tv">3dp</dimen>
+    <dimen name="video_card_stat_icon_size_tv">18dp</dimen>
+    <dimen name="video_card_stat_text_size_tv">14sp</dimen>
+    <dimen name="video_card_title_text_size_tv">18sp</dimen>
+    <dimen name="video_card_subtitle_text_size_tv">14sp</dimen>
+
+    <!-- Dynamic: following list -->
+    <dimen name="dynamic_following_panel_width">190dp</dimen>
+    <dimen name="dynamic_following_panel_width_tv">280dp</dimen>
+    <dimen name="dynamic_following_panel_margin">8dp</dimen>
+    <dimen name="dynamic_following_panel_margin_tv">10dp</dimen>
+    <dimen name="dynamic_following_list_padding">3dp</dimen>
+    <dimen name="dynamic_following_list_padding_tv">8dp</dimen>
+
+    <dimen name="following_item_height">36dp</dimen>
+    <dimen name="following_item_height_tv">56dp</dimen>
+    <dimen name="following_item_margin_v">1dp</dimen>
+    <dimen name="following_item_margin_v_tv">2dp</dimen>
+    <dimen name="following_item_margin_h">2dp</dimen>
+    <dimen name="following_item_margin_h_tv">6dp</dimen>
+    <dimen name="following_container_padding_h">6dp</dimen>
+    <dimen name="following_container_padding_h_tv">12dp</dimen>
+    <dimen name="following_selected_width">3dp</dimen>
+    <dimen name="following_selected_width_tv">4dp</dimen>
+    <dimen name="following_selected_height">18dp</dimen>
+    <dimen name="following_selected_height_tv">28dp</dimen>
+    <dimen name="following_selected_margin_end">6dp</dimen>
+    <dimen name="following_selected_margin_end_tv">10dp</dimen>
+    <dimen name="following_avatar_size">24dp</dimen>
+    <dimen name="following_avatar_size_tv">40dp</dimen>
+    <dimen name="following_name_margin_start">6dp</dimen>
+    <dimen name="following_name_margin_start_tv">10dp</dimen>
+    <dimen name="following_name_text_size">14sp</dimen>
+    <dimen name="following_name_text_size_tv">18sp</dimen>
+
+    <!-- Search: history/suggest/hot list -->
+    <dimen name="search_suggest_margin_bottom">10dp</dimen>
+    <dimen name="search_suggest_margin_bottom_tv">14dp</dimen>
+    <dimen name="search_suggest_padding_h">14dp</dimen>
+    <dimen name="search_suggest_padding_h_tv">18dp</dimen>
+    <dimen name="search_suggest_padding_v">10dp</dimen>
+    <dimen name="search_suggest_padding_v_tv">14dp</dimen>
+    <dimen name="search_suggest_text_size">14sp</dimen>
+    <dimen name="search_suggest_text_size_tv">18sp</dimen>
+
+    <dimen name="search_hot_margin_bottom">10dp</dimen>
+    <dimen name="search_hot_margin_bottom_tv">14dp</dimen>
+    <dimen name="search_hot_padding_h">14dp</dimen>
+    <dimen name="search_hot_padding_h_tv">18dp</dimen>
+    <dimen name="search_hot_padding_v">10dp</dimen>
+    <dimen name="search_hot_padding_v_tv">14dp</dimen>
+    <dimen name="search_hot_icon_size">16dp</dimen>
+    <dimen name="search_hot_icon_size_tv">22dp</dimen>
+    <dimen name="search_hot_icon_margin_end">8dp</dimen>
+    <dimen name="search_hot_icon_margin_end_tv">12dp</dimen>
+    <dimen name="search_hot_text_size">14sp</dimen>
+    <dimen name="search_hot_text_size_tv">18sp</dimen>
+</resources>

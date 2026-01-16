@@ -3,7 +3,7 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:layout_margin="5dp"
+    android:layout_margin="@dimen/video_card_margin"
     android:clickable="true"
     android:focusable="true"
     android:stateListAnimator="@animator/blbl_focus_scale"
@@ -33,13 +33,13 @@
             android:id="@+id/tv_badge"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_margin="8dp"
+            android:layout_margin="@dimen/video_card_text_margin"
             android:background="#CCFF3B30"
-            android:paddingHorizontal="6dp"
-            android:paddingVertical="2dp"
+            android:paddingHorizontal="@dimen/video_card_duration_padding_h"
+            android:paddingVertical="@dimen/video_card_duration_padding_v"
             android:text="LIVE"
             android:textColor="@android:color/white"
-            android:textSize="12sp"
+            android:textSize="@dimen/video_card_duration_text_size"
             app:layout_constraintStart_toStartOf="@id/iv_cover"
             app:layout_constraintTop_toTopOf="@id/iv_cover" />
 
@@ -47,16 +47,17 @@
             android:id="@+id/ll_stats"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_margin="8dp"
+            android:layout_margin="@dimen/video_card_text_margin"
             android:orientation="horizontal"
-            android:paddingHorizontal="6dp"
-            android:paddingVertical="2dp"
+            android:paddingHorizontal="@dimen/video_card_duration_padding_h"
+            android:paddingVertical="@dimen/video_card_duration_padding_v"
             app:layout_constraintBottom_toBottomOf="@id/iv_cover"
             app:layout_constraintStart_toStartOf="@id/iv_cover">
 
             <ImageView
-                android:layout_width="14dp"
-                android:layout_height="14dp"
+                android:id="@+id/iv_stat_online"
+                android:layout_width="@dimen/video_card_stat_icon_size"
+                android:layout_height="@dimen/video_card_stat_icon_size"
                 android:layout_gravity="center_vertical"
                 android:contentDescription="@string/app_name"
                 android:src="@drawable/ic_stat_play" />
@@ -71,19 +72,19 @@
                 android:shadowDy="1"
                 android:shadowRadius="2"
                 android:textColor="@color/blbl_text"
-                android:textSize="12sp" />
+                android:textSize="@dimen/video_card_stat_text_size" />
         </LinearLayout>
 
         <TextView
             android:id="@+id/tv_title"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_margin="8dp"
+            android:layout_margin="@dimen/video_card_text_margin"
             android:ellipsize="end"
             android:lines="2"
             android:maxLines="2"
             android:textColor="@color/blbl_text"
-            android:textSize="14sp"
+            android:textSize="@dimen/video_card_title_text_size"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toBottomOf="@id/iv_cover" />
@@ -92,12 +93,12 @@
             android:id="@+id/tv_subtitle"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_marginHorizontal="8dp"
-            android:layout_marginBottom="8dp"
+            android:layout_marginHorizontal="@dimen/video_card_text_margin"
+            android:layout_marginBottom="@dimen/video_card_text_margin"
             android:ellipsize="end"
             android:maxLines="1"
             android:textColor="@color/blbl_text_secondary"
-            android:textSize="12sp"
+            android:textSize="@dimen/video_card_subtitle_text_size"
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="parent"
@@ -105,4 +106,3 @@
 
     </androidx.constraintlayout.widget.ConstraintLayout>
 </com.google.android.material.card.MaterialCardView>
-

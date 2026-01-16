@@ -4,7 +4,7 @@
     android:id="@+id/card"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:layout_marginBottom="10dp"
+    android:layout_marginBottom="@dimen/search_hot_margin_bottom"
     android:clickable="true"
     android:focusable="true"
     android:nextFocusLeft="@id/recycler_suggest"
@@ -16,18 +16,19 @@
     app:strokeWidth="2dp">
 
     <LinearLayout
+        android:id="@+id/container"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:paddingHorizontal="14dp"
-        android:paddingVertical="10dp">
+        android:paddingHorizontal="@dimen/search_hot_padding_h"
+        android:paddingVertical="@dimen/search_hot_padding_v">
 
         <ImageView
             android:id="@+id/iv_icon"
-            android:layout_width="16dp"
-            android:layout_height="16dp"
-            android:layout_marginEnd="8dp"
+            android:layout_width="@dimen/search_hot_icon_size"
+            android:layout_height="@dimen/search_hot_icon_size"
+            android:layout_marginEnd="@dimen/search_hot_icon_margin_end"
             android:contentDescription="@string/tab_search"
             android:src="@drawable/ic_hot_fire"
             android:tint="@color/blbl_text_secondary" />
@@ -41,6 +42,6 @@
             android:maxLines="1"
             android:text="hot"
             android:textColor="@color/blbl_text"
-            android:textSize="14sp" />
+            android:textSize="@dimen/search_hot_text_size" />
     </LinearLayout>
 </com.google.android.material.card.MaterialCardView>

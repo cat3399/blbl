@@ -7,6 +7,7 @@ import androidx.recyclerview.widget.RecyclerView
 import blbl.cat3399.core.image.ImageLoader
 import blbl.cat3399.core.image.ImageUrl
 import blbl.cat3399.core.model.BangumiSeason
+import blbl.cat3399.core.util.pgcAccessBadgeTextOf
 import blbl.cat3399.databinding.ItemBangumiFollowBinding
 
 class BangumiFollowAdapter(
@@ -45,6 +46,10 @@ class BangumiFollowAdapter(
     class Vh(private val binding: ItemBangumiFollowBinding) : RecyclerView.ViewHolder(binding.root) {
         fun bind(item: BangumiSeason, onClick: (position: Int, season: BangumiSeason) -> Unit) {
             binding.tvTitle.text = item.title
+
+            val badgeText = pgcAccessBadgeTextOf(item.badgeEp, item.badge)
+            binding.tvAccessBadgeText.isVisible = badgeText != null
+            binding.tvAccessBadgeText.text = badgeText.orEmpty()
 
             val metaParts =
                 buildList {

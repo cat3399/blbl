@@ -15,6 +15,7 @@ import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import blbl.cat3399.core.api.BiliApi
 import blbl.cat3399.core.log.AppLog
+import blbl.cat3399.core.tv.TvMode
 import blbl.cat3399.databinding.FragmentVideoGridBinding
 import blbl.cat3399.feature.player.PlayerActivity
 import kotlinx.coroutines.CancellationException
@@ -62,6 +63,7 @@ class VideoGridFragment : Fragment() {
                 )
             }
         }
+        adapter.setTvMode(TvMode.isEnabled(requireContext()))
         binding.recycler.adapter = adapter
         binding.recycler.setHasFixedSize(true)
         binding.recycler.layoutManager = GridLayoutManager(requireContext(), spanCountForWidth())
@@ -169,6 +171,7 @@ class VideoGridFragment : Fragment() {
     override fun onResume() {
         super.onResume()
         AppLog.d("VideoGrid", "onResume source=$source rid=$rid t=${SystemClock.uptimeMillis()}")
+        if (this::adapter.isInitialized) adapter.setTvMode(TvMode.isEnabled(requireContext()))
         (binding.recycler.layoutManager as? GridLayoutManager)?.spanCount = spanCountForWidth()
         maybeTriggerInitialLoad()
         maybeConsumePendingFocusFirstCard()

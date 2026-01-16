@@ -5,6 +5,8 @@ data class BangumiSeason(
     val seasonTypeName: String?,
     val title: String,
     val coverUrl: String?,
+    val badge: String?,
+    val badgeEp: String?,
     val progressText: String?,
     val totalCount: Int?,
     val lastEpIndex: Int?,

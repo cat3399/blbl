@@ -848,6 +848,10 @@ object BiliApi {
                             seasonTypeName = obj.optString("season_type_name").takeIf { it.isNotBlank() },
                             title = obj.optString("title", ""),
                             coverUrl = obj.optString("cover").takeIf { it.isNotBlank() },
+                            badge = obj.optString("badge").takeIf { it.isNotBlank() },
+                            badgeEp =
+                                obj.optString("badge_ep").takeIf { it.isNotBlank() }
+                                    ?: obj.optString("badgeEp").takeIf { it.isNotBlank() },
                             progressText = progressText,
                             totalCount = obj.optInt("total_count").takeIf { it > 0 },
                             isFinish = obj.optInt("is_finish", -1).takeIf { it >= 0 }?.let { it == 1 },

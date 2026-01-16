@@ -30,6 +30,22 @@
             app:layout_constraintTop_toTopOf="parent" />
 
         <TextView
+            android:id="@+id/tv_access_badge_text"
+            android:layout_width="wrap_content"
+            android:layout_height="20dp"
+            android:layout_margin="8dp"
+            android:background="@drawable/bg_pgc_access_badge"
+            android:gravity="center"
+            android:minWidth="20dp"
+            android:paddingHorizontal="6dp"
+            android:textColor="@android:color/white"
+            android:textSize="12sp"
+            android:textStyle="bold"
+            android:visibility="gone"
+            app:layout_constraintEnd_toEndOf="@id/iv_cover"
+            app:layout_constraintTop_toTopOf="@id/iv_cover" />
+
+        <TextView
             android:id="@+id/tv_title"
             android:layout_width="0dp"
             android:layout_height="wrap_content"

@@ -16,6 +16,7 @@ import androidx.recyclerview.widget.SimpleItemAnimator
 import blbl.cat3399.core.api.BiliApi
 import blbl.cat3399.core.log.AppLog
 import blbl.cat3399.R
+import blbl.cat3399.core.tv.TvMode
 import blbl.cat3399.databinding.FragmentMyFavFolderDetailBinding
 import blbl.cat3399.feature.player.PlayerActivity
 import blbl.cat3399.feature.video.VideoCardAdapter
@@ -56,6 +57,7 @@ class MyFavFolderDetailFragment : Fragment() {
                     )
                 }
         }
+        adapter.setTvMode(TvMode.isEnabled(requireContext()))
         binding.recycler.adapter = adapter
         binding.recycler.setHasFixedSize(true)
         binding.recycler.layoutManager = GridLayoutManager(requireContext(), spanCountForWidth(resources))
@@ -144,6 +146,7 @@ class MyFavFolderDetailFragment : Fragment() {
 
     override fun onResume() {
         super.onResume()
+        if (this::adapter.isInitialized) adapter.setTvMode(TvMode.isEnabled(requireContext()))
         (binding.recycler.layoutManager as? GridLayoutManager)?.spanCount = spanCountForWidth(resources)
     }
 

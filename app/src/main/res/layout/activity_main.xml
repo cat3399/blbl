@@ -7,7 +7,7 @@
 
     <LinearLayout
         android:id="@+id/sidebar"
-        android:layout_width="48dp"
+        android:layout_width="@dimen/sidebar_width_normal"
         android:layout_height="0dp"
         android:background="@color/blbl_bg"
         android:clipChildren="false"
@@ -18,10 +18,10 @@
 
         <com.google.android.material.imageview.ShapeableImageView
             android:id="@+id/iv_sidebar_user"
-            android:layout_width="32dp"
-            android:layout_height="32dp"
+            android:layout_width="@dimen/sidebar_user_size"
+            android:layout_height="@dimen/sidebar_user_size"
             android:layout_gravity="center_horizontal"
-            android:layout_marginTop="8dp"
+            android:layout_marginTop="@dimen/sidebar_user_margin_top"
             android:clickable="true"
             android:focusable="true"
             android:stateListAnimator="@animator/blbl_focus_scale"
@@ -33,10 +33,10 @@
 
         <TextView
             android:id="@+id/btn_sidebar_login"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
+            android:layout_width="@dimen/sidebar_login_size"
+            android:layout_height="@dimen/sidebar_login_size"
             android:layout_gravity="center_horizontal"
-            android:layout_marginTop="8dp"
+            android:layout_marginTop="@dimen/sidebar_login_margin_top"
             android:clickable="true"
             android:focusable="true"
             android:gravity="center"
@@ -44,7 +44,7 @@
             android:stateListAnimator="@animator/blbl_focus_scale"
             android:text="@string/sidebar_login"
             android:textColor="@color/blbl_text"
-            android:textSize="12sp"
+            android:textSize="@dimen/sidebar_login_text_size"
             android:visibility="gone"
             android:background="@drawable/blbl_login_circle_bg" />
 
@@ -52,7 +52,7 @@
             android:id="@+id/recycler_sidebar"
             android:layout_width="match_parent"
             android:layout_height="0dp"
-            android:layout_marginTop="12dp"
+            android:layout_marginTop="@dimen/sidebar_nav_margin_top"
             android:layout_weight="1"
             android:clipChildren="false"
             android:clipToPadding="false"
@@ -60,14 +60,14 @@
 
         <ImageButton
             android:id="@+id/btn_sidebar_settings"
-            android:layout_width="32dp"
-            android:layout_height="32dp"
+            android:layout_width="@dimen/sidebar_settings_size"
+            android:layout_height="@dimen/sidebar_settings_size"
             android:layout_gravity="center_horizontal"
-            android:layout_marginBottom="8dp"
+            android:layout_marginBottom="@dimen/sidebar_settings_margin_bottom"
             android:background="@drawable/blbl_focus_bg_round"
             android:contentDescription="@string/tab_settings"
             android:focusable="true"
-            android:padding="4dp"
+            android:padding="@dimen/sidebar_settings_padding"
             android:src="@drawable/ic_nav_settings"
             android:tint="@color/blbl_text_secondary" />
     </LinearLayout>

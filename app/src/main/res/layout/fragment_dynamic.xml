@@ -7,9 +7,9 @@
 
     <com.google.android.material.card.MaterialCardView
         android:id="@+id/card_following"
-        android:layout_width="190dp"
+        android:layout_width="@dimen/dynamic_following_panel_width"
         android:layout_height="0dp"
-        android:layout_margin="8dp"
+        android:layout_margin="@dimen/dynamic_following_panel_margin"
         app:cardBackgroundColor="@color/blbl_surface"
         app:cardCornerRadius="14dp"
         app:cardElevation="0dp"
@@ -25,7 +25,7 @@
             android:clipToPadding="false"
             android:descendantFocusability="afterDescendants"
             android:focusable="true"
-            android:padding="3dp" />
+            android:padding="@dimen/dynamic_following_list_padding" />
     </com.google.android.material.card.MaterialCardView>
 
     <androidx.swiperefreshlayout.widget.SwipeRefreshLayout

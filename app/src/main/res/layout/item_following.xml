@@ -2,9 +2,9 @@
 <com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
-    android:layout_height="36dp"
-    android:layout_marginVertical="1dp"
-    android:layout_marginHorizontal="2dp"
+    android:layout_height="@dimen/following_item_height"
+    android:layout_marginVertical="@dimen/following_item_margin_v"
+    android:layout_marginHorizontal="@dimen/following_item_margin_h"
     android:clickable="true"
     android:focusable="true"
     android:stateListAnimator="@animator/blbl_focus_scale"
@@ -13,24 +13,25 @@
     app:cardElevation="0dp">
 
     <LinearLayout
+        android:id="@+id/container"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:paddingHorizontal="6dp">
+        android:paddingHorizontal="@dimen/following_container_padding_h">
 
         <View
             android:id="@+id/v_selected"
-            android:layout_width="3dp"
-            android:layout_height="18dp"
-            android:layout_marginEnd="6dp"
+            android:layout_width="@dimen/following_selected_width"
+            android:layout_height="@dimen/following_selected_height"
+            android:layout_marginEnd="@dimen/following_selected_margin_end"
             android:background="@color/blbl_purple"
             android:visibility="gone" />
 
         <com.google.android.material.imageview.ShapeableImageView
             android:id="@+id/iv_avatar"
-            android:layout_width="24dp"
-            android:layout_height="24dp"
+            android:layout_width="@dimen/following_avatar_size"
+            android:layout_height="@dimen/following_avatar_size"
             android:contentDescription="@string/app_name"
             android:src="@android:drawable/sym_def_app_icon"
             app:shapeAppearanceOverlay="@style/ShapeAppearanceOverlay_Blbl_Circular" />
@@ -38,13 +39,13 @@
         <TextView
             android:id="@+id/tv_name"
             android:layout_width="0dp"
-            android:layout_height="24dp"
-            android:layout_marginStart="6dp"
+            android:layout_height="@dimen/following_avatar_size"
+            android:layout_marginStart="@dimen/following_name_margin_start"
             android:layout_weight="1"
             android:ellipsize="end"
             android:gravity="center_vertical"
             android:maxLines="1"
             android:textColor="@color/blbl_text"
-            android:textSize="14sp" />
+            android:textSize="@dimen/following_name_text_size" />
     </LinearLayout>
 </com.google.android.material.card.MaterialCardView>

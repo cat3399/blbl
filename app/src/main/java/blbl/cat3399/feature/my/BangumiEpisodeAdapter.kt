@@ -2,10 +2,12 @@ package blbl.cat3399.feature.my
 
 import android.view.LayoutInflater
 import android.view.ViewGroup
+import androidx.core.view.isVisible
 import androidx.recyclerview.widget.RecyclerView
 import blbl.cat3399.core.image.ImageLoader
 import blbl.cat3399.core.image.ImageUrl
 import blbl.cat3399.core.model.BangumiEpisode
+import blbl.cat3399.core.util.pgcAccessBadgeTextOf
 import blbl.cat3399.databinding.ItemBangumiEpisodeBinding
 
 class BangumiEpisodeAdapter(
@@ -39,8 +41,12 @@ class BangumiEpisodeAdapter(
             val title = item.title.trim().takeIf { it.isNotBlank() } ?: "-"
             binding.tvTitle.text = "第${title}话"
             ImageLoader.loadInto(binding.ivCover, ImageUrl.cover(item.coverUrl))
+
+            val badgeText = pgcAccessBadgeTextOf(item.badge)
+            binding.tvAccessBadgeText.isVisible = badgeText != null
+            binding.tvAccessBadgeText.text = badgeText.orEmpty()
+
             binding.root.setOnClickListener { onClick(item) }
         }
     }
 }
-

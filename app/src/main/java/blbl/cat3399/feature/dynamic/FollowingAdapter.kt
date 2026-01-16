@@ -1,9 +1,12 @@
 package blbl.cat3399.feature.dynamic
 
+import android.util.TypedValue
 import android.view.LayoutInflater
 import android.view.ViewGroup
+import android.view.ViewGroup.MarginLayoutParams
 import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.RecyclerView
+import blbl.cat3399.R
 import blbl.cat3399.core.image.ImageLoader
 import blbl.cat3399.core.image.ImageUrl
 import blbl.cat3399.databinding.ItemFollowingBinding
@@ -20,9 +23,16 @@ class FollowingAdapter(
 
     private val items = ArrayList<FollowingUi>()
     private var selectedMid: Long = MID_ALL
+    private var tvMode: Boolean = false
 
     init {
         setHasStableIds(true)
+    }
+
+    fun setTvMode(enabled: Boolean) {
+        if (tvMode == enabled) return
+        tvMode = enabled
+        notifyItemRangeChanged(0, itemCount)
     }
 
     fun submit(list: List<FollowingUi>, selected: Long = MID_ALL) {
@@ -52,12 +62,20 @@ class FollowingAdapter(
         return Vh(binding)
     }
 
-    override fun onBindViewHolder(holder: Vh, position: Int) = holder.bind(items[position], items[position].mid == selectedMid, onClick)
+    override fun onBindViewHolder(holder: Vh, position: Int) =
+        holder.bind(items[position], tvMode, items[position].mid == selectedMid, onClick)
 
     override fun getItemCount(): Int = items.size
 
     class Vh(private val binding: ItemFollowingBinding) : RecyclerView.ViewHolder(binding.root) {
-        fun bind(item: FollowingUi, selected: Boolean, onClick: (FollowingUi) -> Unit) {
+        private var lastTvMode: Boolean? = null
+
+        fun bind(item: FollowingUi, tvMode: Boolean, selected: Boolean, onClick: (FollowingUi) -> Unit) {
+            if (lastTvMode != tvMode) {
+                applySizing(tvMode)
+                lastTvMode = tvMode
+            }
+
             binding.tvName.text = item.name
             if (item.isAll) {
                 binding.ivAvatar.setImageResource(blbl.cat3399.R.drawable.ic_all)
@@ -78,6 +96,76 @@ class FollowingAdapter(
                 ),
             )
             binding.root.setOnClickListener { onClick(item) }
+        }
+
+        private fun applySizing(tvMode: Boolean) {
+            fun px(id: Int): Int = binding.root.resources.getDimensionPixelSize(id)
+            fun pxF(id: Int): Float = binding.root.resources.getDimension(id)
+
+            val height = px(if (tvMode) R.dimen.following_item_height_tv else R.dimen.following_item_height)
+            val rootLp = binding.root.layoutParams
+            if (rootLp != null && rootLp.height != height) {
+                rootLp.height = height
+                binding.root.layoutParams = rootLp
+            }
+
+            (binding.root.layoutParams as? MarginLayoutParams)?.let { lp ->
+                val mv = px(if (tvMode) R.dimen.following_item_margin_v_tv else R.dimen.following_item_margin_v)
+                val mh = px(if (tvMode) R.dimen.following_item_margin_h_tv else R.dimen.following_item_margin_h)
+                if (lp.topMargin != mv || lp.bottomMargin != mv || lp.leftMargin != mh || lp.rightMargin != mh) {
+                    lp.topMargin = mv
+                    lp.bottomMargin = mv
+                    lp.leftMargin = mh
+                    lp.rightMargin = mh
+                    binding.root.layoutParams = lp
+                }
+            }
+
+            val padH = px(if (tvMode) R.dimen.following_container_padding_h_tv else R.dimen.following_container_padding_h)
+            if (binding.container.paddingLeft != padH || binding.container.paddingRight != padH) {
+                binding.container.setPadding(
+                    padH,
+                    binding.container.paddingTop,
+                    padH,
+                    binding.container.paddingBottom,
+                )
+            }
+
+            val selectedWidth = px(if (tvMode) R.dimen.following_selected_width_tv else R.dimen.following_selected_width)
+            val selectedHeight = px(if (tvMode) R.dimen.following_selected_height_tv else R.dimen.following_selected_height)
+            val selectedMarginEnd =
+                px(if (tvMode) R.dimen.following_selected_margin_end_tv else R.dimen.following_selected_margin_end)
+            val selectedLp = binding.vSelected.layoutParams as? ViewGroup.MarginLayoutParams
+            if (selectedLp != null) {
+                if (selectedLp.width != selectedWidth || selectedLp.height != selectedHeight || selectedLp.marginEnd != selectedMarginEnd) {
+                    selectedLp.width = selectedWidth
+                    selectedLp.height = selectedHeight
+                    selectedLp.marginEnd = selectedMarginEnd
+                    binding.vSelected.layoutParams = selectedLp
+                }
+            }
+
+            val avatarSize = px(if (tvMode) R.dimen.following_avatar_size_tv else R.dimen.following_avatar_size)
+            val avatarLp = binding.ivAvatar.layoutParams
+            if (avatarLp.width != avatarSize || avatarLp.height != avatarSize) {
+                avatarLp.width = avatarSize
+                avatarLp.height = avatarSize
+                binding.ivAvatar.layoutParams = avatarLp
+            }
+
+            val nameLp = binding.tvName.layoutParams as? ViewGroup.MarginLayoutParams
+            if (nameLp != null) {
+                val ms = px(if (tvMode) R.dimen.following_name_margin_start_tv else R.dimen.following_name_margin_start)
+                if (nameLp.marginStart != ms || nameLp.height != avatarSize) {
+                    nameLp.marginStart = ms
+                    nameLp.height = avatarSize
+                    binding.tvName.layoutParams = nameLp
+                }
+            }
+            binding.tvName.setTextSize(
+                TypedValue.COMPLEX_UNIT_PX,
+                pxF(if (tvMode) R.dimen.following_name_text_size_tv else R.dimen.following_name_text_size),
+            )
         }
     }
 

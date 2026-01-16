@@ -15,6 +15,7 @@ import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import blbl.cat3399.core.api.BiliApi
 import blbl.cat3399.core.log.AppLog
+import blbl.cat3399.core.tv.TvMode
 import blbl.cat3399.databinding.FragmentLiveGridBinding
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
@@ -64,6 +65,7 @@ class LiveGridFragment : Fragment() {
                 }
         }
 
+        adapter.setTvMode(TvMode.isEnabled(requireContext()))
         binding.recycler.adapter = adapter
         binding.recycler.setHasFixedSize(true)
         binding.recycler.layoutManager = GridLayoutManager(requireContext(), spanCountForWidth())
@@ -144,6 +146,7 @@ class LiveGridFragment : Fragment() {
 
     override fun onResume() {
         super.onResume()
+        if (this::adapter.isInitialized) adapter.setTvMode(TvMode.isEnabled(requireContext()))
         (binding.recycler.layoutManager as? GridLayoutManager)?.spanCount = spanCountForWidth()
         maybeTriggerInitialLoad()
         maybeConsumePendingFocusFirstCard()

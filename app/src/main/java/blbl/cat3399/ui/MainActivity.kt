@@ -7,7 +7,9 @@ import android.content.DialogInterface
 import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewGroup.MarginLayoutParams
 import android.view.ViewTreeObserver
+import android.widget.LinearLayout
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
@@ -127,6 +129,10 @@ class MainActivity : AppCompatActivity() {
                     val handled = (current as? BackPressHandler)?.handleBackPressed() == true
                     AppLog.d("Back", "back current=${current?.javaClass?.simpleName} handled=$handled")
                     if (handled) return
+                    if (current !is HomeFragment) {
+                        navAdapter.select(SidebarNavAdapter.ID_HOME, trigger = true)
+                        return
+                    }
                     showExitConfirm()
                 }
             },
@@ -470,12 +476,86 @@ class MainActivity : AppCompatActivity() {
         val tvMode = TvMode.isEnabled(this)
         if (::navAdapter.isInitialized) navAdapter.setShowLabelsAlways(tvMode)
 
-        val widthDp = if (tvMode) 160f else 48f
-        val widthPx = dp(widthDp)
+        val widthPx =
+            resources.getDimensionPixelSize(
+                if (tvMode) R.dimen.sidebar_width_tv else R.dimen.sidebar_width_normal,
+            )
         val lp = binding.sidebar.layoutParams
         if (lp.width != widthPx) {
             lp.width = widthPx
             binding.sidebar.layoutParams = lp
+        }
+
+        applySidebarSizing(tvMode)
+    }
+
+    private fun applySidebarSizing(tvMode: Boolean) {
+        fun px(id: Int): Int = resources.getDimensionPixelSize(id)
+        fun pxF(id: Int): Float = resources.getDimension(id)
+
+        val userSize = px(if (tvMode) R.dimen.sidebar_user_size_tv else R.dimen.sidebar_user_size)
+        setSize(binding.ivSidebarUser, userSize, userSize)
+        setTopMargin(binding.ivSidebarUser, px(if (tvMode) R.dimen.sidebar_user_margin_top_tv else R.dimen.sidebar_user_margin_top))
+
+        val loginSize = px(if (tvMode) R.dimen.sidebar_login_size_tv else R.dimen.sidebar_login_size)
+        setSize(binding.btnSidebarLogin, loginSize, loginSize)
+        setTopMargin(binding.btnSidebarLogin, px(if (tvMode) R.dimen.sidebar_login_margin_top_tv else R.dimen.sidebar_login_margin_top))
+        binding.btnSidebarLogin.setTextSize(
+            android.util.TypedValue.COMPLEX_UNIT_PX,
+            pxF(if (tvMode) R.dimen.sidebar_login_text_size_tv else R.dimen.sidebar_login_text_size),
+        )
+
+        setTopMargin(binding.recyclerSidebar, px(if (tvMode) R.dimen.sidebar_nav_margin_top_tv else R.dimen.sidebar_nav_margin_top))
+
+        val settingsSize = px(if (tvMode) R.dimen.sidebar_settings_size_tv else R.dimen.sidebar_settings_size)
+        setSize(binding.btnSidebarSettings, settingsSize, settingsSize)
+        setBottomMargin(
+            binding.btnSidebarSettings,
+            px(if (tvMode) R.dimen.sidebar_settings_margin_bottom_tv else R.dimen.sidebar_settings_margin_bottom),
+        )
+        val settingsPadding = px(if (tvMode) R.dimen.sidebar_settings_padding_tv else R.dimen.sidebar_settings_padding)
+        binding.btnSidebarSettings.setPadding(settingsPadding, settingsPadding, settingsPadding, settingsPadding)
+    }
+
+    private fun setSize(view: View, widthPx: Int, heightPx: Int) {
+        val lp = view.layoutParams ?: return
+        if (lp.width == widthPx && lp.height == heightPx) return
+        lp.width = widthPx
+        lp.height = heightPx
+        view.layoutParams = lp
+    }
+
+    private fun setTopMargin(view: View, topMarginPx: Int) {
+        val lp = view.layoutParams
+        when (lp) {
+            is LinearLayout.LayoutParams -> {
+                if (lp.topMargin == topMarginPx) return
+                lp.topMargin = topMarginPx
+                view.layoutParams = lp
+            }
+
+            is MarginLayoutParams -> {
+                if (lp.topMargin == topMarginPx) return
+                lp.topMargin = topMarginPx
+                view.layoutParams = lp
+            }
+        }
+    }
+
+    private fun setBottomMargin(view: View, bottomMarginPx: Int) {
+        val lp = view.layoutParams
+        when (lp) {
+            is LinearLayout.LayoutParams -> {
+                if (lp.bottomMargin == bottomMarginPx) return
+                lp.bottomMargin = bottomMarginPx
+                view.layoutParams = lp
+            }
+
+            is MarginLayoutParams -> {
+                if (lp.bottomMargin == bottomMarginPx) return
+                lp.bottomMargin = bottomMarginPx
+                view.layoutParams = lp
+            }
         }
     }
 

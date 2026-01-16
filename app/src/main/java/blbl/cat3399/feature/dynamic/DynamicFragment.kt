@@ -16,6 +16,7 @@ import androidx.recyclerview.widget.RecyclerView
 import blbl.cat3399.core.api.BiliApi
 import blbl.cat3399.core.log.AppLog
 import blbl.cat3399.core.net.BiliClient
+import blbl.cat3399.core.tv.TvMode
 import blbl.cat3399.databinding.FragmentDynamicBinding
 import blbl.cat3399.databinding.FragmentDynamicLoginBinding
 import blbl.cat3399.feature.login.QrLoginActivity
@@ -61,6 +62,8 @@ class DynamicFragment : Fragment() {
         followAdapter = FollowingAdapter(::onFollowingClicked)
         binding.recyclerFollowing.layoutManager = LinearLayoutManager(requireContext())
         binding.recyclerFollowing.adapter = followAdapter
+        followAdapter.setTvMode(TvMode.isEnabled(requireContext()))
+        applyUiMode()
 
         videoAdapter = VideoCardAdapter { card ->
             startActivity(
@@ -69,6 +72,7 @@ class DynamicFragment : Fragment() {
                     .putExtra(PlayerActivity.EXTRA_CID, -1L),
             )
         }
+        videoAdapter.setTvMode(TvMode.isEnabled(requireContext()))
         binding.recyclerDynamic.setHasFixedSize(true)
         binding.recyclerDynamic.layoutManager = GridLayoutManager(requireContext(), spanCountForWidth())
         binding.recyclerDynamic.adapter = videoAdapter
@@ -234,7 +238,44 @@ class DynamicFragment : Fragment() {
 
     override fun onResume() {
         super.onResume()
+        applyUiMode()
+        if (this::videoAdapter.isInitialized) videoAdapter.setTvMode(TvMode.isEnabled(requireContext()))
+        if (this::followAdapter.isInitialized) followAdapter.setTvMode(TvMode.isEnabled(requireContext()))
         (_binding?.recyclerDynamic?.layoutManager as? GridLayoutManager)?.spanCount = spanCountForWidth()
+    }
+
+    private fun applyUiMode() {
+        val binding = _binding ?: return
+        val tvMode = TvMode.isEnabled(requireContext())
+        val width =
+            resources.getDimensionPixelSize(
+                if (tvMode) blbl.cat3399.R.dimen.dynamic_following_panel_width_tv else blbl.cat3399.R.dimen.dynamic_following_panel_width,
+            )
+        val margin =
+            resources.getDimensionPixelSize(
+                if (tvMode) blbl.cat3399.R.dimen.dynamic_following_panel_margin_tv else blbl.cat3399.R.dimen.dynamic_following_panel_margin,
+            )
+        val padding =
+            resources.getDimensionPixelSize(
+                if (tvMode) blbl.cat3399.R.dimen.dynamic_following_list_padding_tv else blbl.cat3399.R.dimen.dynamic_following_list_padding,
+            )
+
+        val cardLp = binding.cardFollowing.layoutParams
+        var changed = false
+        if (cardLp.width != width) {
+            cardLp.width = width
+            changed = true
+        }
+        val mlp = cardLp as? ViewGroup.MarginLayoutParams
+        if (mlp != null && (mlp.leftMargin != margin || mlp.topMargin != margin || mlp.rightMargin != margin || mlp.bottomMargin != margin)) {
+            mlp.setMargins(margin, margin, margin, margin)
+            changed = true
+        }
+        if (changed) binding.cardFollowing.layoutParams = cardLp
+
+        if (binding.recyclerFollowing.paddingLeft != padding || binding.recyclerFollowing.paddingTop != padding || binding.recyclerFollowing.paddingRight != padding || binding.recyclerFollowing.paddingBottom != padding) {
+            binding.recyclerFollowing.setPadding(padding, padding, padding, padding)
+        }
     }
 
     companion object {

@@ -4,7 +4,7 @@
     android:id="@+id/card"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:layout_marginBottom="10dp"
+    android:layout_marginBottom="@dimen/search_suggest_margin_bottom"
     android:clickable="true"
     android:focusable="true"
     android:nextFocusLeft="@id/recycler_keys"
@@ -21,9 +21,9 @@
         android:layout_height="wrap_content"
         android:ellipsize="end"
         android:maxLines="1"
-        android:paddingHorizontal="14dp"
-        android:paddingVertical="10dp"
+        android:paddingHorizontal="@dimen/search_suggest_padding_h"
+        android:paddingVertical="@dimen/search_suggest_padding_v"
         android:text="suggest"
         android:textColor="@color/blbl_text"
-        android:textSize="14sp" />
+        android:textSize="@dimen/search_suggest_text_size" />
 </com.google.android.material.card.MaterialCardView>

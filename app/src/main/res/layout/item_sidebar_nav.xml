@@ -4,8 +4,8 @@
     android:id="@+id/card"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:layout_marginVertical="1dp"
-    android:layout_marginHorizontal="2dp"
+    android:layout_marginVertical="@dimen/sidebar_nav_card_margin_v"
+    android:layout_marginHorizontal="@dimen/sidebar_nav_card_margin_h"
     android:clickable="true"
     android:focusable="true"
     android:stateListAnimator="@animator/blbl_focus_scale"
@@ -19,23 +19,23 @@
         android:layout_height="wrap_content"
         android:gravity="center"
         android:orientation="vertical"
-        android:paddingVertical="4dp">
+        android:paddingVertical="@dimen/sidebar_nav_container_padding_v">
 
         <ImageView
             android:id="@+id/iv_icon"
-            android:layout_width="22dp"
-            android:layout_height="22dp"
+            android:layout_width="@dimen/sidebar_nav_icon_size"
+            android:layout_height="@dimen/sidebar_nav_icon_size"
             android:contentDescription="@string/app_name" />
 
         <TextView
             android:id="@+id/tv_label"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="2dp"
+            android:layout_marginTop="@dimen/sidebar_nav_label_margin_top"
             android:ellipsize="end"
             android:maxLines="1"
             android:textColor="@color/blbl_text"
-            android:textSize="11sp"
+            android:textSize="@dimen/sidebar_nav_label_text_size"
             android:visibility="gone" />
     </LinearLayout>
 </com.google.android.material.card.MaterialCardView>
