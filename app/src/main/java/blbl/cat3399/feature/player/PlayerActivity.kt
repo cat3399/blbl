@@ -933,6 +933,10 @@ class PlayerActivity : AppCompatActivity() {
 
     private suspend fun pickPlayable(json: JSONObject, constraints: PlaybackConstraints): Playable {
         val data = json.optJSONObject("data") ?: json.optJSONObject("result") ?: JSONObject()
+        val vVoucher = data.optString("v_voucher", "").trim()
+        if (vVoucher.isNotBlank()) {
+            error("风控拦截：v_voucher=$vVoucher")
+        }
         val dash = data.optJSONObject("dash")
         if (dash != null) {
             val videos = dash.optJSONArray("video") ?: JSONArray()

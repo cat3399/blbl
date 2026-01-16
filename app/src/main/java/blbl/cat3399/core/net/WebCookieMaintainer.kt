@@ -7,6 +7,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okhttp3.Cookie
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import java.nio.charset.StandardCharsets
@@ -43,6 +44,91 @@ object WebCookieMaintainer {
     }
 
     private val cookieRefreshMutex = Mutex()
+
+    suspend fun ensureBuvidActiveOnce() {
+        val midStr = BiliClient.cookies.getCookieValue("DedeUserID")?.trim().orEmpty()
+        val mid = midStr.toLongOrNull()?.takeIf { it > 0 } ?: return
+        if (BiliClient.prefs.buvidActivatedMid == mid) return
+
+        runCatching {
+            val rand = ByteArray(32 + 8 + 4)
+            java.security.SecureRandom().nextBytes(rand)
+            // Overwrite middle bytes to mimic PiliPlus' fixed PNG tail marker.
+            rand[32] = 0
+            rand[33] = 0
+            rand[34] = 0
+            rand[35] = 0
+            rand[36] = 73
+            rand[37] = 69
+            rand[38] = 78
+            rand[39] = 68
+            val tail = ByteArray(4)
+            java.security.SecureRandom().nextBytes(tail)
+            for (i in 0 until 4) rand[40 + i] = tail[i]
+
+            val randPngEnd = android.util.Base64.encodeToString(rand, android.util.Base64.NO_WRAP)
+            val jsonData =
+                JSONObject()
+                    .put("3064", 1)
+                    .put("39c8", "333.1387.fp.risk")
+                    .put(
+                        "3c43",
+                        JSONObject()
+                            .put("adca", "Linux")
+                            .put("bfe9", randPngEnd.takeLast(50)),
+                    )
+                    .toString()
+
+            val body =
+                JSONObject()
+                    .put("payload", jsonData)
+                    .toString()
+                    .toRequestBody("application/json; charset=utf-8".toMediaType())
+
+            val cookie =
+                buildList {
+                    listOf("SESSDATA", "bili_jct", "DedeUserID", "DedeUserID__ckMd5", "sid", "buvid3").forEach { name ->
+                        val v = BiliClient.cookies.getCookieValue(name)?.takeIf { it.isNotBlank() } ?: return@forEach
+                        add("$name=$v")
+                    }
+                }.joinToString("; ")
+
+            val headers =
+                buildMap {
+                    put("Content-Type", "application/json")
+                    put("env", "prod")
+                    put("app-key", "android64")
+                    put("x-bili-aurora-zone", "sh001")
+                    put("x-bili-mid", mid.toString())
+                    genAuroraEid(mid)?.let { put("x-bili-aurora-eid", it) }
+                    put("Referer", "https://www.bilibili.com")
+                    put("X-Blbl-Skip-Origin", "1")
+                    if (cookie.isNotBlank()) put("Cookie", cookie)
+                }
+
+            BiliClient.requestString(
+                "https://api.bilibili.com/x/internal/gaia-gateway/ExClimbWuzhi",
+                method = "POST",
+                headers = headers,
+                body = body,
+                noCookies = true,
+            )
+
+            BiliClient.prefs.buvidActivatedMid = mid
+            AppLog.i(TAG, "buvidActive ok mid=$mid")
+        }.onFailure {
+            AppLog.w(TAG, "buvidActive failed", it)
+        }
+    }
+
+    private fun genAuroraEid(mid: Long): String? {
+        if (mid <= 0) return null
+        val key = "ad1va46a7lza".toByteArray()
+        val input = mid.toString().toByteArray()
+        val out = ByteArray(input.size)
+        for (i in input.indices) out[i] = (input[i].toInt() xor key[i % key.size].toInt()).toByte()
+        return android.util.Base64.encodeToString(out, android.util.Base64.NO_PADDING or android.util.Base64.NO_WRAP)
+    }
 
     suspend fun ensureHealthyForPlay() {
         ensureWebFingerprintCookies()

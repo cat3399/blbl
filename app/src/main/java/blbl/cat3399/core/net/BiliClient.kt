@@ -20,6 +20,7 @@ import java.util.concurrent.TimeUnit
 object BiliClient {
     private const val TAG = "BiliClient"
     private const val BASE = "https://api.bilibili.com"
+    private const val HDR_SKIP_ORIGIN = "X-Blbl-Skip-Origin"
 
     lateinit var prefs: AppPrefs
         private set
@@ -53,7 +54,9 @@ object BiliClient {
                 val builder = original.newBuilder()
                 if (original.header("User-Agent").isNullOrBlank()) builder.header("User-Agent", ua)
                 if (original.header("Referer").isNullOrBlank()) builder.header("Referer", "https://www.bilibili.com/")
-                if (original.header("Origin").isNullOrBlank()) builder.header("Origin", "https://www.bilibili.com")
+                val skipOrigin = original.header(HDR_SKIP_ORIGIN) == "1"
+                if (skipOrigin) builder.removeHeader(HDR_SKIP_ORIGIN)
+                if (!skipOrigin && original.header("Origin").isNullOrBlank()) builder.header("Origin", "https://www.bilibili.com")
                 val req = builder.build()
                 val start = System.nanoTime()
                 val res = chain.proceed(req)

@@ -30,6 +30,14 @@ class AppPrefs(context: Context) {
         get() = prefs.getString(KEY_UA, DEFAULT_UA) ?: DEFAULT_UA
         set(value) = prefs.edit().putString(KEY_UA, value).apply()
 
+    var deviceBuvid: String
+        get() = prefs.getString(KEY_DEVICE_BUVID, null) ?: generateBuvid().also { prefs.edit().putString(KEY_DEVICE_BUVID, it).apply() }
+        set(value) = prefs.edit().putString(KEY_DEVICE_BUVID, value.trim()).apply()
+
+    var buvidActivatedMid: Long
+        get() = prefs.getLong(KEY_BUVID_ACTIVATED_MID, 0L)
+        set(value) = prefs.edit().putLong(KEY_BUVID_ACTIVATED_MID, value).apply()
+
     var imageQuality: String
         get() = prefs.getString(KEY_IMAGE_QUALITY, "medium") ?: "medium"
         set(value) = prefs.edit().putString(KEY_IMAGE_QUALITY, value).apply()
@@ -185,6 +193,8 @@ class AppPrefs(context: Context) {
         private const val KEY_BILI_TICKET_CHECKED_EPOCH_DAY = "bili_ticket_checked_epoch_day"
 
         private const val KEY_UA = "ua"
+        private const val KEY_DEVICE_BUVID = "device_buvid"
+        private const val KEY_BUVID_ACTIVATED_MID = "buvid_activated_mid"
         private const val KEY_UI_MODE = "ui_mode"
         private const val KEY_IMAGE_QUALITY = "image_quality"
         private const val KEY_DANMAKU_ENABLED = "danmaku_enabled"
@@ -216,5 +226,13 @@ class AppPrefs(context: Context) {
         // PC browser UA is used to reduce CDN 403 for media resources.
         const val DEFAULT_UA =
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36"
+
+        private fun generateBuvid(): String {
+            val bytes = ByteArray(16)
+            java.security.SecureRandom().nextBytes(bytes)
+            val md5 = java.security.MessageDigest.getInstance("MD5").digest(bytes)
+            val hex = buildString(md5.size * 2) { md5.forEach { append(String.format(java.util.Locale.US, "%02x", it)) } }
+            return "XY${hex[2]}${hex[12]}${hex[22]}$hex"
+        }
     }
 }
