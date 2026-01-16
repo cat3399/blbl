@@ -6,6 +6,10 @@ on:
       version_name:
         description: "Version name (e.g. 0.1.1)"
         required: true
+      changelog:
+        description: "Release notes/changelog (optional; supports multiline)"
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -42,8 +46,19 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           VERSION_NAME: ${{ inputs.version_name }}
           RELEASE_TAG: ${{ startsWith(inputs.version_name, 'v') && inputs.version_name || format('v{0}', inputs.version_name) }}
+          CHANGELOG: ${{ inputs.changelog }}
         run: |
-          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            gh release create "$RELEASE_TAG" --title "$RELEASE_TAG" --generate-notes --target "$GITHUB_SHA"
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            if [ -n "${CHANGELOG:-}" ]; then
+              printf '%s' "$CHANGELOG" > changelog.md
+              gh release edit "$RELEASE_TAG" --notes-file changelog.md
+            fi
+          else
+            if [ -n "${CHANGELOG:-}" ]; then
+              printf '%s' "$CHANGELOG" > changelog.md
+              gh release create "$RELEASE_TAG" --title "$RELEASE_TAG" --notes-file changelog.md --target "$GITHUB_SHA"
+            else
+              gh release create "$RELEASE_TAG" --title "$RELEASE_TAG" --generate-notes --target "$GITHUB_SHA"
+            fi
           fi
           gh release upload "$RELEASE_TAG" "app/build/outputs/apk/release/app-release.apk#blbl-android-${VERSION_NAME}-release.apk" --clobber
