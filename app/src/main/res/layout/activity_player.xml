@@ -207,6 +207,19 @@
                 android:tint="@color/blbl_text" />
 
             <ImageButton
+                android:id="@+id/btn_up"
+                android:layout_width="@dimen/player_control_button_size"
+                android:layout_height="@dimen/player_control_button_height_subtitle"
+                android:layout_marginEnd="@dimen/player_control_button_gap"
+                android:background="@drawable/blbl_focus_bg_round"
+                android:contentDescription="@string/app_name"
+                android:focusable="true"
+                android:padding="@dimen/player_control_button_padding"
+                android:scaleType="fitCenter"
+                android:src="@drawable/ic_player_up"
+                android:tint="@color/blbl_text" />
+
+            <ImageButton
                 android:id="@+id/btn_advanced"
                 android:layout_width="@dimen/player_control_button_size_settings"
                 android:layout_height="@dimen/player_control_button_size_settings"

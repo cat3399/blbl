@@ -19,6 +19,7 @@ import blbl.cat3399.core.api.BiliApi
 import blbl.cat3399.core.log.AppLog
 import blbl.cat3399.core.net.BiliClient
 import blbl.cat3399.core.tv.TvMode
+import blbl.cat3399.core.ui.ActivityStackLimiter
 import blbl.cat3399.core.ui.Immersive
 import blbl.cat3399.databinding.ActivityUpDetailBinding
 import blbl.cat3399.feature.login.QrLoginActivity
@@ -50,6 +51,7 @@ class UpDetailActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        ActivityStackLimiter.register(group = ACTIVITY_STACK_GROUP, activity = this, maxDepth = ACTIVITY_STACK_MAX_DEPTH)
         binding = ActivityUpDetailBinding.inflate(layoutInflater)
         setContentView(binding.root)
         Immersive.apply(this, BiliClient.prefs.fullscreenEnabled)
@@ -183,6 +185,11 @@ class UpDetailActivity : AppCompatActivity() {
 
         binding.swipeRefresh.setOnRefreshListener { resetAndLoad() }
         resetAndLoad()
+    }
+
+    override fun onDestroy() {
+        ActivityStackLimiter.unregister(group = ACTIVITY_STACK_GROUP, activity = this)
+        super.onDestroy()
     }
 
     override fun onResume() {
@@ -442,5 +449,7 @@ class UpDetailActivity : AppCompatActivity() {
         const val EXTRA_NAME: String = "name"
         const val EXTRA_AVATAR: String = "avatar"
         const val EXTRA_SIGN: String = "sign"
+        private const val ACTIVITY_STACK_GROUP: String = "player_up_flow"
+        private const val ACTIVITY_STACK_MAX_DEPTH: Int = 3
     }
 }

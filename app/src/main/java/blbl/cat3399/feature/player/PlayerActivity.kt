@@ -41,8 +41,10 @@ import blbl.cat3399.core.model.DanmakuShield
 import blbl.cat3399.core.net.BiliClient
 import blbl.cat3399.core.prefs.AppPrefs
 import blbl.cat3399.core.tv.TvMode
+import blbl.cat3399.core.ui.ActivityStackLimiter
 import blbl.cat3399.core.ui.Immersive
 import blbl.cat3399.core.ui.SingleChoiceDialog
+import blbl.cat3399.feature.following.UpDetailActivity
 import blbl.cat3399.feature.settings.SettingsActivity
 import blbl.cat3399.databinding.ActivityPlayerBinding
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
@@ -91,6 +93,9 @@ class PlayerActivity : AppCompatActivity() {
     private var currentCid: Long = -1L
     private var currentEpId: Long? = null
     private var currentAid: Long? = null
+    private var currentUpMid: Long = 0L
+    private var currentUpName: String? = null
+    private var currentUpAvatar: String? = null
 
     private var playlistToken: String? = null
     private var playlistItems: List<PlayerPlaylistItem> = emptyList()
@@ -131,6 +136,7 @@ class PlayerActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        ActivityStackLimiter.register(group = ACTIVITY_STACK_GROUP, activity = this, maxDepth = ACTIVITY_STACK_MAX_DEPTH)
         binding = ActivityPlayerBinding.inflate(layoutInflater)
         setContentView(binding.root)
         Immersive.apply(this, BiliClient.prefs.fullscreenEnabled)
@@ -318,6 +324,13 @@ class PlayerActivity : AppCompatActivity() {
         binding.btnNext.alpha = alpha
     }
 
+    private fun updateUpButton() {
+        val enabled = currentUpMid > 0L
+        val alpha = if (enabled) 1.0f else 0.35f
+        binding.btnUp.isEnabled = enabled
+        binding.btnUp.alpha = alpha
+    }
+
     private fun resolvedPlaybackMode(): String {
         val prefs = BiliClient.prefs
         return session.playbackModeOverride ?: prefs.playerPlaybackMode
@@ -481,6 +494,9 @@ class PlayerActivity : AppCompatActivity() {
         subtitleAvailable = false
         subtitleConfig = null
         subtitleItems = emptyList()
+        currentUpMid = 0L
+        currentUpName = null
+        currentUpAvatar = null
         danmakuShield = null
         danmakuLoadedSegments.clear()
         danmakuLoadingSegments.clear()
@@ -495,6 +511,7 @@ class PlayerActivity : AppCompatActivity() {
         applyPlaybackMode(exo)
         updateSubtitleButton()
         updateDanmakuButton()
+        updateUpButton()
         (binding.recyclerSettings.adapter as? PlayerSettingsAdapter)?.let { refreshSettings(it) }
     }
 
@@ -549,6 +566,7 @@ class PlayerActivity : AppCompatActivity() {
                     trace?.log("view:done")
                     val title = viewData.optString("title", "")
                     if (title.isNotBlank()) binding.tvTitle.text = title
+                    applyUpInfo(viewData)
 
                     val cid = cidExtra ?: viewData.optLong("cid").takeIf { it > 0 } ?: error("cid missing")
                     val aid = viewData.optLong("aid").takeIf { it > 0 }
@@ -998,6 +1016,7 @@ class PlayerActivity : AppCompatActivity() {
         player?.release()
         player = null
         playlistToken?.let(PlayerPlaylistStore::remove)
+        ActivityStackLimiter.unregister(group = ACTIVITY_STACK_GROUP, activity = this)
         super.onDestroy()
     }
 
@@ -1090,6 +1109,23 @@ class PlayerActivity : AppCompatActivity() {
             setControlsVisible(true)
         }
 
+        binding.btnUp.setOnClickListener {
+            val mid = currentUpMid
+            if (mid <= 0L) {
+                Toast.makeText(this, "未获取到 UP 主信息", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            startActivity(
+                Intent(this, UpDetailActivity::class.java)
+                    .putExtra(UpDetailActivity.EXTRA_MID, mid)
+                    .apply {
+                        currentUpName?.takeIf { it.isNotBlank() }?.let { putExtra(UpDetailActivity.EXTRA_NAME, it) }
+                        currentUpAvatar?.takeIf { it.isNotBlank() }?.let { putExtra(UpDetailActivity.EXTRA_AVATAR, it) }
+                    },
+            )
+            setControlsVisible(true)
+        }
+
         binding.seekProgress.max = SEEK_MAX
         binding.seekProgress.setOnSeekBarChangeListener(
             object : SeekBar.OnSeekBarChangeListener {
@@ -1134,9 +1170,21 @@ class PlayerActivity : AppCompatActivity() {
         updatePlayPauseIcon(exo.isPlaying)
         updateSubtitleButton()
         updateDanmakuButton()
+        updateUpButton()
         updatePlaylistControls()
         setControlsVisible(true)
         startProgressLoop()
+    }
+
+    private fun applyUpInfo(viewData: JSONObject) {
+        val owner =
+            viewData.optJSONObject("owner")
+                ?: viewData.optJSONObject("up_info")
+                ?: JSONObject()
+        currentUpMid = owner.optLong("mid").takeIf { it > 0L } ?: 0L
+        currentUpName = owner.optString("name", "").trim().takeIf { it.isNotBlank() }
+        currentUpAvatar = owner.optString("face", "").trim().takeIf { it.isNotBlank() }
+        updateUpButton()
     }
 
     private fun seekRelative(deltaMs: Long) {
@@ -2653,7 +2701,7 @@ class PlayerActivity : AppCompatActivity() {
         val settingsSize =
             px(if (tvMode) R.dimen.player_control_button_size_settings_tv else R.dimen.player_control_button_size_settings)
         val controlPad = px(if (tvMode) R.dimen.player_control_button_padding_tv else R.dimen.player_control_button_padding)
-        listOf(binding.btnSubtitle, binding.btnDanmaku).forEach { btn ->
+        listOf(binding.btnSubtitle, binding.btnDanmaku, binding.btnUp).forEach { btn ->
             setSize(btn, controlSize, subtitleHeight)
             btn.setPadding(controlPad, controlPad, controlPad, controlPad)
         }
@@ -2740,6 +2788,8 @@ class PlayerActivity : AppCompatActivity() {
         const val EXTRA_AID = "aid"
         const val EXTRA_PLAYLIST_TOKEN = "playlist_token"
         const val EXTRA_PLAYLIST_INDEX = "playlist_index"
+        private const val ACTIVITY_STACK_GROUP: String = "player_up_flow"
+        private const val ACTIVITY_STACK_MAX_DEPTH: Int = 3
         private const val SEEK_MAX = 10_000
         private const val AUTO_HIDE_MS = 4_000L
         private const val EDGE_TAP_THRESHOLD = 0.28f
