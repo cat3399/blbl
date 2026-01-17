@@ -41,6 +41,8 @@ class LiveGridFragment : Fragment() {
 
     private var pendingFocusFirstCardFromTab: Boolean = false
     private var pendingFocusFirstCardFromContentSwitch: Boolean = false
+    private var pendingFocusNextCardAfterLoadMoreFromDpad: Boolean = false
+    private var pendingFocusNextCardAfterLoadMoreFromPos: Int = RecyclerView.NO_POSITION
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         _binding = FragmentLiveGridBinding.inflate(inflater, container, false)
@@ -129,9 +131,24 @@ class LiveGridFragment : Fragment() {
                                         // RecyclerView lay out the next row, and keep focus inside the list.
                                         val dy = (itemView.height * 0.8f).toInt().coerceAtLeast(1)
                                         binding.recycler.scrollBy(0, dy)
+                                        binding.recycler.post {
+                                            if (_binding == null) return@post
+                                            tryFocusNextDownFromCurrent()
+                                        }
                                         return@setOnKeyListener true
                                     }
-                                    if (!endReached) loadNextPage()
+                                    if (!endReached) {
+                                        val holder = binding.recycler.findContainingViewHolder(v)
+                                        val pos =
+                                            holder?.bindingAdapterPosition
+                                                ?.takeIf { it != RecyclerView.NO_POSITION }
+                                                ?: RecyclerView.NO_POSITION
+                                        if (pos != RecyclerView.NO_POSITION) {
+                                            pendingFocusNextCardAfterLoadMoreFromDpad = true
+                                            pendingFocusNextCardAfterLoadMoreFromPos = pos
+                                        }
+                                        loadNextPage()
+                                    }
                                     return@setOnKeyListener true
                                 }
                                 false
@@ -206,7 +223,10 @@ class LiveGridFragment : Fragment() {
 
                 if (filtered.isNotEmpty()) {
                     if (page == 1) adapter.submit(filtered) else adapter.append(filtered)
-                    _binding?.recycler?.post { maybeConsumePendingFocusFirstCard() }
+                }
+                _binding?.recycler?.post {
+                    maybeConsumePendingFocusFirstCard()
+                    maybeConsumePendingFocusNextCardAfterLoadMoreFromDpad()
                 }
 
                 // Recommend endpoint can return lots of unrelated areas; keep fetching a bit when filtered empty.
@@ -320,6 +340,69 @@ class LiveGridFragment : Fragment() {
         return false
     }
 
+    private fun clearPendingFocusNextCardAfterLoadMoreFromDpad() {
+        pendingFocusNextCardAfterLoadMoreFromDpad = false
+        pendingFocusNextCardAfterLoadMoreFromPos = RecyclerView.NO_POSITION
+    }
+
+    private fun maybeConsumePendingFocusNextCardAfterLoadMoreFromDpad(): Boolean {
+        if (!pendingFocusNextCardAfterLoadMoreFromDpad) return false
+        if (!isAdded || _binding == null || !isResumed || !this::adapter.isInitialized) {
+            clearPendingFocusNextCardAfterLoadMoreFromDpad()
+            return false
+        }
+
+        val recycler = binding.recycler
+        val lm = recycler.layoutManager as? GridLayoutManager
+        if (lm == null) {
+            clearPendingFocusNextCardAfterLoadMoreFromDpad()
+            return false
+        }
+
+        val anchorPos = pendingFocusNextCardAfterLoadMoreFromPos
+        if (anchorPos == RecyclerView.NO_POSITION) {
+            clearPendingFocusNextCardAfterLoadMoreFromDpad()
+            return false
+        }
+
+        val focused = activity?.currentFocus
+        if (focused != null && !isDescendantOf(focused, recycler)) {
+            clearPendingFocusNextCardAfterLoadMoreFromDpad()
+            return false
+        }
+
+        val spanCount = lm.spanCount.coerceAtLeast(1)
+        val itemCount = adapter.itemCount
+        val candidatePos =
+            when {
+                anchorPos + spanCount in 0 until itemCount -> anchorPos + spanCount
+                anchorPos + 1 in 0 until itemCount -> anchorPos + 1
+                else -> null
+            }
+        clearPendingFocusNextCardAfterLoadMoreFromDpad()
+        if (candidatePos == null) return false
+
+        recycler.findViewHolderForAdapterPosition(candidatePos)?.itemView?.requestFocus()
+            ?: run {
+                recycler.scrollToPosition(candidatePos)
+                recycler.post { recycler.findViewHolderForAdapterPosition(candidatePos)?.itemView?.requestFocus() }
+            }
+        return true
+    }
+
+    private fun tryFocusNextDownFromCurrent() {
+        val b = _binding ?: return
+        if (!isResumed) return
+        val recycler = b.recycler
+        val focused = activity?.currentFocus ?: return
+        if (!isDescendantOf(focused, recycler)) return
+        val itemView = recycler.findContainingItemView(focused) ?: return
+        val next = FocusFinder.getInstance().findNextFocus(recycler, itemView, View.FOCUS_DOWN)
+        if (next != null && isDescendantOf(next, recycler)) {
+            next.requestFocus()
+        }
+    }
+
     private fun switchToNextTabFromContentEdge(): Boolean {
         val parentView = parentFragment?.view ?: return false
         val tabLayout = parentView.findViewById<com.google.android.material.tabs.TabLayout?>(blbl.cat3399.R.id.tab_layout) ?: return false
@@ -354,6 +437,7 @@ class LiveGridFragment : Fragment() {
 
     override fun onDestroyView() {
         initialLoadTriggered = false
+        clearPendingFocusNextCardAfterLoadMoreFromDpad()
         _binding = null
         super.onDestroyView()
     }
