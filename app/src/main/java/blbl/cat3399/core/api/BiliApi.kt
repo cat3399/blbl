@@ -1598,6 +1598,35 @@ object BiliApi {
         }
     }
 
+    suspend fun historyReport(aid: Long, cid: Long, progressSec: Long, platform: String = "android") {
+        if (aid <= 0L) error("history_report_invalid_aid")
+        if (cid <= 0L) error("history_report_invalid_cid")
+        val csrf = BiliClient.cookies.getCookieValue("bili_jct").orEmpty().trim()
+        if (csrf.isBlank()) throw BiliApiException(apiCode = -111, apiMessage = "missing_csrf")
+
+        val url = "https://api.bilibili.com/x/v2/history/report"
+        val form =
+            buildMap {
+                put("aid", aid.toString())
+                put("cid", cid.toString())
+                put("progress", progressSec.coerceAtLeast(0L).toString())
+                put("platform", platform)
+                put("csrf", csrf)
+            }
+        val json =
+            BiliClient.postFormJson(
+                url,
+                form = form,
+                headers = piliWebHeaders(targetUrl = url, includeCookie = true),
+                noCookies = true,
+            )
+        val code = json.optInt("code", 0)
+        if (code != 0) {
+            val msg = json.optString("message", json.optString("msg", ""))
+            throw BiliApiException(apiCode = code, apiMessage = msg)
+        }
+    }
+
     suspend fun dmSeg(cid: Long, segmentIndex: Int): List<Danmaku> {
         try {
             val url = BiliClient.withQuery(

@@ -68,6 +68,10 @@ class PlayerActivity : AppCompatActivity() {
     private var player: ExoPlayer? = null
     private var debugJob: kotlinx.coroutines.Job? = null
     private var progressJob: kotlinx.coroutines.Job? = null
+    private var autoResumeJob: kotlinx.coroutines.Job? = null
+    private var autoResumeHintTimeoutJob: kotlinx.coroutines.Job? = null
+    private var autoResumeHintVisible: Boolean = false
+    private var reportProgressJob: kotlinx.coroutines.Job? = null
     private var autoHideJob: kotlinx.coroutines.Job? = null
     private var holdSeekJob: kotlinx.coroutines.Job? = null
     private var seekHintJob: kotlinx.coroutines.Job? = null
@@ -117,6 +121,11 @@ class PlayerActivity : AppCompatActivity() {
     private var playbackConstraints: PlaybackConstraints = PlaybackConstraints()
     private var decodeFallbackAttempted: Boolean = false
     private var lastPickedDash: Playable.Dash? = null
+    private var autoResumeToken: Int = 0
+    private var autoResumeCancelledByUser: Boolean = false
+    private var reportToken: Int = 0
+    private var lastReportAtMs: Long = 0L
+    private var lastReportedProgressSec: Long = -1L
 
     private class PlaybackTrace(private val id: String) {
         private val startMs = SystemClock.elapsedRealtime()
@@ -135,6 +144,18 @@ class PlayerActivity : AppCompatActivity() {
 
     private var trace: PlaybackTrace? = null
     private var traceFirstFrameLogged: Boolean = false
+
+    private data class ResumeCandidate(
+        val rawTime: Long,
+        val rawTimeUnitHint: RawTimeUnitHint,
+        val source: String,
+    )
+
+    private enum class RawTimeUnitHint {
+        UNKNOWN,
+        SECONDS_LIKELY,
+        MILLIS_LIKELY,
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -241,6 +262,11 @@ class PlayerActivity : AppCompatActivity() {
                 restartAutoHideTimer()
                 // DanmakuView stops its own vsync loop when playback is paused; kick it on state changes.
                 binding.danmakuView.invalidate()
+                if (isPlaying) {
+                    startReportProgressLoop()
+                } else {
+                    stopReportProgressLoop(flush = true, reason = "pause")
+                }
             }
 
             override fun onPlaybackStateChanged(playbackState: Int) {
@@ -255,6 +281,7 @@ class PlayerActivity : AppCompatActivity() {
                     }
                 trace?.log("exo:state", "state=$state pos=${exo.currentPosition}ms")
                 if (playbackState == Player.STATE_ENDED) {
+                    stopReportProgressLoop(flush = true, reason = "ended")
                     handlePlaybackEnded(exo)
                 }
             }
@@ -533,6 +560,14 @@ class PlayerActivity : AppCompatActivity() {
         val safeBvid = bvid.trim()
         if (safeBvid.isBlank()) return
 
+        cancelPendingAutoResume(reason = "new_media")
+        autoResumeToken++
+        autoResumeCancelledByUser = false
+        stopReportProgressLoop(flush = false, reason = "new_media")
+        reportToken++
+        lastReportAtMs = 0L
+        lastReportedProgressSec = -1L
+
         loadJob?.cancel()
         loadJob = null
 
@@ -650,6 +685,12 @@ class PlayerActivity : AppCompatActivity() {
                     trace?.log("exo:playWhenReady")
                     exo.playWhenReady = true
                     updateSubtitleButton()
+                    maybeScheduleAutoResume(
+                        playJson = playJson,
+                        bvid = safeBvid,
+                        cid = cid,
+                        playbackToken = autoResumeToken,
+                    )
 
                     trace?.log("danmakuMeta:await")
                     val dmMeta = dmJob.await()
@@ -898,6 +939,8 @@ class PlayerActivity : AppCompatActivity() {
             }
 
             KeyEvent.KEYCODE_BACK -> {
+                cancelPendingAutoResume(reason = "back")
+                stopReportProgressLoop(flush = true, reason = "back")
                 finishOnBackKeyUp = false
                 if (binding.settingsPanel.visibility == View.VISIBLE) {
                     binding.settingsPanel.visibility = View.GONE
@@ -1009,17 +1052,23 @@ class PlayerActivity : AppCompatActivity() {
     override fun onStop() {
         super.onStop()
         player?.pause()
+        stopReportProgressLoop(flush = true, reason = "stop")
     }
 
     override fun onDestroy() {
         debugJob?.cancel()
         progressJob?.cancel()
+        autoResumeJob?.cancel()
+        autoResumeHintTimeoutJob?.cancel()
+        reportProgressJob?.cancel()
         autoHideJob?.cancel()
         holdSeekJob?.cancel()
         seekHintJob?.cancel()
         keyScrubEndJob?.cancel()
         loadJob?.cancel()
         loadJob = null
+        dismissAutoResumeHint()
+        stopReportProgressLoop(flush = true, reason = "destroy")
         player?.release()
         player = null
         playlistToken?.let(PlayerPlaylistStore::remove)
@@ -1138,6 +1187,7 @@ class PlayerActivity : AppCompatActivity() {
             object : SeekBar.OnSeekBarChangeListener {
                 override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
                     if (!fromUser) return
+                    cancelPendingAutoResume(reason = "user_seek")
                     scrubbing = true
                     noteUserInteraction()
                     if (seekBar?.isPressed != true) scheduleKeyScrubEnd()
@@ -1155,6 +1205,7 @@ class PlayerActivity : AppCompatActivity() {
                 }
 
                 override fun onStartTrackingTouch(seekBar: SeekBar?) {
+                    cancelPendingAutoResume(reason = "user_seek")
                     scrubbing = true
                     keyScrubEndJob?.cancel()
                     setControlsVisible(true)
@@ -1170,6 +1221,7 @@ class PlayerActivity : AppCompatActivity() {
                     scrubbing = false
                     keyScrubEndJob?.cancel()
                     setControlsVisible(true)
+                    lifecycleScope.launch { reportProgressOnce(force = true, reason = "user_seek_end") }
                 }
             },
         )
@@ -1453,6 +1505,198 @@ class PlayerActivity : AppCompatActivity() {
             binding.seekProgress.progress = p
         }
         requestDanmakuSegmentsForPosition(pos, immediate = false)
+    }
+
+    private fun cancelPendingAutoResume(reason: String) {
+        if (reason == "back" || reason == "user_seek") autoResumeCancelledByUser = true
+        dismissAutoResumeHint()
+        autoResumeJob?.cancel()
+        autoResumeJob = null
+        trace?.log("resume:cancel", "reason=$reason")
+    }
+
+    private fun showAutoResumeHint(targetMs: Long, delayMs: Long) {
+        dismissAutoResumeHint()
+        val timeText = formatHms(targetMs.coerceAtLeast(0L))
+        val sec = (delayMs / 1000L).coerceAtLeast(1L)
+        val msg = "将要跳到上次播放位置（$timeText），按返回取消（${sec}s）"
+        autoResumeHintVisible = true
+        // Reuse the existing bottom "seek hint" component for consistent look & feel.
+        showSeekHint(msg, hold = true)
+        autoResumeHintTimeoutJob?.cancel()
+        autoResumeHintTimeoutJob =
+            lifecycleScope.launch {
+                delay(3_000)
+                dismissAutoResumeHint()
+            }
+    }
+
+    private fun dismissAutoResumeHint() {
+        if (!autoResumeHintVisible) return
+        autoResumeHintVisible = false
+        autoResumeHintTimeoutJob?.cancel()
+        autoResumeHintTimeoutJob = null
+        seekHintJob?.cancel()
+        binding.tvSeekHint.visibility = View.GONE
+    }
+
+    private fun extractResumeCandidateFromPlayJson(playJson: JSONObject): ResumeCandidate? {
+        val data = playJson.optJSONObject("data") ?: playJson.optJSONObject("result") ?: return null
+        val time = data.optLong("last_play_time", -1L).takeIf { it > 0 } ?: return null
+        val hint =
+            when {
+                time >= 10_000L -> RawTimeUnitHint.MILLIS_LIKELY
+                else -> RawTimeUnitHint.UNKNOWN
+            }
+        return ResumeCandidate(rawTime = time, rawTimeUnitHint = hint, source = "playurl")
+    }
+
+    private fun extractResumeCandidateFromPlayerWbiV2(playerJson: JSONObject): ResumeCandidate? {
+        val data = playerJson.optJSONObject("data") ?: return null
+        val time = data.optLong("last_play_time", -1L).takeIf { it > 0 } ?: return null
+        val hint =
+            when {
+                time >= 10_000L -> RawTimeUnitHint.MILLIS_LIKELY
+                else -> RawTimeUnitHint.UNKNOWN
+            }
+        return ResumeCandidate(rawTime = time, rawTimeUnitHint = hint, source = "playerWbiV2")
+    }
+
+    private fun normalizeResumePositionMs(raw: Long, hint: RawTimeUnitHint, durationMs: Long?): Long? {
+        if (raw <= 0) return null
+        val dur = durationMs?.takeIf { it > 0 }
+        if (dur != null) {
+            return when {
+                raw in 1..dur -> raw
+                raw * 1000 in 1..dur -> raw * 1000
+                else -> raw
+            }
+        }
+        return when (hint) {
+            RawTimeUnitHint.MILLIS_LIKELY -> raw
+            RawTimeUnitHint.SECONDS_LIKELY -> raw * 1000
+            RawTimeUnitHint.UNKNOWN -> if (raw >= 10_000L) raw else raw * 1000
+        }
+    }
+
+    private fun shouldAutoResumeTo(positionMs: Long, durationMs: Long?): Boolean {
+        if (positionMs < 5_000L) return false
+        val dur = durationMs?.takeIf { it > 0 } ?: return true
+        return positionMs < (dur - 10_000L).coerceAtLeast(0L)
+    }
+
+    private fun maybeScheduleAutoResume(
+        playJson: JSONObject,
+        bvid: String,
+        cid: Long,
+        playbackToken: Int,
+    ) {
+        if (autoResumeCancelledByUser) return
+        if (playbackToken != autoResumeToken) return
+        val exo = player ?: return
+
+        extractResumeCandidateFromPlayJson(playJson)?.let { cand ->
+            scheduleAutoResume(exo = exo, candidate = cand, playbackToken = playbackToken)
+            return
+        }
+
+        autoResumeJob?.cancel()
+        autoResumeJob =
+            lifecycleScope.launch {
+                val playerJson = runCatching { BiliApi.playerWbiV2(bvid = bvid, cid = cid) }.getOrNull() ?: return@launch
+                if (!isActive) return@launch
+                if (playbackToken != autoResumeToken) return@launch
+                if (autoResumeCancelledByUser) return@launch
+                val cand = extractResumeCandidateFromPlayerWbiV2(playerJson) ?: return@launch
+                scheduleAutoResume(exo = exo, candidate = cand, playbackToken = playbackToken)
+            }
+    }
+
+    private fun scheduleAutoResume(exo: ExoPlayer, candidate: ResumeCandidate, playbackToken: Int) {
+        if (autoResumeCancelledByUser) return
+        autoResumeJob?.cancel()
+        dismissAutoResumeHint()
+        trace?.log("resume:pending", "src=${candidate.source} raw=${candidate.rawTime}")
+
+        val delayMs = 2_000L
+        val previewTargetMs = normalizeResumePositionMs(candidate.rawTime, candidate.rawTimeUnitHint, durationMs = null) ?: return
+        if (!shouldAutoResumeTo(previewTargetMs, durationMs = null)) return
+        showAutoResumeHint(targetMs = previewTargetMs, delayMs = delayMs)
+
+        autoResumeJob =
+            lifecycleScope.launch {
+                delay(delayMs)
+                if (!isActive) return@launch
+                if (autoResumeCancelledByUser) return@launch
+                if (playbackToken != autoResumeToken) return@launch
+                val p = player ?: return@launch
+                if (p !== exo) return@launch
+
+                val durationMs = p.duration.takeIf { it > 0 }
+                val targetMs = normalizeResumePositionMs(candidate.rawTime, candidate.rawTimeUnitHint, durationMs) ?: return@launch
+                if (!shouldAutoResumeTo(targetMs, durationMs)) return@launch
+                val clamped = durationMs?.let { dur -> targetMs.coerceIn(0L, (dur - 500L).coerceAtLeast(0L)) } ?: targetMs
+                trace?.log("resume:seek", "to=${clamped}ms src=${candidate.source}")
+                dismissAutoResumeHint()
+                p.seekTo(clamped)
+            }
+    }
+
+    private fun shouldReportProgressNow(): Boolean {
+        if (!BiliClient.cookies.hasSessData()) return false
+        val csrf = BiliClient.cookies.getCookieValue("bili_jct").orEmpty().trim()
+        if (csrf.isBlank()) return false
+        val aid = currentAid ?: return false
+        if (aid <= 0L) return false
+        val cid = currentCid
+        if (cid <= 0L) return false
+        return true
+    }
+
+    private fun startReportProgressLoop() {
+        if (reportProgressJob != null) return
+        if (!shouldReportProgressNow()) return
+        val token = reportToken
+        reportProgressJob =
+            lifecycleScope.launch {
+                delay(2_000)
+                while (isActive && token == reportToken) {
+                    reportProgressOnce(force = false, reason = "loop")
+                    delay(15_000)
+                }
+            }
+    }
+
+    private fun stopReportProgressLoop(flush: Boolean, reason: String) {
+        reportProgressJob?.cancel()
+        reportProgressJob = null
+        if (flush) lifecycleScope.launch { reportProgressOnce(force = true, reason = reason) }
+    }
+
+    private suspend fun reportProgressOnce(force: Boolean, reason: String) {
+        if (!shouldReportProgressNow()) return
+        val token = reportToken
+        val exo = player ?: return
+        val aid = currentAid ?: return
+        val cid = currentCid
+        val progressSec = (exo.currentPosition.coerceAtLeast(0L) / 1000L)
+        if (token != reportToken) return
+
+        val now = SystemClock.elapsedRealtime()
+        if (!force) {
+            if (now - lastReportAtMs < 14_000L) return
+            if (progressSec == lastReportedProgressSec) return
+        }
+
+        runCatching {
+            BiliApi.historyReport(aid = aid, cid = cid, progressSec = progressSec, platform = "android")
+        }.onSuccess {
+            lastReportAtMs = now
+            lastReportedProgressSec = progressSec
+            trace?.log("report:history", "ok=1 sec=$progressSec reason=$reason")
+        }.onFailure {
+            trace?.log("report:history", "ok=0 sec=$progressSec reason=$reason")
+        }
     }
 
     private fun updateDanmakuButton() {

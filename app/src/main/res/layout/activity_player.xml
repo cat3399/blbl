@@ -274,7 +274,7 @@
         android:textColor="@color/blbl_text"
         android:textSize="@dimen/player_seek_hint_text_size"
         android:visibility="gone"
-        app:layout_constraintBottom_toBottomOf="@id/player_view"
+        app:layout_constraintBottom_toTopOf="@id/bottom_bar"
         app:layout_constraintStart_toStartOf="@id/player_view" />
 
     <FrameLayout
