@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.os.SystemClock
+import android.util.TypedValue
 import android.view.FocusFinder
 import android.view.KeyEvent
 import android.view.LayoutInflater
@@ -11,6 +12,8 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
+import android.widget.ImageView
+import android.widget.TextView
 import android.widget.Toast
 import androidx.core.widget.doAfterTextChanged
 import androidx.fragment.app.Fragment
@@ -26,6 +29,7 @@ import blbl.cat3399.core.model.BangumiSeason
 import blbl.cat3399.core.net.BiliClient
 import blbl.cat3399.core.tv.TvMode
 import blbl.cat3399.core.ui.SingleChoiceDialog
+import blbl.cat3399.core.ui.UiScale
 import blbl.cat3399.core.ui.enableDpadTabFocus
 import blbl.cat3399.databinding.FragmentSearchBinding
 import blbl.cat3399.feature.following.FollowingGridAdapter
@@ -39,9 +43,11 @@ import blbl.cat3399.feature.player.PlayerPlaylistItem
 import blbl.cat3399.feature.player.PlayerPlaylistStore
 import blbl.cat3399.feature.video.VideoCardAdapter
 import blbl.cat3399.ui.BackPressHandler
+import com.google.android.material.card.MaterialCardView
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 class SearchFragment : Fragment(), BackPressHandler {
     private var _binding: FragmentSearchBinding? = null
@@ -65,6 +71,8 @@ class SearchFragment : Fragment(), BackPressHandler {
 
     private var lastFocusedKeyPos: Int = 0
     private var lastFocusedSuggestPos: Int = 0
+
+    private var lastAppliedUiScale: Float? = null
 
     private var currentTabIndex: Int = 0
     private var currentVideoOrder: VideoOrder = VideoOrder.TotalRank
@@ -102,6 +110,7 @@ class SearchFragment : Fragment(), BackPressHandler {
         reloadHistory()
         setupInput()
         setupResults()
+        applyUiScale()
         loadHotAndDefault()
 
         if (savedInstanceState == null) {
@@ -137,6 +146,7 @@ class SearchFragment : Fragment(), BackPressHandler {
             setQuery(keyword)
             performSearch()
         }
+        keyAdapter.setTvMode(isTvMode)
         suggestAdapter.setTvMode(isTvMode)
         hotAdapter.setTvMode(isTvMode)
 
@@ -462,6 +472,7 @@ class SearchFragment : Fragment(), BackPressHandler {
                 }
         }
 
+        mediaAdapter.setTvMode(isTvMode)
         liveAdapter.setTvMode(isTvMode)
         userAdapter.setTvMode(isTvMode)
 
@@ -1219,10 +1230,13 @@ class SearchFragment : Fragment(), BackPressHandler {
         super.onResume()
         isTvMode = TvMode.isEnabled(requireContext())
         videoAdapter.setTvMode(isTvMode)
+        keyAdapter.setTvMode(isTvMode)
         suggestAdapter.setTvMode(isTvMode)
         hotAdapter.setTvMode(isTvMode)
+        mediaAdapter.setTvMode(isTvMode)
         liveAdapter.setTvMode(isTvMode)
         userAdapter.setTvMode(isTvMode)
+        applyUiScale()
         (binding.recyclerResults.layoutManager as? GridLayoutManager)?.spanCount = spanCountForCurrentTab()
         maybeConsumePendingFocusFirstResultCardFromTabSwitch()
         restoreMediaFocusIfNeeded()
@@ -1254,8 +1268,170 @@ class SearchFragment : Fragment(), BackPressHandler {
         suggestJob?.cancel()
         suggestJob = null
         clearPendingFocusNextResultCardAfterLoadMoreFromDpad()
+        lastAppliedUiScale = null
         _binding = null
         super.onDestroyView()
+    }
+
+    private fun applyUiScale() {
+        val b = _binding ?: return
+        val newScale = UiScale.factor(requireContext(), isTvMode)
+        val oldScale = lastAppliedUiScale ?: 1.0f
+        if (newScale == oldScale) return
+
+        fun rescalePx(valuePx: Int): Int = (valuePx.toFloat() / oldScale * newScale).roundToInt()
+        fun rescalePxF(valuePx: Float): Float = (valuePx / oldScale * newScale)
+
+        fun rescaleLayoutSize(view: View, width: Boolean = true, height: Boolean = true) {
+            val lp = view.layoutParams ?: return
+            var changed = false
+            if (width && lp.width > 0) {
+                val w = rescalePx(lp.width).coerceAtLeast(1)
+                if (lp.width != w) {
+                    lp.width = w
+                    changed = true
+                }
+            }
+            if (height && lp.height > 0) {
+                val h = rescalePx(lp.height).coerceAtLeast(1)
+                if (lp.height != h) {
+                    lp.height = h
+                    changed = true
+                }
+            }
+            if (changed) view.layoutParams = lp
+        }
+
+        fun rescaleMargins(view: View, start: Boolean = true, top: Boolean = true, end: Boolean = true, bottom: Boolean = true) {
+            val lp = view.layoutParams as? ViewGroup.MarginLayoutParams ?: return
+            var changed = false
+            if (start) {
+                val ms = rescalePx(lp.marginStart).coerceAtLeast(0)
+                if (lp.marginStart != ms) {
+                    lp.marginStart = ms
+                    changed = true
+                }
+            }
+            if (top) {
+                val mt = rescalePx(lp.topMargin).coerceAtLeast(0)
+                if (lp.topMargin != mt) {
+                    lp.topMargin = mt
+                    changed = true
+                }
+            }
+            if (end) {
+                val me = rescalePx(lp.marginEnd).coerceAtLeast(0)
+                if (lp.marginEnd != me) {
+                    lp.marginEnd = me
+                    changed = true
+                }
+            }
+            if (bottom) {
+                val mb = rescalePx(lp.bottomMargin).coerceAtLeast(0)
+                if (lp.bottomMargin != mb) {
+                    lp.bottomMargin = mb
+                    changed = true
+                }
+            }
+            if (changed) view.layoutParams = lp
+        }
+
+        fun rescalePadding(view: View, left: Boolean = true, top: Boolean = true, right: Boolean = true, bottom: Boolean = true) {
+            val l = if (left) rescalePx(view.paddingLeft).coerceAtLeast(0) else view.paddingLeft
+            val t = if (top) rescalePx(view.paddingTop).coerceAtLeast(0) else view.paddingTop
+            val r = if (right) rescalePx(view.paddingRight).coerceAtLeast(0) else view.paddingRight
+            val btm = if (bottom) rescalePx(view.paddingBottom).coerceAtLeast(0) else view.paddingBottom
+            if (l != view.paddingLeft || t != view.paddingTop || r != view.paddingRight || btm != view.paddingBottom) {
+                view.setPadding(l, t, r, btm)
+            }
+        }
+
+        fun rescaleTextSize(textView: TextView) {
+            val px = rescalePxF(textView.textSize).coerceAtLeast(1f)
+            textView.setTextSize(TypedValue.COMPLEX_UNIT_PX, px)
+        }
+
+        fun rescaleCard(card: MaterialCardView) {
+            val radius = (card.radius / oldScale * newScale).coerceAtLeast(0f)
+            if (card.radius != radius) card.radius = radius
+            val stroke = (card.strokeWidth.toFloat() / oldScale * newScale).roundToInt().coerceAtLeast(0)
+            if (card.strokeWidth != stroke) card.strokeWidth = stroke
+        }
+
+        fun findFirstTextView(view: View): TextView? {
+            if (view is TextView) return view
+            val group = view as? ViewGroup ?: return null
+            for (i in 0 until group.childCount) {
+                val found = findFirstTextView(group.getChildAt(i))
+                if (found != null) return found
+            }
+            return null
+        }
+
+        rescaleLayoutSize(b.ivSearch, width = true, height = true)
+        rescaleMargins(b.ivSearch, start = true, top = true, end = false, bottom = false)
+
+        rescaleLayoutSize(b.tvQuery, width = false, height = true)
+        rescaleMargins(b.tvQuery, start = true, top = false, end = true, bottom = false)
+        rescaleTextSize(b.tvQuery)
+
+        rescaleMargins(b.panelInput, start = false, top = true, end = false, bottom = false)
+        rescaleMargins(b.panelResults, start = false, top = true, end = false, bottom = false)
+
+        rescaleMargins(b.panelKeyboard, start = true, top = false, end = true, bottom = false)
+        rescaleMargins(b.recyclerKeys, start = false, top = true, end = false, bottom = false)
+
+        listOf(b.btnClear, b.btnBackspace, b.btnSearch, b.btnClearHistory, b.btnSort).forEach(::rescaleCard)
+
+        listOf(b.btnClear, b.btnBackspace, b.btnSearch, b.btnClearHistory, b.btnSort).forEach { btn ->
+            rescaleLayoutSize(btn, width = false, height = true)
+        }
+        rescaleMargins(b.btnClear, start = false, top = false, end = true, bottom = false)
+        rescaleMargins(b.btnSearch, start = false, top = true, end = false, bottom = false)
+        rescaleMargins(b.btnClearHistory, start = false, top = true, end = false, bottom = false)
+        rescaleMargins(b.btnSort, start = false, top = false, end = true, bottom = false)
+
+        (b.btnClear.getChildAt(0) as? TextView)?.let(::rescaleTextSize)
+        (b.btnBackspace.getChildAt(0) as? TextView)?.let(::rescaleTextSize)
+        (b.btnSearch.getChildAt(0) as? TextView)?.let(::rescaleTextSize)
+        (b.btnClearHistory.getChildAt(0) as? TextView)?.let(::rescaleTextSize)
+
+        rescaleMargins(b.panelHistory, start = false, top = false, end = true, bottom = false)
+
+        rescalePadding(b.recyclerSuggest, left = false, top = true, right = false, bottom = false)
+        rescalePadding(b.recyclerHot, left = false, top = true, right = false, bottom = false)
+        rescaleMargins(b.recyclerHot, start = false, top = false, end = true, bottom = false)
+
+        rescaleMargins(b.tabLayout, start = true, top = false, end = true, bottom = false)
+        run {
+            val tabStrip = b.tabLayout.getChildAt(0) as? ViewGroup
+            if (tabStrip != null) {
+                for (i in 0 until tabStrip.childCount) {
+                    val tabView = tabStrip.getChildAt(i)
+                    findFirstTextView(tabView)?.let(::rescaleTextSize)
+                }
+            }
+        }
+
+        run {
+            val sortContainer = b.btnSort.getChildAt(0) as? ViewGroup
+            if (sortContainer != null) {
+                rescalePadding(sortContainer, left = true, top = false, right = true, bottom = false)
+                (sortContainer.getChildAt(0) as? ImageView)?.let { icon ->
+                    rescaleLayoutSize(icon, width = true, height = true)
+                    rescaleMargins(icon, start = false, top = false, end = true, bottom = false)
+                }
+            }
+            rescaleTextSize(b.tvSort)
+        }
+
+        rescaleMargins(b.swipeRefresh, start = true, top = false, end = true, bottom = false)
+        rescalePadding(b.recyclerResults, left = false, top = true, right = false, bottom = false)
+
+        rescaleMargins(b.tvResultsPlaceholder, start = false, top = true, end = false, bottom = false)
+        rescaleTextSize(b.tvResultsPlaceholder)
+
+        lastAppliedUiScale = newScale
     }
 
     enum class VideoOrder(

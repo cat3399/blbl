@@ -17,6 +17,7 @@ import blbl.cat3399.core.api.BiliApi
 import blbl.cat3399.core.log.AppLog
 import blbl.cat3399.core.net.BiliClient
 import blbl.cat3399.core.tv.TvMode
+import blbl.cat3399.core.ui.UiScale
 import blbl.cat3399.databinding.FragmentDynamicBinding
 import blbl.cat3399.databinding.FragmentDynamicLoginBinding
 import blbl.cat3399.feature.login.QrLoginActivity
@@ -25,6 +26,7 @@ import blbl.cat3399.feature.player.PlayerPlaylistItem
 import blbl.cat3399.feature.player.PlayerPlaylistStore
 import blbl.cat3399.feature.video.VideoCardAdapter
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 class DynamicFragment : Fragment() {
     private var _bindingLogin: FragmentDynamicLoginBinding? = null
@@ -349,23 +351,28 @@ class DynamicFragment : Fragment() {
     private fun applyUiMode() {
         val binding = _binding ?: return
         val tvMode = TvMode.isEnabled(requireContext())
+        val uiScale = UiScale.factor(requireContext(), tvMode)
+
+        fun px(id: Int): Int = resources.getDimensionPixelSize(id)
+        fun scaledPx(id: Int): Int = (px(id) * uiScale).roundToInt().coerceAtLeast(0)
+
         val width =
-            resources.getDimensionPixelSize(
+            scaledPx(
                 if (tvMode) blbl.cat3399.R.dimen.dynamic_following_panel_width_tv else blbl.cat3399.R.dimen.dynamic_following_panel_width,
             )
         val margin =
-            resources.getDimensionPixelSize(
+            scaledPx(
                 if (tvMode) blbl.cat3399.R.dimen.dynamic_following_panel_margin_tv else blbl.cat3399.R.dimen.dynamic_following_panel_margin,
             )
         val padding =
-            resources.getDimensionPixelSize(
+            scaledPx(
                 if (tvMode) blbl.cat3399.R.dimen.dynamic_following_list_padding_tv else blbl.cat3399.R.dimen.dynamic_following_list_padding,
             )
 
         val cardLp = binding.cardFollowing.layoutParams
         var changed = false
-        if (cardLp.width != width) {
-            cardLp.width = width
+        if (cardLp.width != width.coerceAtLeast(1)) {
+            cardLp.width = width.coerceAtLeast(1)
             changed = true
         }
         val mlp = cardLp as? ViewGroup.MarginLayoutParams

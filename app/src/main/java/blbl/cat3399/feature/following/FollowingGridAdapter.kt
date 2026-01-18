@@ -10,7 +10,9 @@ import blbl.cat3399.R
 import blbl.cat3399.core.image.ImageLoader
 import blbl.cat3399.core.image.ImageUrl
 import blbl.cat3399.core.model.Following
+import blbl.cat3399.core.ui.UiScale
 import blbl.cat3399.databinding.ItemFollowingGridBinding
+import kotlin.math.roundToInt
 
 class FollowingGridAdapter(
     private val onClick: (Following) -> Unit,
@@ -23,7 +25,6 @@ class FollowingGridAdapter(
     }
 
     fun setTvMode(enabled: Boolean) {
-        if (tvMode == enabled) return
         tvMode = enabled
         notifyItemRangeChanged(0, itemCount)
     }
@@ -56,11 +57,14 @@ class FollowingGridAdapter(
 
     class Vh(private val binding: ItemFollowingGridBinding) : RecyclerView.ViewHolder(binding.root) {
         private var lastTvMode: Boolean? = null
+        private var lastUiScale: Float? = null
 
         fun bind(item: Following, tvMode: Boolean, onClick: (Following) -> Unit) {
-            if (lastTvMode != tvMode) {
-                applySizing(tvMode)
+            val uiScale = UiScale.factor(binding.root.context, tvMode)
+            if (lastTvMode != tvMode || lastUiScale != uiScale) {
+                applySizing(tvMode, uiScale)
                 lastTvMode = tvMode
+                lastUiScale = uiScale
             }
 
             binding.tvName.text = item.name
@@ -71,11 +75,13 @@ class FollowingGridAdapter(
             binding.root.setOnClickListener { onClick(item) }
         }
 
-        private fun applySizing(tvMode: Boolean) {
+        private fun applySizing(tvMode: Boolean, uiScale: Float) {
             fun px(id: Int): Int = binding.root.resources.getDimensionPixelSize(id)
             fun pxF(id: Int): Float = binding.root.resources.getDimension(id)
+            fun scaledPx(id: Int): Int = (px(id) * uiScale).roundToInt().coerceAtLeast(0)
+            fun scaledPxF(id: Int): Float = pxF(id) * uiScale
 
-            val margin = px(if (tvMode) R.dimen.following_grid_item_margin_tv else R.dimen.following_grid_item_margin)
+            val margin = scaledPx(if (tvMode) R.dimen.following_grid_item_margin_tv else R.dimen.following_grid_item_margin)
             (binding.root.layoutParams as? MarginLayoutParams)?.let { lp ->
                 if (lp.leftMargin != margin || lp.topMargin != margin || lp.rightMargin != margin || lp.bottomMargin != margin) {
                     lp.setMargins(margin, margin, margin, margin)
@@ -83,12 +89,13 @@ class FollowingGridAdapter(
                 }
             }
 
-            val pad = px(if (tvMode) R.dimen.following_grid_item_padding_tv else R.dimen.following_grid_item_padding)
+            val pad = scaledPx(if (tvMode) R.dimen.following_grid_item_padding_tv else R.dimen.following_grid_item_padding)
             if (binding.root.paddingLeft != pad || binding.root.paddingTop != pad || binding.root.paddingRight != pad || binding.root.paddingBottom != pad) {
                 binding.root.setPadding(pad, pad, pad, pad)
             }
 
-            val avatarSize = px(if (tvMode) R.dimen.following_grid_avatar_size_tv else R.dimen.following_grid_avatar_size)
+            val avatarSize =
+                scaledPx(if (tvMode) R.dimen.following_grid_avatar_size_tv else R.dimen.following_grid_avatar_size).coerceAtLeast(1)
             val avatarLp = binding.ivAvatar.layoutParams
             if (avatarLp.width != avatarSize || avatarLp.height != avatarSize) {
                 avatarLp.width = avatarSize
@@ -97,7 +104,7 @@ class FollowingGridAdapter(
             }
 
             (binding.tvName.layoutParams as? MarginLayoutParams)?.let { lp ->
-                val mt = px(if (tvMode) R.dimen.following_grid_name_margin_top_tv else R.dimen.following_grid_name_margin_top)
+                val mt = scaledPx(if (tvMode) R.dimen.following_grid_name_margin_top_tv else R.dimen.following_grid_name_margin_top)
                 if (lp.topMargin != mt) {
                     lp.topMargin = mt
                     binding.tvName.layoutParams = lp
@@ -105,11 +112,11 @@ class FollowingGridAdapter(
             }
             binding.tvName.setTextSize(
                 TypedValue.COMPLEX_UNIT_PX,
-                pxF(if (tvMode) R.dimen.following_grid_name_text_size_tv else R.dimen.following_grid_name_text_size),
+                scaledPxF(if (tvMode) R.dimen.following_grid_name_text_size_tv else R.dimen.following_grid_name_text_size),
             )
 
             (binding.tvSign.layoutParams as? MarginLayoutParams)?.let { lp ->
-                val mt = px(if (tvMode) R.dimen.following_grid_sign_margin_top_tv else R.dimen.following_grid_sign_margin_top)
+                val mt = scaledPx(if (tvMode) R.dimen.following_grid_sign_margin_top_tv else R.dimen.following_grid_sign_margin_top)
                 if (lp.topMargin != mt) {
                     lp.topMargin = mt
                     binding.tvSign.layoutParams = lp
@@ -117,9 +124,8 @@ class FollowingGridAdapter(
             }
             binding.tvSign.setTextSize(
                 TypedValue.COMPLEX_UNIT_PX,
-                pxF(if (tvMode) R.dimen.following_grid_sign_text_size_tv else R.dimen.following_grid_sign_text_size),
+                scaledPxF(if (tvMode) R.dimen.following_grid_sign_text_size_tv else R.dimen.following_grid_sign_text_size),
             )
         }
     }
 }
-
