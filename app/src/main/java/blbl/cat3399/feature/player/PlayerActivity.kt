@@ -237,6 +237,8 @@ class PlayerActivity : AppCompatActivity() {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 updatePlayPauseIcon(isPlaying)
                 restartAutoHideTimer()
+                // DanmakuView stops its own vsync loop when playback is paused; kick it on state changes.
+                binding.danmakuView.invalidate()
             }
 
             override fun onPlaybackStateChanged(playbackState: Int) {
@@ -256,6 +258,9 @@ class PlayerActivity : AppCompatActivity() {
             }
 
             override fun onPositionDiscontinuity(oldPosition: Player.PositionInfo, newPosition: Player.PositionInfo, reason: Int) {
+                // Rely on ExoPlayer discontinuity callbacks to re-sync danmaku.
+                // Avoid doing "big jump" heuristics inside DanmakuView (which can be triggered by UI jank).
+                binding.danmakuView.notifySeek(newPosition.positionMs)
                 requestDanmakuSegmentsForPosition(newPosition.positionMs, immediate = true)
             }
 
@@ -2392,11 +2397,11 @@ class PlayerActivity : AppCompatActivity() {
             )
         }
 
-        lifecycleScope.launch(Dispatchers.IO) {
-            val shield = danmakuShield
-            val newItems = ArrayList<blbl.cat3399.core.model.Danmaku>()
-            val loaded = ArrayList<Int>()
-            for (seg in toLoad) {
+            lifecycleScope.launch(Dispatchers.IO) {
+                val shield = danmakuShield
+                val newItems = ArrayList<blbl.cat3399.core.model.Danmaku>()
+                val loaded = ArrayList<Int>()
+                for (seg in toLoad) {
                 val t0 = SystemClock.elapsedRealtime()
                 val list = runCatching { BiliApi.dmSeg(cid, seg) }.getOrNull()
                 val cost = SystemClock.elapsedRealtime() - t0
@@ -2415,16 +2420,25 @@ class PlayerActivity : AppCompatActivity() {
                 }
                 if (filtered.isNotEmpty()) newItems.addAll(filtered)
                 loaded.add(seg)
-            }
-            withContext(Dispatchers.Main) {
-                danmakuLoadingSegments.removeAll(toLoad)
-                danmakuLoadedSegments.addAll(loaded)
+                }
                 if (newItems.isNotEmpty()) {
-                    danmakuAll.addAll(newItems)
-                    danmakuAll.sortBy { it.timeMs }
+                    newItems.sortBy { it.timeMs }
+                }
+                withContext(Dispatchers.Main) {
+                    danmakuLoadingSegments.removeAll(toLoad)
+                    danmakuLoadedSegments.addAll(loaded)
+                    if (newItems.isNotEmpty()) {
+                    // Keep cache roughly ordered; avoid sorting on Main (can jank badly on massive danmaku).
+                    val last = danmakuAll.lastOrNull()?.timeMs
+                    if (last == null || newItems.first().timeMs >= last) {
+                        danmakuAll.addAll(newItems)
+                    } else {
+                        danmakuAll.addAll(newItems)
+                        danmakuAll.sortBy { it.timeMs }
+                    }
                     trimDanmakuCacheIfNeeded(positionMs)
-                    binding.danmakuView.setDanmakus(danmakuAll)
-                    binding.danmakuView.notifySeek(positionMs)
+                    // Incremental append to avoid clearing currently running danmaku (prevents "sudden disappear").
+                    binding.danmakuView.appendDanmakus(newItems, alreadySorted = true)
                 } else if (debug) {
                     AppLog.d("Player", "danmaku loadedSegs=${loaded.joinToString()} but no new items (after filter)")
                 }
@@ -2453,6 +2467,11 @@ class PlayerActivity : AppCompatActivity() {
         val filtered = danmakuAll.filter { ((it.timeMs / segSize) + 1) in keepSegs }
         danmakuAll.clear()
         danmakuAll.addAll(filtered)
+
+        // Keep DanmakuView/Engine memory bounded as well, without clearing currently running items.
+        val minTimeMs = (minSeg - 1L) * segSize.toLong()
+        val maxTimeMs = maxSeg.toLong() * segSize.toLong()
+        binding.danmakuView.trimToTimeRange(minTimeMs = minTimeMs, maxTimeMs = maxTimeMs)
     }
 
     private fun configureSubtitleView() {
