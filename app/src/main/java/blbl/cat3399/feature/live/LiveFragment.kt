@@ -28,6 +28,7 @@ class LiveFragment : Fragment(), LiveGridTabSwitchFocusHost, BackPressHandler, L
     private var mediator: TabLayoutMediator? = null
     private var pageCallback: androidx.viewpager2.widget.ViewPager2.OnPageChangeCallback? = null
     private var pendingFocusFirstCardFromContentSwitch: Boolean = false
+    private var pendingRestoreFocusAfterDetailReturn: Boolean = false
 
     private var loadAreasJob: Job? = null
     private var backStackListener: FragmentManager.OnBackStackChangedListener? = null
@@ -47,7 +48,8 @@ class LiveFragment : Fragment(), LiveGridTabSwitchFocusHost, BackPressHandler, L
         setTabs(tabs)
         backStackListener =
             FragmentManager.OnBackStackChangedListener {
-                updateDetailVisibility()
+                val showDetail = updateDetailVisibility()
+                if (!showDetail) maybeRestoreFocusAfterDetailReturn()
             }.also { childFragmentManager.addOnBackStackChangedListener(it) }
         updateDetailVisibility()
 
@@ -62,6 +64,7 @@ class LiveFragment : Fragment(), LiveGridTabSwitchFocusHost, BackPressHandler, L
 
     override fun openAreaDetail(parentAreaId: Int, parentTitle: String, areaId: Int, areaTitle: String): Boolean {
         if (_binding == null || childFragmentManager.isStateSaved) return false
+        pendingRestoreFocusAfterDetailReturn = true
         childFragmentManager.beginTransaction()
             .setReorderingAllowed(true)
             .replace(
@@ -79,12 +82,35 @@ class LiveFragment : Fragment(), LiveGridTabSwitchFocusHost, BackPressHandler, L
         return true
     }
 
-    private fun updateDetailVisibility() {
-        val b = _binding ?: return
+    private fun updateDetailVisibility(): Boolean {
+        val b = _binding ?: return false
         val showDetail = childFragmentManager.backStackEntryCount > 0
         b.detailContainer.visibility = if (showDetail) View.VISIBLE else View.GONE
         b.tabLayout.visibility = if (showDetail) View.GONE else View.VISIBLE
         b.viewPager.visibility = if (showDetail) View.GONE else View.VISIBLE
+        return showDetail
+    }
+
+    private fun maybeRestoreFocusAfterDetailReturn() {
+        if (!pendingRestoreFocusAfterDetailReturn) return
+        val b = _binding ?: return
+        pendingRestoreFocusAfterDetailReturn = false
+        b.viewPager.post {
+            if (_binding == null) return@post
+            val page = currentPageFragment()
+            val restored = (page as? LivePageReturnFocusTarget)?.restoreFocusAfterReturnFromDetail() == true
+            if (!restored) {
+                focusCurrentPageFirstCardFromContentSwitch()
+            }
+        }
+    }
+
+    private fun currentPageFragment(): Fragment? {
+        val pagerAdapter = binding.viewPager.adapter as? FragmentStateAdapter ?: return null
+        val position = binding.viewPager.currentItem
+        val itemId = pagerAdapter.getItemId(position)
+        val byTag = childFragmentManager.findFragmentByTag("f$itemId")
+        return byTag ?: childFragmentManager.fragments.firstOrNull { it.isVisible }
     }
 
     private fun applyAreas(parents: List<LiveAreaParent>) {
@@ -187,8 +213,7 @@ class LiveFragment : Fragment(), LiveGridTabSwitchFocusHost, BackPressHandler, L
     override fun handleBackPressed(): Boolean {
         if (childFragmentManager.popBackStackImmediate()) {
             updateDetailVisibility()
-            pendingFocusFirstCardFromContentSwitch = true
-            _binding?.viewPager?.post { focusCurrentPageFirstCardFromContentSwitch() }
+            maybeRestoreFocusAfterDetailReturn()
             return true
         }
         val b = _binding ?: return false

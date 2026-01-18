@@ -44,6 +44,16 @@ class LiveAreaDetailFragment : Fragment() {
                     ),
                 )
                 .commit()
+
+            // Match "MyFavFolderDetail": enter detail then focus first content card automatically.
+            binding.contentContainer.post {
+                if (_binding == null || !isAdded) return@post
+                runCatching { childFragmentManager.executePendingTransactions() }
+                val page = childFragmentManager.findFragmentById(binding.contentContainer.id)
+                (page as? LivePageFocusTarget)?.requestFocusFirstCardFromContentSwitch()
+                    ?: (childFragmentManager.fragments.firstOrNull { it is LivePageFocusTarget } as? LivePageFocusTarget)
+                        ?.requestFocusFirstCardFromContentSwitch()
+            }
         }
     }
 
@@ -70,4 +80,3 @@ class LiveAreaDetailFragment : Fragment() {
             }
     }
 }
-

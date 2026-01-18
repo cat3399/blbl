@@ -27,6 +27,7 @@ class LiveGridFragment : Fragment(), LivePageFocusTarget {
     private lateinit var adapter: LiveRoomAdapter
 
     private var initialLoadTriggered: Boolean = false
+    private var lastSpanCountContentWidthPx: Int = -1
 
     private val source: String by lazy { requireArguments().getString(ARG_SOURCE) ?: SRC_RECOMMEND }
     private val parentAreaId: Int by lazy { requireArguments().getInt(ARG_PARENT_AREA_ID, 0) }
@@ -88,6 +89,11 @@ class LiveGridFragment : Fragment(), LivePageFocusTarget {
                 }
             },
         )
+        binding.recycler.addOnLayoutChangeListener { _, left, _, right, _, oldLeft, _, oldRight, _ ->
+            val widthChanged = (right - left) != (oldRight - oldLeft)
+            if (widthChanged) updateRecyclerSpanCountIfNeeded()
+        }
+        binding.recycler.post { updateRecyclerSpanCountIfNeeded() }
         binding.recycler.addOnChildAttachStateChangeListener(
             object : RecyclerView.OnChildAttachStateChangeListener {
                 override fun onChildViewAttachedToWindow(view: View) {
@@ -184,7 +190,7 @@ class LiveGridFragment : Fragment(), LivePageFocusTarget {
     override fun onResume() {
         super.onResume()
         if (this::adapter.isInitialized) adapter.setTvMode(TvMode.isEnabled(requireContext()))
-        (binding.recycler.layoutManager as? GridLayoutManager)?.spanCount = spanCountForWidth()
+        updateRecyclerSpanCountIfNeeded(force = true)
         maybeTriggerInitialLoad()
         maybeConsumePendingFocusFirstCard()
     }
@@ -285,11 +291,30 @@ class LiveGridFragment : Fragment(), LivePageFocusTarget {
         if (override > 0) return override.coerceIn(1, 6)
         val dm = resources.displayMetrics
         val widthDp = dm.widthPixels / dm.density
-        return when {
-            widthDp >= 1100 -> 4
-            widthDp >= 800 -> 3
-            else -> 2
-        }
+        return autoSpanCountForWidthDp(widthDp)
+    }
+
+    private fun autoSpanCountForWidthDp(widthDp: Float): Int {
+        val override = blbl.cat3399.core.net.BiliClient.prefs.gridSpanCount
+        if (override > 0) return override.coerceIn(1, 6)
+        val minCardWidthDp = if (TvMode.isEnabled(requireContext())) 210f else 168f
+        val auto = (widthDp / minCardWidthDp).toInt()
+        return auto.coerceIn(2, 6)
+    }
+
+    private fun updateRecyclerSpanCountIfNeeded(force: Boolean = false) {
+        val b = _binding ?: return
+        val recycler = b.recycler
+        val lm = recycler.layoutManager as? GridLayoutManager ?: return
+        val contentWidthPx = (recycler.width - recycler.paddingLeft - recycler.paddingRight).coerceAtLeast(0)
+        if (contentWidthPx <= 0) return
+        if (!force && contentWidthPx == lastSpanCountContentWidthPx) return
+        lastSpanCountContentWidthPx = contentWidthPx
+
+        val dm = resources.displayMetrics
+        val contentWidthDp = contentWidthPx / dm.density
+        val span = autoSpanCountForWidthDp(contentWidthDp)
+        if (span != lm.spanCount) lm.spanCount = span
     }
 
     override fun requestFocusFirstCardFromTab(): Boolean {
@@ -474,6 +499,7 @@ class LiveGridFragment : Fragment(), LivePageFocusTarget {
     override fun onDestroyView() {
         initialLoadTriggered = false
         clearPendingFocusNextCardAfterLoadMoreFromDpad()
+        lastSpanCountContentWidthPx = -1
         _binding = null
         super.onDestroyView()
     }

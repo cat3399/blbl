@@ -18,7 +18,7 @@ import blbl.cat3399.core.net.BiliClient
 import blbl.cat3399.databinding.FragmentLiveGridBinding
 import kotlinx.coroutines.launch
 
-class LiveAreaIndexFragment : Fragment(), LivePageFocusTarget {
+class LiveAreaIndexFragment : Fragment(), LivePageFocusTarget, LivePageReturnFocusTarget {
     private var _binding: FragmentLiveGridBinding? = null
     private val binding get() = _binding!!
 
@@ -32,6 +32,7 @@ class LiveAreaIndexFragment : Fragment(), LivePageFocusTarget {
 
     private var pendingFocusFirstCardFromTab: Boolean = false
     private var pendingFocusFirstCardFromContentSwitch: Boolean = false
+    private var pendingRestorePosition: Int? = null
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         _binding = FragmentLiveGridBinding.inflate(inflater, container, false)
@@ -41,7 +42,8 @@ class LiveAreaIndexFragment : Fragment(), LivePageFocusTarget {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         if (!::adapter.isInitialized) {
             adapter =
-                LiveAreaAdapter { _, area ->
+                LiveAreaAdapter { position, area ->
+                    pendingRestorePosition = position
                     val nav = parentFragment as? LiveNavigator
                     if (nav == null) {
                         Toast.makeText(requireContext(), "无法打开分区：找不到导航宿主", Toast.LENGTH_SHORT).show()
@@ -117,6 +119,7 @@ class LiveAreaIndexFragment : Fragment(), LivePageFocusTarget {
         super.onResume()
         (binding.recycler.layoutManager as? GridLayoutManager)?.spanCount = spanCountForWidth()
         maybeTriggerInitialLoad()
+        restoreFocusIfNeeded()
         maybeConsumePendingFocusFirstCard()
     }
 
@@ -146,7 +149,10 @@ class LiveAreaIndexFragment : Fragment(), LivePageFocusTarget {
                         ?.filter { it.id > 0 && it.name.isNotBlank() }
                         .orEmpty()
                 adapter.submit(children)
-                _binding?.recycler?.post { maybeConsumePendingFocusFirstCard() }
+                _binding?.recycler?.post {
+                    restoreFocusIfNeeded()
+                    maybeConsumePendingFocusFirstCard()
+                }
             } catch (t: Throwable) {
                 AppLog.e("LiveAreaIndex", "load failed pid=$parentAreaId title=$parentTitle", t)
                 context?.let { Toast.makeText(it, "加载失败，可查看 Logcat(标签 BLBL)", Toast.LENGTH_SHORT).show() }
@@ -180,7 +186,37 @@ class LiveAreaIndexFragment : Fragment(), LivePageFocusTarget {
         return maybeConsumePendingFocusFirstCard()
     }
 
+    override fun restoreFocusAfterReturnFromDetail(): Boolean {
+        if (!isResumed) return true
+        return restoreFocusIfNeeded()
+    }
+
+    private fun restoreFocusIfNeeded(): Boolean {
+        val pos = pendingRestorePosition ?: return false
+        if (!isAdded || _binding == null) return false
+        if (!isResumed) return false
+        if (!this::adapter.isInitialized) return false
+        if (pos < 0 || pos >= adapter.itemCount) {
+            pendingRestorePosition = null
+            return false
+        }
+
+        val recycler = binding.recycler
+        recycler.post outerPost@{
+            if (_binding == null) return@outerPost
+            recycler.scrollToPosition(pos)
+            recycler.post innerPost@{
+                if (_binding == null) return@innerPost
+                recycler.findViewHolderForAdapterPosition(pos)?.itemView?.requestFocus()
+                    ?: recycler.requestFocus()
+                pendingRestorePosition = null
+            }
+        }
+        return true
+    }
+
     private fun maybeConsumePendingFocusFirstCard(): Boolean {
+        if (pendingRestorePosition != null) return false
         if (!pendingFocusFirstCardFromTab && !pendingFocusFirstCardFromContentSwitch) return false
         if (!isAdded || _binding == null) return false
         if (!isResumed) return false
@@ -271,6 +307,7 @@ class LiveAreaIndexFragment : Fragment(), LivePageFocusTarget {
 
     override fun onDestroyView() {
         initialLoadTriggered = false
+        pendingRestorePosition = null
         _binding = null
         super.onDestroyView()
     }
@@ -298,4 +335,3 @@ class LiveAreaIndexFragment : Fragment(), LivePageFocusTarget {
             }
     }
 }
-

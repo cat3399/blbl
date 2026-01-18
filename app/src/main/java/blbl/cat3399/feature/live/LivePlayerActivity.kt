@@ -9,6 +9,7 @@ import android.view.View
 import android.view.ViewGroup.MarginLayoutParams
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
@@ -83,6 +84,8 @@ class LivePlayerActivity : AppCompatActivity() {
         binding.tvSeekHint.visibility = View.GONE
         binding.btnPrev.visibility = View.GONE
         binding.btnNext.visibility = View.GONE
+        binding.tvOnline.visibility = View.GONE
+        binding.btnUp.visibility = View.GONE
 
         binding.btnBack.setOnClickListener { finish() }
 
@@ -119,6 +122,8 @@ class LivePlayerActivity : AppCompatActivity() {
         }
         binding.btnDanmaku.setOnClickListener {
             session = session.copy(danmaku = session.danmaku.copy(enabled = !session.danmaku.enabled))
+            binding.danmakuView.invalidate()
+            updateDanmakuButton()
             setControlsVisible(true)
         }
 
@@ -137,6 +142,7 @@ class LivePlayerActivity : AppCompatActivity() {
 
         setupSettingsPanel()
         setControlsVisible(true)
+        updateDanmakuButton()
 
         lifecycleScope.launch { loadAndPlay(initial = true) }
     }
@@ -418,17 +424,7 @@ class LivePlayerActivity : AppCompatActivity() {
             PlayerSettingsAdapter { item ->
                 when (item.title) {
                     "清晰度" -> showQualityDialog()
-                    "线路" -> showLineDialog()
-                    "弹幕显示" -> {
-                        session = session.copy(danmaku = session.danmaku.copy(enabled = !session.danmaku.enabled))
-                        refreshSettings()
-                    }
-                    "查看弹幕/SC" -> showChatDialog()
-                    "调试信息" -> {
-                        session = session.copy(debugEnabled = !session.debugEnabled)
-                        refreshSettings()
-                        updateDebugOverlay()
-                    }
+                    "线路选择" -> showLineDialog()
                     else -> Toast.makeText(this, "暂未实现：${item.title}", Toast.LENGTH_SHORT).show()
                 }
             }
@@ -440,27 +436,17 @@ class LivePlayerActivity : AppCompatActivity() {
 
     private fun refreshSettings() {
         val p = lastPlay
-        val qn = session.targetQn.takeIf { it > 0 } ?: p?.currentQn ?: 150
+        val qn = session.targetQn.takeIf { it > 0 } ?: p?.currentQn ?: LIVE_QN_ORIGINAL
         val qLabel = liveQnLabel(qn, p)
         val lineLabel =
             p?.lines
                 ?.getOrNull((session.lineOrder - 1).coerceAtLeast(0))
                 ?.let { "线路 ${it.order}" }
                 ?: "自动"
-        val liveText =
-            when (lastLiveStatus) {
-                1 -> "直播中"
-                2 -> "轮播中"
-                else -> "未开播"
-            }
         val list =
             listOf(
                 PlayerSettingsAdapter.SettingItem("清晰度", qLabel),
-                PlayerSettingsAdapter.SettingItem("线路", lineLabel),
-                PlayerSettingsAdapter.SettingItem("弹幕显示", if (session.danmaku.enabled) "开" else "关"),
-                PlayerSettingsAdapter.SettingItem("查看弹幕/SC", "最近 ${chatItems.size} 条"),
-                PlayerSettingsAdapter.SettingItem("状态", liveText),
-                PlayerSettingsAdapter.SettingItem("调试信息", if (session.debugEnabled) "开" else "关"),
+                PlayerSettingsAdapter.SettingItem("线路选择", lineLabel),
             )
         (binding.recyclerSettings.adapter as? PlayerSettingsAdapter)?.submit(list)
     }
@@ -657,7 +643,6 @@ class LivePlayerActivity : AppCompatActivity() {
     private fun pushChatItem(item: LiveChatAdapter.Item) {
         chatItems.addLast(item)
         while (chatItems.size > chatMax) chatItems.removeFirst()
-        refreshSettings()
     }
 
     private fun showQualityDialog() {
@@ -670,9 +655,13 @@ class LivePlayerActivity : AppCompatActivity() {
             Toast.makeText(this, "暂无可用清晰度", Toast.LENGTH_SHORT).show()
             return
         }
-        val options = available.map { q -> "${q.toString().padStart(5, ' ')} ${liveQnLabel(q, play)}" }
+        val optionsAvailable = available.sortedWith(compareBy({ it != LIVE_QN_ORIGINAL }, { -it }))
+        val options = optionsAvailable.map { q -> liveQnLabel(q, play) }
         val current = session.targetQn.takeIf { it > 0 } ?: play.currentQn
-        val checked = available.indexOf(current).takeIf { it >= 0 } ?: 0
+        val checked =
+            optionsAvailable.indexOf(current).takeIf { it >= 0 }
+                ?: optionsAvailable.indexOf(LIVE_QN_ORIGINAL).takeIf { it >= 0 }
+                ?: 0
         SingleChoiceDialog.show(
             context = this,
             title = "清晰度",
@@ -680,7 +669,7 @@ class LivePlayerActivity : AppCompatActivity() {
             checkedIndex = checked,
             negativeText = "取消",
         ) { which, _ ->
-            val picked = available.getOrNull(which) ?: return@show
+            val picked = optionsAvailable.getOrNull(which) ?: return@show
             session = session.copy(targetQn = picked)
             session = session.copy(lineOrder = 1) // reset line
             refreshSettings()
@@ -730,6 +719,11 @@ class LivePlayerActivity : AppCompatActivity() {
     private fun updatePlayPauseIcon(isPlaying: Boolean) {
         val icon = if (isPlaying) blbl.cat3399.R.drawable.ic_player_pause else blbl.cat3399.R.drawable.ic_player_play
         binding.btnPlayPause.setImageResource(icon)
+    }
+
+    private fun updateDanmakuButton() {
+        val colorRes = if (session.danmaku.enabled) blbl.cat3399.R.color.blbl_blue else blbl.cat3399.R.color.blbl_text_secondary
+        binding.btnDanmaku.imageTintList = ContextCompat.getColorStateList(this, colorRes)
     }
 
     private fun updateDebugOverlay() {
@@ -787,7 +781,7 @@ class LivePlayerActivity : AppCompatActivity() {
     }
 
     private data class LiveSession(
-        val targetQn: Int = 150,
+        val targetQn: Int = LIVE_QN_ORIGINAL,
         val lineOrder: Int = 1,
         val danmaku: LiveDanmakuSession =
             LiveDanmakuSession(
@@ -805,6 +799,7 @@ class LivePlayerActivity : AppCompatActivity() {
         const val EXTRA_TITLE = "title"
         const val EXTRA_UNAME = "uname"
 
+        private const val LIVE_QN_ORIGINAL = 10_000
         private const val AUTO_HIDE_MS = 4_000L
         private const val BACK_DOUBLE_PRESS_WINDOW_MS = 1_500L
     }
