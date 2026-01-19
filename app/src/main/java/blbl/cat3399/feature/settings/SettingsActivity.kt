@@ -224,6 +224,8 @@ class SettingsActivity : AppCompatActivity() {
                 SettingEntry("默认音轨", audioText(prefs.playerPreferredAudioId), "30280/30232/30216/30250/30251"),
                 SettingEntry("CDN线路", cdnText(prefs.playerCdnPreference), "优先选择匹配域名的播放 URL（匹配失败回退）"),
                 SettingEntry("默认播放速度", String.format(Locale.US, "%.2fx", prefs.playerSpeed), null),
+                SettingEntry("自动跳到上次播放位置", if (prefs.playerAutoResumeEnabled) "开" else "关", "进入播放页后自动跳转，按返回取消"),
+                SettingEntry("自动跳过片段（空降助手）", if (prefs.playerAutoSkipSegmentsEnabled) "开" else "关", "SponsorBlock/片头片尾片段，按返回取消本次片段"),
                 SettingEntry("播放模式", playbackModeText(prefs.playerPlaybackMode), "播放结束后的动作（循环/下一条/退出）"),
                 SettingEntry("字幕语言", subtitleLangText(prefs.subtitlePreferredLang), "自动/优先匹配"),
                 SettingEntry("默认开启字幕", if (prefs.subtitleEnabledDefault) "开" else "关", "进入播放页时默认状态"),
@@ -540,6 +542,16 @@ class SettingsActivity : AppCompatActivity() {
                     if (v != null) prefs.playerSpeed = v.coerceIn(0.25f, 3.0f)
                     refreshSection(entry.title)
                 }
+            }
+
+            "自动跳到上次播放位置" -> {
+                prefs.playerAutoResumeEnabled = !prefs.playerAutoResumeEnabled
+                refreshSection(entry.title)
+            }
+
+            "自动跳过片段（空降助手）" -> {
+                prefs.playerAutoSkipSegmentsEnabled = !prefs.playerAutoSkipSegmentsEnabled
+                refreshSection(entry.title)
             }
 
             "播放模式" -> {

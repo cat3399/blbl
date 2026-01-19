@@ -42,6 +42,7 @@ import androidx.media3.ui.CaptionStyleCompat
 import blbl.cat3399.R
 import blbl.cat3399.core.api.BiliApi
 import blbl.cat3399.core.api.BiliApiException
+import blbl.cat3399.core.api.SponsorBlockApi
 import blbl.cat3399.core.log.AppLog
 import blbl.cat3399.core.model.DanmakuShield
 import blbl.cat3399.core.net.BiliClient
@@ -92,6 +93,8 @@ class PlayerActivity : AppCompatActivity() {
     private var autoResumeJob: kotlinx.coroutines.Job? = null
     private var autoResumeHintTimeoutJob: kotlinx.coroutines.Job? = null
     private var autoResumeHintVisible: Boolean = false
+    private var autoSkipFetchJob: kotlinx.coroutines.Job? = null
+    private var autoSkipHintVisible: Boolean = false
     private var reportProgressJob: kotlinx.coroutines.Job? = null
     private var autoHideJob: kotlinx.coroutines.Job? = null
     private var holdSeekJob: kotlinx.coroutines.Job? = null
@@ -145,6 +148,13 @@ class PlayerActivity : AppCompatActivity() {
     private var lastPickedDash: Playable.Dash? = null
     private var autoResumeToken: Int = 0
     private var autoResumeCancelledByUser: Boolean = false
+    private var autoSkipToken: Int = 0
+    private var autoSkipSegments: List<SkipSegment> = emptyList()
+    private val autoSkipHandledSegmentIds = HashSet<String>()
+    private var autoSkipPending: PendingAutoSkip? = null
+    private var autoSkipMarkersDirty: Boolean = true
+    private var autoSkipMarkersDurationMs: Long = -1L
+    private var autoSkipMarkersShown: Boolean = false
     private var reportToken: Int = 0
     private var lastReportAtMs: Long = 0L
     private var lastReportedProgressSec: Long = -1L
@@ -179,6 +189,20 @@ class PlayerActivity : AppCompatActivity() {
         SECONDS_LIKELY,
         MILLIS_LIKELY,
     }
+
+    private data class SkipSegment(
+        val id: String,
+        val startMs: Long,
+        val endMs: Long,
+        val category: String?,
+        val source: String,
+    )
+
+    private data class PendingAutoSkip(
+        val token: Int,
+        val segment: SkipSegment,
+        val dueAtElapsedMs: Long,
+    )
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -648,6 +672,18 @@ class PlayerActivity : AppCompatActivity() {
         cancelPendingAutoResume(reason = "new_media")
         autoResumeToken++
         autoResumeCancelledByUser = false
+        cancelPendingAutoSkip(reason = "new_media", markIgnored = false)
+        autoSkipFetchJob?.cancel()
+        autoSkipFetchJob = null
+        autoSkipSegments = emptyList()
+        autoSkipHandledSegmentIds.clear()
+        autoSkipPending = null
+        binding.seekProgress.clearSegments()
+        binding.progressPersistentBottom.clearSegments()
+        autoSkipMarkersDirty = true
+        autoSkipMarkersDurationMs = -1L
+        autoSkipMarkersShown = false
+        autoSkipToken++
         stopReportProgressLoop(flush = false, reason = "new_media")
         reportToken++
         lastReportAtMs = 0L
@@ -784,6 +820,12 @@ class PlayerActivity : AppCompatActivity() {
                         bvid = safeBvid,
                         cid = cid,
                         playbackToken = autoResumeToken,
+                    )
+                    maybeStartAutoSkipSegments(
+                        playJson = playJson,
+                        bvid = safeBvid,
+                        cid = cid,
+                        playbackToken = autoSkipToken,
                     )
 
                     trace?.log("danmakuMeta:await")
@@ -1036,6 +1078,7 @@ class PlayerActivity : AppCompatActivity() {
 
             KeyEvent.KEYCODE_BACK -> {
                 cancelPendingAutoResume(reason = "back")
+                cancelPendingAutoSkip(reason = "back", markIgnored = true)
                 stopReportProgressLoop(flush = true, reason = "back")
                 finishOnBackKeyUp = false
                 if (binding.settingsPanel.visibility == View.VISIBLE) {
@@ -1284,6 +1327,7 @@ class PlayerActivity : AppCompatActivity() {
                 override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
                     if (!fromUser) return
                     cancelPendingAutoResume(reason = "user_seek")
+                    cancelPendingAutoSkip(reason = "user_seek", markIgnored = true)
                     scrubbing = true
                     noteUserInteraction()
                     if (seekBar?.isPressed != true) scheduleKeyScrubEnd()
@@ -1302,6 +1346,7 @@ class PlayerActivity : AppCompatActivity() {
 
                 override fun onStartTrackingTouch(seekBar: SeekBar?) {
                     cancelPendingAutoResume(reason = "user_seek")
+                    cancelPendingAutoSkip(reason = "user_seek", markIgnored = true)
                     scrubbing = true
                     keyScrubEndJob?.cancel()
                     setControlsVisible(true)
@@ -1626,6 +1671,9 @@ class PlayerActivity : AppCompatActivity() {
             binding.progressPersistentBottom.progress = 0
         }
         requestDanmakuSegmentsForPosition(pos, immediate = false)
+        val markerDurationMs = exo.duration.takeIf { it > 0 } ?: currentViewDurationMs ?: 0L
+        maybeUpdateAutoSkipSegmentMarkers(durationMs = markerDurationMs)
+        maybeTickAutoSkipSegments(posMs = pos)
     }
 
     private fun cancelPendingAutoResume(reason: String) {
@@ -1657,6 +1705,225 @@ class PlayerActivity : AppCompatActivity() {
         autoResumeHintTimeoutJob = null
         seekHintJob?.cancel()
         binding.tvSeekHint.visibility = View.GONE
+    }
+
+    private fun cancelPendingAutoSkip(reason: String, markIgnored: Boolean) {
+        autoSkipPending?.let { pending ->
+            if (markIgnored) {
+                autoSkipHandledSegmentIds.add(pending.segment.id)
+            }
+        }
+        autoSkipPending = null
+        dismissAutoSkipHint()
+        trace?.log("skipseg:cancel", "reason=$reason ignored=${if (markIgnored) 1 else 0}")
+    }
+
+    private fun showAutoSkipHint(segment: SkipSegment) {
+        dismissAutoSkipHint()
+        val label = autoSkipCategoryLabel(segment.category)
+        val range = "${formatHms(segment.startMs)}→${formatHms(segment.endMs)}"
+        val msg = "将要跳过${label}片段（$range），按返回取消"
+        autoSkipHintVisible = true
+        showSeekHint(msg, hold = true)
+    }
+
+    private fun dismissAutoSkipHint() {
+        if (!autoSkipHintVisible) return
+        autoSkipHintVisible = false
+        seekHintJob?.cancel()
+        binding.tvSeekHint.visibility = View.GONE
+    }
+
+    private fun autoSkipCategoryLabel(category: String?): String {
+        val c = category?.trim().orEmpty()
+        return when (c) {
+            "" -> "此"
+            "sponsor" -> "赞助/广告"
+            "selfpromo" -> "推广"
+            "exclusive_access" -> "品牌合作"
+            "interaction" -> "三连提醒"
+            "poi_highlight" -> "精彩时刻"
+            "intro" -> "片头"
+            "outro" -> "片尾"
+            "preview" -> "预览"
+            "padding" -> "填充内容"
+            "filler" -> "离题"
+            "music_offtopic" -> "非音乐"
+            else -> c
+        }
+    }
+
+    private fun maybeUpdateAutoSkipSegmentMarkers(durationMs: Long) {
+        val enabled = BiliClient.prefs.playerAutoSkipSegmentsEnabled
+        if (!enabled || durationMs <= 0L || autoSkipSegments.isEmpty()) {
+            if (autoSkipMarkersShown) {
+                binding.seekProgress.clearSegments()
+                binding.progressPersistentBottom.clearSegments()
+                autoSkipMarkersShown = false
+            }
+            autoSkipMarkersDirty = false
+            autoSkipMarkersDurationMs = durationMs
+            return
+        }
+
+        if (!autoSkipMarkersDirty && autoSkipMarkersShown && autoSkipMarkersDurationMs == durationMs) return
+        autoSkipMarkersDurationMs = durationMs
+        autoSkipMarkersDirty = false
+
+        val durF = durationMs.toFloat()
+        if (durF <= 0f) return
+        val marks =
+            autoSkipSegments.mapNotNull { seg ->
+                val start = seg.startMs.coerceAtLeast(0L)
+                val end = seg.endMs.coerceAtLeast(0L)
+                if (end <= start) return@mapNotNull null
+                val s = (start.toFloat() / durF).coerceIn(0f, 1f)
+                val e = (end.toFloat() / durF).coerceIn(0f, 1f)
+                if (e <= s) return@mapNotNull null
+                SegmentMark(startFraction = s, endFraction = e)
+            }
+        binding.seekProgress.setSegments(marks)
+        binding.progressPersistentBottom.setSegments(marks)
+        autoSkipMarkersShown = marks.isNotEmpty()
+    }
+
+    private fun maybeTickAutoSkipSegments(posMs: Long) {
+        if (!BiliClient.prefs.playerAutoSkipSegmentsEnabled) return
+        val exo = player ?: return
+        if (!exo.playWhenReady) return
+        if (scrubbing) return
+        if (autoResumeHintVisible) return
+
+        val now = SystemClock.elapsedRealtime()
+        autoSkipPending?.let { pending ->
+            if (pending.token != autoSkipToken) {
+                autoSkipPending = null
+                dismissAutoSkipHint()
+                return
+            }
+            if (autoSkipHandledSegmentIds.contains(pending.segment.id)) {
+                autoSkipPending = null
+                dismissAutoSkipHint()
+                return
+            }
+            if (now < pending.dueAtElapsedMs) return
+
+            val seg = pending.segment
+            if (posMs < seg.startMs) return
+            if (posMs >= seg.endMs) {
+                autoSkipPending = null
+                dismissAutoSkipHint()
+                return
+            }
+
+            val durationMs = exo.duration.takeIf { it > 0 }
+            val targetMs = durationMs?.let { seg.endMs.coerceIn(0L, (it - 500L).coerceAtLeast(0L)) } ?: seg.endMs
+            autoSkipHandledSegmentIds.add(seg.id)
+            autoSkipPending = null
+            dismissAutoSkipHint()
+            trace?.log("skipseg:seek", "to=${targetMs}ms id=${seg.id} cat=${seg.category ?: ""} src=${seg.source}")
+            exo.seekTo(targetMs)
+            showSeekHint("已跳过${autoSkipCategoryLabel(seg.category)}片段", hold = false)
+            return
+        }
+
+        if (autoSkipSegments.isEmpty()) return
+        val windowEndMs = posMs + AUTO_SKIP_START_WINDOW_MS
+        val candidate =
+            autoSkipSegments.firstOrNull { seg ->
+                if (autoSkipHandledSegmentIds.contains(seg.id)) return@firstOrNull false
+                when {
+                    posMs >= seg.startMs && posMs < seg.endMs -> true
+                    seg.startMs in posMs..windowEndMs -> true
+                    seg.startMs > windowEndMs -> false
+                    else -> false
+                }
+            } ?: return
+
+        autoSkipPending = PendingAutoSkip(token = autoSkipToken, segment = candidate, dueAtElapsedMs = now + AUTO_SKIP_DELAY_MS)
+        trace?.log("skipseg:pending", "id=${candidate.id} cat=${candidate.category ?: ""} src=${candidate.source}")
+        showAutoSkipHint(candidate)
+    }
+
+    private fun maybeStartAutoSkipSegments(
+        playJson: JSONObject,
+        bvid: String,
+        cid: Long,
+        playbackToken: Int,
+    ) {
+        if (!BiliClient.prefs.playerAutoSkipSegmentsEnabled) return
+        if (playbackToken != autoSkipToken) return
+        if (bvid.isBlank() || cid <= 0L) return
+
+        autoSkipFetchJob?.cancel()
+        autoSkipFetchJob = null
+
+        val clipSegments = extractClipInfoSegmentsFromPlayJson(playJson)
+        setAutoSkipSegments(playbackToken, clipSegments)
+
+        autoSkipFetchJob =
+            lifecycleScope.launch {
+                val sbSegments =
+                    withContext(Dispatchers.IO) {
+                        runCatching { SponsorBlockApi.skipSegments(bvid = bvid, cid = cid) }.getOrNull().orEmpty()
+                    }
+                if (!isActive) return@launch
+                if (playbackToken != autoSkipToken) return@launch
+
+                val merged = LinkedHashMap<String, SkipSegment>(clipSegments.size + sbSegments.size)
+                for (seg in clipSegments) merged[seg.id] = seg
+                for (sb in sbSegments) {
+                    val id =
+                        sb.uuid?.takeIf { it.isNotBlank() }?.let { "sb:$it" }
+                            ?: "sb:${sb.category.orEmpty()}:${sb.startMs}-${sb.endMs}"
+                    merged[id] =
+                        SkipSegment(
+                            id = id,
+                            startMs = sb.startMs,
+                            endMs = sb.endMs,
+                            category = sb.category,
+                            source = "sponsorblock",
+                        )
+                }
+                setAutoSkipSegments(playbackToken, merged.values.toList())
+            }
+    }
+
+    private fun extractClipInfoSegmentsFromPlayJson(playJson: JSONObject): List<SkipSegment> {
+        val data = playJson.optJSONObject("data") ?: playJson.optJSONObject("result") ?: return emptyList()
+        val arr = data.optJSONArray("clip_info_list") ?: data.optJSONArray("clipInfoList") ?: return emptyList()
+        val out = ArrayList<SkipSegment>(arr.length())
+        for (i in 0 until arr.length()) {
+            val obj = arr.optJSONObject(i) ?: continue
+            val clipType = obj.optString("clipType", obj.optString("clip_type", "")).trim()
+            val category =
+                when (clipType) {
+                    "CLIP_TYPE_OP" -> "intro"
+                    "CLIP_TYPE_ED" -> "outro"
+                    else -> "clip"
+                }
+            val startRaw = obj.optDouble("start", Double.NaN)
+            val endRaw = obj.optDouble("end", Double.NaN)
+            if (!startRaw.isFinite() || !endRaw.isFinite()) continue
+            val startMs = normalizeClipTimeToMs(startRaw).coerceAtLeast(0L)
+            val endMs = normalizeClipTimeToMs(endRaw).coerceAtLeast(0L)
+            if (endMs <= startMs) continue
+            val id = "pgc:$category:$startMs-$endMs"
+            out.add(SkipSegment(id = id, startMs = startMs, endMs = endMs, category = category, source = "pgc_clip"))
+        }
+        return out
+    }
+
+    private fun normalizeClipTimeToMs(value: Double): Long {
+        // B站 clip_info_list 的 start/end 常见为秒（支持小数），但也可能直接是毫秒。
+        return if (value >= 10_000.0) value.toLong() else (value * 1000.0).toLong()
+    }
+
+    private fun setAutoSkipSegments(token: Int, segments: List<SkipSegment>) {
+        if (token != autoSkipToken) return
+        autoSkipSegments = segments.sortedBy { it.startMs }
+        autoSkipMarkersDirty = true
+        trace?.log("skipseg:set", "count=${autoSkipSegments.size}")
     }
 
     private fun extractResumeCandidateFromPlayJson(playJson: JSONObject): ResumeCandidate? {
@@ -1710,6 +1977,7 @@ class PlayerActivity : AppCompatActivity() {
         cid: Long,
         playbackToken: Int,
     ) {
+        if (!BiliClient.prefs.playerAutoResumeEnabled) return
         if (autoResumeCancelledByUser) return
         if (playbackToken != autoResumeToken) return
         val exo = player ?: return
@@ -3447,6 +3715,8 @@ class PlayerActivity : AppCompatActivity() {
         private const val HOLD_REWIND_STEP_MS = 520L
         private const val BACK_DOUBLE_PRESS_WINDOW_MS = 1_500L
         private const val SEEK_HINT_HIDE_DELAY_MS = 900L
+        private const val AUTO_SKIP_START_WINDOW_MS = 1_000L
+        private const val AUTO_SKIP_DELAY_MS = 2_000L
         private const val KEY_SCRUB_END_DELAY_MS = 800L
         private const val DANMAKU_DEFAULT_SEGMENT_MS = 6 * 60 * 1000
         private const val DANMAKU_PREFETCH_SEGMENTS = 2

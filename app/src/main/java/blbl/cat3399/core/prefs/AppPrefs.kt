@@ -130,6 +130,14 @@ class AppPrefs(context: Context) {
         get() = prefs.getFloat(KEY_PLAYER_SPEED, 1.0f)
         set(value) = prefs.edit().putFloat(KEY_PLAYER_SPEED, value).apply()
 
+    var playerAutoResumeEnabled: Boolean
+        get() = prefs.getBoolean(KEY_PLAYER_AUTO_RESUME_ENABLED, true)
+        set(value) = prefs.edit().putBoolean(KEY_PLAYER_AUTO_RESUME_ENABLED, value).apply()
+
+    var playerAutoSkipSegmentsEnabled: Boolean
+        get() = prefs.getBoolean(KEY_PLAYER_AUTO_SKIP_SEGMENTS_ENABLED, false)
+        set(value) = prefs.edit().putBoolean(KEY_PLAYER_AUTO_SKIP_SEGMENTS_ENABLED, value).apply()
+
     var fullscreenEnabled: Boolean
         get() = prefs.getBoolean(KEY_FULLSCREEN, true)
         set(value) = prefs.edit().putBoolean(KEY_FULLSCREEN, value).apply()
@@ -251,6 +259,8 @@ class AppPrefs(context: Context) {
         private const val KEY_SUBTITLE_LANG = "subtitle_lang"
         private const val KEY_SUBTITLE_ENABLED_DEFAULT = "subtitle_enabled_default"
         private const val KEY_PLAYER_SPEED = "player_speed"
+        private const val KEY_PLAYER_AUTO_RESUME_ENABLED = "player_auto_resume_enabled"
+        private const val KEY_PLAYER_AUTO_SKIP_SEGMENTS_ENABLED = "player_auto_skip_segments_enabled"
         private const val KEY_FULLSCREEN = "fullscreen_enabled"
         private const val KEY_PLAYER_DEBUG = "player_debug_enabled"
         private const val KEY_PLAYER_DOUBLE_BACK_ON_ENDED = "player_double_back_on_ended"

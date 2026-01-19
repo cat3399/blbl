@@ -123,7 +123,7 @@
         app:layout_constraintEnd_toEndOf="@id/player_view"
         app:layout_constraintStart_toStartOf="@id/player_view">
 
-        <SeekBar
+        <blbl.cat3399.feature.player.SegmentedSeekBar
             android:id="@+id/seek_progress"
             android:layout_width="0dp"
             android:layout_height="@dimen/player_seekbar_height"
@@ -256,7 +256,7 @@
             app:layout_constraintTop_toTopOf="@id/controls_row" />
     </androidx.constraintlayout.widget.ConstraintLayout>
 
-    <ProgressBar
+    <blbl.cat3399.feature.player.SegmentedProgressBar
         android:id="@+id/progress_persistent_bottom"
         style="?android:attr/progressBarStyleHorizontal"
         android:layout_width="0dp"
