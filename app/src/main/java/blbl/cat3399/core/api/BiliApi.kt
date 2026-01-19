@@ -789,9 +789,11 @@ object BiliApi {
                 "https://api.live.bilibili.com/xlive/web-room/v2/index/getRoomPlayInfo",
                 mapOf(
                     "room_id" to roomId.toString(),
-                    "protocol" to "0", // http_stream
-                    "format" to "0", // flv
-                    "codec" to "0", // avc
+                    // B 站直播间的可用直播流组合会动态变化；不少房间只返回 http_hls/fmp4(m3u8)。
+                    // 为提高兼容性，按官方文档传多选，让服务端返回可用集合，再在客户端挑最合适的组合。
+                    "protocol" to "0,1", // 0=http_stream, 1=http_hls
+                    "format" to "0,1,2", // 0=flv, 1=ts, 2=fmp4
+                    "codec" to "0,1", // 0=avc, 1=hevc
                     "qn" to qn.coerceAtLeast(1).toString(),
                 ),
             )
@@ -814,23 +816,50 @@ object BiliApi {
         }
 
         val streamArr = playurl.optJSONArray("stream") ?: JSONArray()
+        val protocolOrder = listOf("http_stream", "http_hls")
+        val formatOrderForProtocol =
+            mapOf(
+                "http_stream" to listOf("flv", "fmp4", "ts"),
+                "http_hls" to listOf("fmp4", "ts", "flv"),
+            )
+        val codecOrder = listOf("avc", "hevc")
+
+        fun normalize(v: String): String = v.trim().lowercase()
+        fun pickCodec(protocol: String, format: String, codec: String): JSONObject? {
+            val targetProtocol = normalize(protocol)
+            val targetFormat = normalize(format)
+            val targetCodec = normalize(codec)
+            for (i in 0 until streamArr.length()) {
+                val stream = streamArr.optJSONObject(i) ?: continue
+                val protocolName = normalize(stream.optString("protocol_name", ""))
+                if (protocolName != targetProtocol) continue
+                val formats = stream.optJSONArray("format") ?: continue
+                for (j in 0 until formats.length()) {
+                    val fmt = formats.optJSONObject(j) ?: continue
+                    val formatName = normalize(fmt.optString("format_name", ""))
+                    if (formatName != targetFormat) continue
+                    val codecs = fmt.optJSONArray("codec") ?: continue
+                    for (k in 0 until codecs.length()) {
+                        val c = codecs.optJSONObject(k) ?: continue
+                        val codecName = normalize(c.optString("codec_name", ""))
+                        if (codecName != targetCodec) continue
+                        val baseUrl = c.optString("base_url", "").trim()
+                        val urlInfo = c.optJSONArray("url_info")
+                        if (baseUrl.isBlank() || urlInfo == null || urlInfo.length() <= 0) continue
+                        return c
+                    }
+                }
+            }
+            return null
+        }
+
         var pickedCodec: JSONObject? = null
-        loop@ for (i in 0 until streamArr.length()) {
-            val stream = streamArr.optJSONObject(i) ?: continue
-            val protocolName = stream.optString("protocol_name", "").lowercase()
-            if (!protocolName.contains("http_stream")) continue
-            val formats = stream.optJSONArray("format") ?: continue
-            for (j in 0 until formats.length()) {
-                val fmt = formats.optJSONObject(j) ?: continue
-                val formatName = fmt.optString("format_name", "").lowercase()
-                if (formatName != "flv") continue
-                val codecs = fmt.optJSONArray("codec") ?: continue
-                for (k in 0 until codecs.length()) {
-                    val c = codecs.optJSONObject(k) ?: continue
-                    val codecName = c.optString("codec_name", "").lowercase()
-                    if (codecName != "avc") continue
-                    pickedCodec = c
-                    break@loop
+        pick@ for (protocol in protocolOrder) {
+            val formats = formatOrderForProtocol[protocol].orEmpty()
+            for (fmt in formats) {
+                for (c in codecOrder) {
+                    pickedCodec = pickCodec(protocol = protocol, format = fmt, codec = c)
+                    if (pickedCodec != null) break@pick
                 }
             }
         }
@@ -1186,6 +1215,158 @@ object BiliApi {
             }
         }
         return enriched
+    }
+
+    data class FavFolderWithState(
+        val mediaId: Long,
+        val title: String,
+        val mediaCount: Int,
+        val favState: Boolean,
+    )
+
+    suspend fun favFoldersWithState(upMid: Long, rid: Long): List<FavFolderWithState> {
+        if (upMid <= 0L) error("fav_folders_with_state_invalid_up_mid")
+        if (rid <= 0L) error("fav_folders_with_state_invalid_rid")
+        val url = BiliClient.withQuery(
+            "https://api.bilibili.com/x/v3/fav/folder/created/list-all",
+            mapOf(
+                "up_mid" to upMid.toString(),
+                "type" to "2",
+                "rid" to rid.toString(),
+                "web_location" to "333.1387",
+            ),
+        )
+        val json = BiliClient.getJson(url)
+        val code = json.optInt("code", 0)
+        if (code != 0) {
+            val msg = json.optString("message", json.optString("msg", ""))
+            throw BiliApiException(apiCode = code, apiMessage = msg)
+        }
+        val list = json.optJSONObject("data")?.optJSONArray("list") ?: JSONArray()
+        return withContext(Dispatchers.Default) {
+            val out = ArrayList<FavFolderWithState>(list.length())
+            for (i in 0 until list.length()) {
+                val obj = list.optJSONObject(i) ?: continue
+                val mediaId = obj.optLong("id").takeIf { it > 0 } ?: continue
+                val favState = obj.optInt("fav_state", 0) == 1
+                out.add(
+                    FavFolderWithState(
+                        mediaId = mediaId,
+                        title = obj.optString("title", ""),
+                        mediaCount = obj.optInt("media_count", 0),
+                        favState = favState,
+                    ),
+                )
+            }
+            out
+        }
+    }
+
+    suspend fun favResourceDeal(
+        rid: Long,
+        addMediaIds: List<Long>,
+        delMediaIds: List<Long>,
+    ) {
+        if (rid <= 0L) error("fav_resource_deal_invalid_rid")
+        val csrf = BiliClient.cookies.getCookieValue("bili_jct").orEmpty().trim()
+        if (csrf.isBlank()) throw BiliApiException(apiCode = -111, apiMessage = "missing_csrf")
+        if (addMediaIds.isEmpty() && delMediaIds.isEmpty()) return
+
+        val url = "https://api.bilibili.com/x/v3/fav/resource/deal"
+        val form =
+            buildMap {
+                put("rid", rid.toString())
+                put("type", "2")
+                put("csrf", csrf)
+                put("platform", "web")
+                put("add_media_ids", addMediaIds.distinct().joinToString(","))
+                put("del_media_ids", delMediaIds.distinct().joinToString(","))
+            }
+        val json =
+            BiliClient.postFormJson(
+                url,
+                form = form,
+                headers = piliWebHeaders(targetUrl = url, includeCookie = true),
+                noCookies = true,
+            )
+        val code = json.optInt("code", 0)
+        if (code != 0) {
+            val msg = json.optString("message", json.optString("msg", ""))
+            throw BiliApiException(apiCode = code, apiMessage = msg)
+        }
+    }
+
+    suspend fun archiveLike(
+        bvid: String? = null,
+        aid: Long? = null,
+        like: Boolean,
+    ) {
+        val safeBvid = bvid?.trim().orEmpty()
+        val safeAid = aid?.takeIf { it > 0L }
+        if (safeBvid.isBlank() && safeAid == null) throw BiliApiException(apiCode = -400, apiMessage = "missing_video_id")
+
+        WebCookieMaintainer.ensureWebFingerprintCookies()
+        WebCookieMaintainer.ensureBuvidActiveOncePerDay()
+        val csrf = BiliClient.cookies.getCookieValue("bili_jct").orEmpty().trim()
+        if (csrf.isBlank()) throw BiliApiException(apiCode = -111, apiMessage = "missing_csrf")
+
+        val url = "https://api.bilibili.com/x/web-interface/archive/like"
+        val form =
+            buildMap {
+                if (safeBvid.isNotBlank()) put("bvid", safeBvid) else put("aid", safeAid.toString())
+                put("like", if (like) "1" else "2")
+                put("csrf", csrf)
+            }
+        val json =
+            BiliClient.postFormJson(
+                url,
+                form = form,
+                headers = piliWebHeaders(targetUrl = url, includeCookie = true),
+                noCookies = true,
+            )
+        val code = json.optInt("code", 0)
+        if (code != 0) {
+            val msg = json.optString("message", json.optString("msg", ""))
+            throw BiliApiException(apiCode = code, apiMessage = msg)
+        }
+    }
+
+    suspend fun coinAdd(
+        bvid: String? = null,
+        aid: Long? = null,
+        multiply: Int = 1,
+        selectLike: Boolean = false,
+    ) {
+        val safeBvid = bvid?.trim().orEmpty()
+        val safeAid = aid?.takeIf { it > 0L }
+        if (safeBvid.isBlank() && safeAid == null) throw BiliApiException(apiCode = -400, apiMessage = "missing_video_id")
+        val mul = multiply.coerceIn(1, 2)
+
+        WebCookieMaintainer.ensureWebFingerprintCookies()
+        WebCookieMaintainer.ensureBuvidActiveOncePerDay()
+        val csrf = BiliClient.cookies.getCookieValue("bili_jct").orEmpty().trim()
+        if (csrf.isBlank()) throw BiliApiException(apiCode = -111, apiMessage = "missing_csrf")
+
+        val url = "https://api.bilibili.com/x/web-interface/coin/add"
+        val form =
+            buildMap {
+                if (safeBvid.isNotBlank()) put("bvid", safeBvid) else put("aid", safeAid.toString())
+                put("multiply", mul.toString())
+                put("select_like", if (selectLike) "1" else "0")
+                put("csrf", csrf)
+            }
+        val json =
+            BiliClient.postFormJson(
+                url,
+                form = form,
+                headers = piliWebHeaders(targetUrl = url, includeCookie = true),
+                noCookies = true,
+            )
+        val code = json.optInt("code", 0)
+        if (code != 0) {
+            val msg = json.optString("message", json.optString("msg", ""))
+            throw BiliApiException(apiCode = code, apiMessage = msg)
+        }
     }
 
     suspend fun favFolderResources(

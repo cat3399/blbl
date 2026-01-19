@@ -16,7 +16,7 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.exoplayer.source.ProgressiveMediaSource
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import blbl.cat3399.core.api.BiliApi
 import blbl.cat3399.core.api.BiliApiException
 import blbl.cat3399.core.log.AppLog
@@ -86,6 +86,9 @@ class LivePlayerActivity : AppCompatActivity() {
         binding.btnNext.visibility = View.GONE
         binding.tvOnline.visibility = View.GONE
         binding.btnUp.visibility = View.GONE
+        binding.btnLike.visibility = View.GONE
+        binding.btnCoin.visibility = View.GONE
+        binding.btnFav.visibility = View.GONE
 
         binding.btnBack.setOnClickListener { finish() }
 
@@ -573,9 +576,8 @@ class LivePlayerActivity : AppCompatActivity() {
             if (pickedLine == null) error("No playable live url")
 
             val factory = OkHttpDataSource.Factory(BiliClient.cdnOkHttp)
-            val mediaSource =
-                ProgressiveMediaSource.Factory(factory)
-                    .createMediaSource(MediaItem.fromUri(Uri.parse(pickedLine.url)))
+            val mediaSourceFactory = DefaultMediaSourceFactory(factory)
+            val mediaSource = mediaSourceFactory.createMediaSource(MediaItem.fromUri(Uri.parse(pickedLine.url)))
             exo.setMediaSource(mediaSource)
             exo.prepare()
             exo.playWhenReady = true
