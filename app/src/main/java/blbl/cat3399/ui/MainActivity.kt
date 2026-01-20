@@ -14,6 +14,7 @@ import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
+import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -24,6 +25,7 @@ import blbl.cat3399.core.api.BiliApi
 import blbl.cat3399.core.log.AppLog
 import blbl.cat3399.core.net.BiliClient
 import blbl.cat3399.core.prefs.AppPrefs
+import blbl.cat3399.core.tv.RemoteKeys
 import blbl.cat3399.core.tv.TvMode
 import blbl.cat3399.core.ui.Immersive
 import blbl.cat3399.core.ui.UiScale
@@ -181,6 +183,10 @@ class MainActivity : AppCompatActivity() {
             return super.dispatchKeyEvent(event)
         }
         if (event.action == KeyEvent.ACTION_DOWN) {
+            if (event.repeatCount == 0 && RemoteKeys.isRefreshKey(event.keyCode)) {
+                if (dispatchRefreshKeyToCurrentPage()) return true
+            }
+
             val focused = currentFocus
             if (focused == null && isNavKey(event.keyCode)) {
                 ensureInitialFocus()
@@ -225,6 +231,28 @@ class MainActivity : AppCompatActivity() {
             }
         }
         return super.dispatchKeyEvent(event)
+    }
+
+    private fun dispatchRefreshKeyToCurrentPage(): Boolean {
+        val root = supportFragmentManager.findFragmentById(R.id.main_container) ?: return false
+        val handler = findRefreshKeyHandler(root) ?: return false
+        return handler.handleRefreshKey()
+    }
+
+    private fun findRefreshKeyHandler(fragment: Fragment): RefreshKeyHandler? {
+        return findRefreshKeyHandler(fragment, preferResumed = true) ?: findRefreshKeyHandler(fragment, preferResumed = false)
+    }
+
+    private fun findRefreshKeyHandler(fragment: Fragment, preferResumed: Boolean): RefreshKeyHandler? {
+        if (!fragment.isAdded) return null
+
+        fragment.childFragmentManager.fragments.asReversed().forEach { child ->
+            val found = findRefreshKeyHandler(child, preferResumed)
+            if (found != null) return found
+        }
+
+        val active = if (preferResumed) fragment.isResumed else fragment.isVisible
+        return if (active && fragment is RefreshKeyHandler) fragment else null
     }
 
     private fun initUserInfoOverlay() {

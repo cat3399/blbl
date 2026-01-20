@@ -349,13 +349,13 @@ class SettingsActivity : AppCompatActivity() {
             }
 
             "每行卡片数量" -> {
-                val options = listOf("自动", "1", "2", "3", "4", "5", "6")
+                val options = listOf("1", "2", "3", "4", "5", "6")
                 showChoiceDialog(
                     title = "每行卡片数量",
                     items = options,
                     current = gridSpanText(prefs.gridSpanCount),
                 ) { selected ->
-                    prefs.gridSpanCount = if (selected == "自动") 0 else (selected.toIntOrNull() ?: 0)
+                    prefs.gridSpanCount = (selected.toIntOrNull() ?: 4).coerceIn(1, 6)
                     Toast.makeText(this, "每行卡片：${gridSpanText(prefs.gridSpanCount)}", Toast.LENGTH_SHORT).show()
                     refreshSection(entry.title)
                 }

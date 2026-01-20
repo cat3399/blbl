@@ -20,9 +20,12 @@ import blbl.cat3399.databinding.FragmentMyBangumiDetailBinding
 import blbl.cat3399.feature.player.PlayerActivity
 import blbl.cat3399.feature.player.PlayerPlaylistItem
 import blbl.cat3399.feature.player.PlayerPlaylistStore
+import blbl.cat3399.ui.RefreshKeyHandler
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
-class MyBangumiDetailFragment : Fragment() {
+class MyBangumiDetailFragment : Fragment(), RefreshKeyHandler {
     private var _binding: FragmentMyBangumiDetailBinding? = null
     private val binding get() = _binding!!
 
@@ -38,6 +41,7 @@ class MyBangumiDetailFragment : Fragment() {
     private var autoFocusAttempts: Int = 0
     private var epDataObserver: RecyclerView.AdapterDataObserver? = null
     private var pendingAutoFocusPrimary: Boolean = true
+    private var loadJob: Job? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -86,6 +90,13 @@ class MyBangumiDetailFragment : Fragment() {
         super.onResume()
         tryAutoFocusPrimary()
         load()
+    }
+
+    override fun handleRefreshKey(): Boolean {
+        if (!isResumed) return false
+        if (_binding == null) return false
+        load()
+        return true
     }
 
     private fun tryAutoFocusPrimary() {
@@ -161,7 +172,9 @@ class MyBangumiDetailFragment : Fragment() {
     }
 
     private fun load() {
-        viewLifecycleOwner.lifecycleScope.launch {
+        loadJob?.cancel()
+        loadJob =
+            viewLifecycleOwner.lifecycleScope.launch {
             try {
                 val detail = BiliApi.bangumiSeasonDetail(seasonId = seasonId)
                 val b = _binding ?: return@launch
@@ -187,6 +200,7 @@ class MyBangumiDetailFragment : Fragment() {
                 tryAutoFocusFirstEpisode()
                 tryAutoFocusPrimary()
             } catch (t: Throwable) {
+                if (t is CancellationException) throw t
                 AppLog.e("MyBangumiDetail", "load failed seasonId=$seasonId", t)
                 context?.let { Toast.makeText(it, "加载失败，可查看 Logcat(标签 BLBL)", Toast.LENGTH_SHORT).show() }
             }
@@ -228,6 +242,8 @@ class MyBangumiDetailFragment : Fragment() {
     }
 
     override fun onDestroyView() {
+        loadJob?.cancel()
+        loadJob = null
         if (this::epAdapter.isInitialized) {
             epDataObserver?.let { epAdapter.unregisterAdapterDataObserver(it) }
         }

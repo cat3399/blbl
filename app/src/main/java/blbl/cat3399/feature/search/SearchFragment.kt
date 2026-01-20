@@ -44,13 +44,14 @@ import blbl.cat3399.feature.player.PlayerPlaylistItem
 import blbl.cat3399.feature.player.PlayerPlaylistStore
 import blbl.cat3399.feature.video.VideoCardAdapter
 import blbl.cat3399.ui.BackPressHandler
+import blbl.cat3399.ui.RefreshKeyHandler
 import com.google.android.material.card.MaterialCardView
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
-class SearchFragment : Fragment(), BackPressHandler {
+class SearchFragment : Fragment(), BackPressHandler, RefreshKeyHandler {
     private var _binding: FragmentSearchBinding? = null
     private val binding get() = _binding!!
 
@@ -1259,6 +1260,15 @@ class SearchFragment : Fragment(), BackPressHandler {
         (binding.recyclerResults.layoutManager as? GridLayoutManager)?.spanCount = spanCountForCurrentTab()
         maybeConsumePendingFocusFirstResultCardFromTabSwitch()
         restoreMediaFocusIfNeeded()
+    }
+
+    override fun handleRefreshKey(): Boolean {
+        val b = _binding ?: return false
+        if (!isResumed) return false
+        if (b.panelResults.visibility != View.VISIBLE) return false
+        if (b.swipeRefresh.isRefreshing) return true
+        resetAndLoad()
+        return true
     }
 
     private fun restoreMediaFocusIfNeeded() {

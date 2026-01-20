@@ -20,10 +20,11 @@ import blbl.cat3399.databinding.FragmentVideoGridBinding
 import blbl.cat3399.feature.player.PlayerPlaylistItem
 import blbl.cat3399.feature.player.PlayerPlaylistStore
 import blbl.cat3399.feature.player.PlayerActivity
+import blbl.cat3399.ui.RefreshKeyHandler
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
-class VideoGridFragment : Fragment() {
+class VideoGridFragment : Fragment(), RefreshKeyHandler {
     private var _binding: FragmentVideoGridBinding? = null
     private val binding get() = _binding!!
 
@@ -212,6 +213,15 @@ class VideoGridFragment : Fragment() {
         (binding.recycler.layoutManager as? GridLayoutManager)?.spanCount = spanCountForWidth()
         maybeTriggerInitialLoad()
         maybeConsumePendingFocusFirstCard()
+    }
+
+    override fun handleRefreshKey(): Boolean {
+        val b = _binding ?: return false
+        if (!isResumed) return false
+        if (b.swipeRefresh.isRefreshing) return true
+        b.swipeRefresh.isRefreshing = true
+        resetAndLoad()
+        return true
     }
 
     private fun maybeTriggerInitialLoad() {

@@ -21,9 +21,10 @@ import blbl.cat3399.feature.player.PlayerActivity
 import blbl.cat3399.feature.player.PlayerPlaylistItem
 import blbl.cat3399.feature.player.PlayerPlaylistStore
 import blbl.cat3399.feature.video.VideoCardAdapter
+import blbl.cat3399.ui.RefreshKeyHandler
 import kotlinx.coroutines.launch
 
-class MyToViewFragment : Fragment(), MyTabSwitchFocusTarget {
+class MyToViewFragment : Fragment(), MyTabSwitchFocusTarget, RefreshKeyHandler {
     private var _binding: FragmentVideoGridBinding? = null
     private val binding get() = _binding!!
 
@@ -142,6 +143,15 @@ class MyToViewFragment : Fragment(), MyTabSwitchFocusTarget {
         (binding.recycler.layoutManager as? GridLayoutManager)?.spanCount = spanCountForWidth(resources)
         maybeTriggerInitialLoad()
         maybeConsumePendingFocusFirstItemFromTabSwitch()
+    }
+
+    override fun handleRefreshKey(): Boolean {
+        val b = _binding ?: return false
+        if (!isResumed) return false
+        if (b.swipeRefresh.isRefreshing) return true
+        b.swipeRefresh.isRefreshing = true
+        reload()
+        return true
     }
 
     override fun requestFocusFirstItemFromTabSwitch(): Boolean {

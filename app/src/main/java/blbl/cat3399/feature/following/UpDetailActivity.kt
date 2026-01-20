@@ -18,6 +18,7 @@ import blbl.cat3399.R
 import blbl.cat3399.core.api.BiliApi
 import blbl.cat3399.core.log.AppLog
 import blbl.cat3399.core.net.BiliClient
+import blbl.cat3399.core.tv.RemoteKeys
 import blbl.cat3399.core.tv.TvMode
 import blbl.cat3399.core.ui.ActivityStackLimiter
 import blbl.cat3399.core.ui.Immersive
@@ -209,6 +210,11 @@ class UpDetailActivity : AppCompatActivity() {
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0 && RemoteKeys.isRefreshKey(event.keyCode)) {
+            if (binding.swipeRefresh.isRefreshing) return true
+            resetAndLoad()
+            return true
+        }
         if (event.action == KeyEvent.ACTION_DOWN && currentFocus == null && isNavKey(event.keyCode)) {
             ensureInitialFocus()
             return true

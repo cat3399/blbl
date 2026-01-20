@@ -16,9 +16,10 @@ import blbl.cat3399.core.api.BiliApi
 import blbl.cat3399.core.log.AppLog
 import blbl.cat3399.core.net.BiliClient
 import blbl.cat3399.databinding.FragmentVideoGridBinding
+import blbl.cat3399.ui.RefreshKeyHandler
 import kotlinx.coroutines.launch
 
-class MyBangumiFollowFragment : Fragment(), MyTabSwitchFocusTarget {
+class MyBangumiFollowFragment : Fragment(), MyTabSwitchFocusTarget, RefreshKeyHandler {
     private var _binding: FragmentVideoGridBinding? = null
     private val binding get() = _binding!!
 
@@ -144,6 +145,15 @@ class MyBangumiFollowFragment : Fragment(), MyTabSwitchFocusTarget {
         maybeTriggerInitialLoad()
         restoreFocusIfNeeded()
         maybeConsumePendingFocusFirstItemFromTabSwitch()
+    }
+
+    override fun handleRefreshKey(): Boolean {
+        val b = _binding ?: return false
+        if (!isResumed) return false
+        if (b.swipeRefresh.isRefreshing) return true
+        b.swipeRefresh.isRefreshing = true
+        resetAndLoad()
+        return true
     }
 
     private fun spanCountForBangumi(resources: android.content.res.Resources): Int {

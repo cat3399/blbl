@@ -25,10 +25,11 @@ import blbl.cat3399.feature.player.PlayerActivity
 import blbl.cat3399.feature.player.PlayerPlaylistItem
 import blbl.cat3399.feature.player.PlayerPlaylistStore
 import blbl.cat3399.feature.video.VideoCardAdapter
+import blbl.cat3399.ui.RefreshKeyHandler
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
-class DynamicFragment : Fragment() {
+class DynamicFragment : Fragment(), RefreshKeyHandler {
     private var _bindingLogin: FragmentDynamicLoginBinding? = null
     private var _binding: FragmentDynamicBinding? = null
 
@@ -553,6 +554,21 @@ class DynamicFragment : Fragment() {
         if (this::videoAdapter.isInitialized) videoAdapter.setTvMode(TvMode.isEnabled(requireContext()))
         if (this::followAdapter.isInitialized) followAdapter.setTvMode(TvMode.isEnabled(requireContext()))
         (_binding?.recyclerDynamic?.layoutManager as? GridLayoutManager)?.spanCount = spanCountForWidth()
+    }
+
+    override fun handleRefreshKey(): Boolean {
+        if (!isResumed) return false
+        if (!loggedIn) {
+            Toast.makeText(requireContext(), "请先登录", Toast.LENGTH_SHORT).show()
+            _bindingLogin?.btnLogin?.requestFocus()
+            return true
+        }
+
+        val b = _binding ?: return false
+        if (b.swipeRefresh.isRefreshing) return true
+        b.swipeRefresh.isRefreshing = true
+        loadAll(resetFeed = true)
+        return true
     }
 
     private fun applyUiMode() {

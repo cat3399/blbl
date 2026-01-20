@@ -15,9 +15,10 @@ import androidx.recyclerview.widget.StaggeredGridLayoutManager
 import blbl.cat3399.core.api.BiliApi
 import blbl.cat3399.core.log.AppLog
 import blbl.cat3399.databinding.FragmentVideoGridBinding
+import blbl.cat3399.ui.RefreshKeyHandler
 import kotlinx.coroutines.launch
 
-class MyFavFoldersFragment : Fragment(), MyTabSwitchFocusTarget {
+class MyFavFoldersFragment : Fragment(), MyTabSwitchFocusTarget, RefreshKeyHandler {
     private var _binding: FragmentVideoGridBinding? = null
     private val binding get() = _binding!!
 
@@ -123,6 +124,15 @@ class MyFavFoldersFragment : Fragment(), MyTabSwitchFocusTarget {
         maybeTriggerInitialLoad()
         restoreFocusIfNeeded()
         maybeConsumePendingFocusFirstItemFromTabSwitch()
+    }
+
+    override fun handleRefreshKey(): Boolean {
+        val b = _binding ?: return false
+        if (!isResumed) return false
+        if (b.swipeRefresh.isRefreshing) return true
+        b.swipeRefresh.isRefreshing = true
+        reload()
+        return true
     }
 
     override fun requestFocusFirstItemFromTabSwitch(): Boolean {

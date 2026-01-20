@@ -15,6 +15,7 @@ import androidx.recyclerview.widget.SimpleItemAnimator
 import blbl.cat3399.core.api.BiliApi
 import blbl.cat3399.core.log.AppLog
 import blbl.cat3399.core.net.BiliClient
+import blbl.cat3399.core.tv.RemoteKeys
 import blbl.cat3399.core.tv.TvMode
 import blbl.cat3399.core.ui.Immersive
 import blbl.cat3399.databinding.ActivityFollowingListBinding
@@ -161,6 +162,17 @@ class FollowingListActivity : AppCompatActivity() {
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0 && RemoteKeys.isRefreshKey(event.keyCode)) {
+            if (binding.loginContainer.isVisible) {
+                Toast.makeText(this, "请先登录", Toast.LENGTH_SHORT).show()
+                binding.btnLogin.requestFocus()
+                return true
+            }
+            if (binding.swipeRefresh.isRefreshing) return true
+            binding.swipeRefresh.isRefreshing = true
+            resetAndLoad()
+            return true
+        }
         if (event.action == KeyEvent.ACTION_DOWN && currentFocus == null && isNavKey(event.keyCode)) {
             ensureInitialFocus()
             return true

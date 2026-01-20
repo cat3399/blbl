@@ -163,8 +163,15 @@ class AppPrefs(context: Context) {
         set(value) = saveStringList(KEY_PLAYER_ACTION_BUTTONS, value)
 
     var gridSpanCount: Int
-        get() = prefs.getInt(KEY_GRID_SPAN, 0) // 0 => auto
-        set(value) = prefs.edit().putInt(KEY_GRID_SPAN, value).apply()
+        get() {
+            val stored = prefs.getInt(KEY_GRID_SPAN, 4)
+            val span = if (stored <= 0) 4 else stored
+            return span.coerceIn(1, 6)
+        }
+        set(value) {
+            val span = if (value <= 0) 4 else value
+            prefs.edit().putInt(KEY_GRID_SPAN, span.coerceIn(1, 6)).apply()
+        }
 
     var dynamicGridSpanCount: Int
         get() = prefs.getInt(KEY_DYNAMIC_GRID_SPAN, 3)

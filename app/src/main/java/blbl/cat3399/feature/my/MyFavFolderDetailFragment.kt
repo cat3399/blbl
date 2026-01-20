@@ -22,9 +22,10 @@ import blbl.cat3399.feature.player.PlayerActivity
 import blbl.cat3399.feature.player.PlayerPlaylistItem
 import blbl.cat3399.feature.player.PlayerPlaylistStore
 import blbl.cat3399.feature.video.VideoCardAdapter
+import blbl.cat3399.ui.RefreshKeyHandler
 import kotlinx.coroutines.launch
 
-class MyFavFolderDetailFragment : Fragment() {
+class MyFavFolderDetailFragment : Fragment(), RefreshKeyHandler {
     private var _binding: FragmentMyFavFolderDetailBinding? = null
     private val binding get() = _binding!!
 
@@ -185,6 +186,15 @@ class MyFavFolderDetailFragment : Fragment() {
         super.onResume()
         if (this::adapter.isInitialized) adapter.setTvMode(TvMode.isEnabled(requireContext()))
         (binding.recycler.layoutManager as? GridLayoutManager)?.spanCount = spanCountForWidth(resources)
+    }
+
+    override fun handleRefreshKey(): Boolean {
+        val b = _binding ?: return false
+        if (!isResumed) return false
+        if (b.swipeRefresh.isRefreshing) return true
+        b.swipeRefresh.isRefreshing = true
+        resetAndLoad()
+        return true
     }
 
     private fun resetAndLoad() {

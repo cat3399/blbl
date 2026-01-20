@@ -16,9 +16,10 @@ import blbl.cat3399.core.log.AppLog
 import blbl.cat3399.core.model.LiveAreaParent
 import blbl.cat3399.core.net.BiliClient
 import blbl.cat3399.databinding.FragmentLiveGridBinding
+import blbl.cat3399.ui.RefreshKeyHandler
 import kotlinx.coroutines.launch
 
-class LiveAreaIndexFragment : Fragment(), LivePageFocusTarget, LivePageReturnFocusTarget {
+class LiveAreaIndexFragment : Fragment(), LivePageFocusTarget, LivePageReturnFocusTarget, RefreshKeyHandler {
     private var _binding: FragmentLiveGridBinding? = null
     private val binding get() = _binding!!
 
@@ -121,6 +122,15 @@ class LiveAreaIndexFragment : Fragment(), LivePageFocusTarget, LivePageReturnFoc
         maybeTriggerInitialLoad()
         restoreFocusIfNeeded()
         maybeConsumePendingFocusFirstCard()
+    }
+
+    override fun handleRefreshKey(): Boolean {
+        val b = _binding ?: return false
+        if (!isResumed) return false
+        if (b.swipeRefresh.isRefreshing) return true
+        b.swipeRefresh.isRefreshing = true
+        reload(force = true)
+        return true
     }
 
     private fun maybeTriggerInitialLoad() {

@@ -17,10 +17,11 @@ import blbl.cat3399.core.api.BiliApi
 import blbl.cat3399.core.log.AppLog
 import blbl.cat3399.core.tv.TvMode
 import blbl.cat3399.databinding.FragmentLiveGridBinding
+import blbl.cat3399.ui.RefreshKeyHandler
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
-class LiveGridFragment : Fragment(), LivePageFocusTarget {
+class LiveGridFragment : Fragment(), LivePageFocusTarget, RefreshKeyHandler {
     private var _binding: FragmentLiveGridBinding? = null
     private val binding get() = _binding!!
 
@@ -193,6 +194,15 @@ class LiveGridFragment : Fragment(), LivePageFocusTarget {
         updateRecyclerSpanCountIfNeeded(force = true)
         maybeTriggerInitialLoad()
         maybeConsumePendingFocusFirstCard()
+    }
+
+    override fun handleRefreshKey(): Boolean {
+        val b = _binding ?: return false
+        if (!isResumed) return false
+        if (b.swipeRefresh.isRefreshing) return true
+        b.swipeRefresh.isRefreshing = true
+        resetAndLoad()
+        return true
     }
 
     private fun maybeTriggerInitialLoad() {
