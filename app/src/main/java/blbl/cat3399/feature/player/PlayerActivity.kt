@@ -498,12 +498,20 @@ class PlayerActivity : AppCompatActivity() {
     )
 
     private fun updatePlaylistControls() {
-        val enabled = playlistItems.size >= 2 && playlistIndex in playlistItems.indices
-        val alpha = if (enabled) 1.0f else 0.35f
-        binding.btnPrev.isEnabled = enabled
-        binding.btnNext.isEnabled = enabled
-        binding.btnPrev.alpha = alpha
-        binding.btnNext.alpha = alpha
+        val hasPlaylist = playlistItems.isNotEmpty() && playlistIndex in playlistItems.indices
+        val canSwitch = playlistItems.size >= 2 && playlistIndex in playlistItems.indices
+
+        run {
+            val alpha = if (canSwitch) 1.0f else 0.35f
+            binding.btnPrev.isEnabled = canSwitch
+            binding.btnNext.isEnabled = canSwitch
+            binding.btnPrev.alpha = alpha
+            binding.btnNext.alpha = alpha
+        }
+
+        binding.btnPlaylist.visibility = if (hasPlaylist) View.VISIBLE else View.GONE
+        binding.btnPlaylist.isEnabled = hasPlaylist
+        binding.btnPlaylist.alpha = if (hasPlaylist) 1.0f else 0.35f
     }
 
     private fun updateUpButton() {
@@ -583,6 +591,30 @@ class PlayerActivity : AppCompatActivity() {
                 }
             applyPlaybackMode(exo)
             refreshSettings(binding.recyclerSettings.adapter as PlayerSettingsAdapter)
+        }
+    }
+
+    private fun showPlaylistDialog() {
+        val list = playlistItems
+        if (list.isEmpty() || playlistIndex !in list.indices) {
+            Toast.makeText(this, "暂无播放列表", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val labels =
+            list.mapIndexed { index, item ->
+                item.title?.trim()?.takeIf { it.isNotBlank() }
+                    ?: "视频 ${index + 1}"
+            }
+
+        SingleChoiceDialog.show(
+            context = this,
+            title = "播放列表",
+            items = labels,
+            checkedIndex = playlistIndex,
+            negativeText = "关闭",
+        ) { which, _ ->
+            if (which != playlistIndex) playPlaylistIndex(which)
         }
     }
 
@@ -1392,6 +1424,11 @@ class PlayerActivity : AppCompatActivity() {
         }
         binding.btnNext.setOnClickListener {
             playNext(userInitiated = true)
+            setControlsVisible(true)
+        }
+
+        binding.btnPlaylist.setOnClickListener {
+            showPlaylistDialog()
             setControlsVisible(true)
         }
 

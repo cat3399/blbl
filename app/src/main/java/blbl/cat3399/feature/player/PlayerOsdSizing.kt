@@ -58,7 +58,7 @@ object PlayerOsdSizing {
             btn.setPadding(padNormal, padNormal, padNormal, padNormal)
             setEndMargin(btn, gap)
         }
-        listOf(binding.btnLike, binding.btnCoin, binding.btnFav).forEach { btn ->
+        listOf(binding.btnLike, binding.btnCoin, binding.btnFav, binding.btnPlaylist).forEach { btn ->
             setSize(btn, targetSize, targetSize)
             btn.setPadding(padSmall, padSmall, padSmall, padSmall)
             setEndMargin(btn, gap)

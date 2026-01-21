@@ -329,6 +329,20 @@
             android:visibility="gone" />
 
             <ImageButton
+                android:id="@+id/btn_playlist"
+                android:layout_width="?attr/playerOsdButtonTargetSize"
+                android:layout_height="?attr/playerOsdButtonTargetSize"
+                android:layout_marginEnd="?attr/playerOsdGap"
+                android:background="@drawable/blbl_focus_bg_round"
+                android:contentDescription="@string/player_btn_playlist"
+                android:focusable="true"
+                android:padding="?attr/playerOsdPadSmall"
+                android:scaleType="fitCenter"
+                android:src="@drawable/ic_more_horiz"
+                android:tint="@color/player_button_tint"
+                android:visibility="gone" />
+
+            <ImageButton
                 android:id="@+id/btn_advanced"
                 android:layout_width="?attr/playerOsdButtonTargetSize"
                 android:layout_height="?attr/playerOsdButtonTargetSize"
