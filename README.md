@@ -87,15 +87,13 @@
 ## TODO 
 
 - 完善操作逻辑
-- 完善番剧和影视的搜索
-- 完善直播功能
-- 增加`播放全部视频`模式
-- Up主详情页
+- 统一样式大小计算规则
 
 ## 感谢
 
-- [https://github.com/SocialSisterYi/bilibili-API-collect](https://github.com/SocialSisterYi/bilibili-API-collect) B站API收集整理
+- https://github.com/SocialSisterYi/bilibili-API-collect B站API收集整理
 - https://github.com/xiaye13579/BBLL 优秀的页面设计和操作逻辑，本项目绝大部分页面和操作逻辑都是抄袭BBLL🥰
+- https://github.com/bggRGjQaUbCoE/PiliPlus 部分关键功能参考了Piliplus的逻辑
 - 开源第三方B站客户端
 - 群友们的详细测试与反馈
 
