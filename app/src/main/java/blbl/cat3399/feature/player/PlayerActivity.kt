@@ -1266,6 +1266,20 @@ class PlayerActivity : BaseActivity() {
                             applyAudioFallbackIfNeeded(requestedAudioId = session.targetAudioId, actualAudioId = playable.audioId)
                         }
 
+                        is Playable.VideoOnly -> {
+                            lastPickedDash = null
+                            session = session.copy(actualAudioId = 0)
+                            (binding.recyclerSettings.adapter as? PlayerSettingsAdapter)?.let { refreshSettings(it) }
+                            debugCdnHost = runCatching { Uri.parse(playable.videoUrl).host }.getOrNull()
+                            AppLog.i(
+                                "Player",
+                                "picked VideoOnly qn=${playable.qn} codecid=${playable.codecid} dv=${playable.isDolbyVision} video=${playable.videoUrl.take(40)}",
+                            )
+                            val mainFactory = createCdnFactory(DebugStreamKind.MAIN)
+                            exo.setMediaSource(buildProgressive(mainFactory, playable.videoUrl, subtitleConfig))
+                            applyResolutionFallbackIfNeeded(requestedQn = session.targetQn, actualQn = playable.qn)
+                        }
+
                         is Playable.Progressive -> {
                             lastPickedDash = null
                             session = session.copy(actualAudioId = 0)
@@ -2944,6 +2958,13 @@ class PlayerActivity : BaseActivity() {
             val isDolbyVision: Boolean,
         ) : Playable
 
+        data class VideoOnly(
+            val videoUrl: String,
+            val qn: Int,
+            val codecid: Int,
+            val isDolbyVision: Boolean,
+        ) : Playable
+
         data class Progressive(val url: String) : Playable
     }
 
@@ -3044,6 +3065,8 @@ class PlayerActivity : BaseActivity() {
             recordVVoucher(vVoucher)
         }
         val dash = data.optJSONObject("dash")
+        var dashVideoUrlForFallback: String? = null
+        var dashVideoMetaForFallback: Playable.VideoOnly? = null
         if (dash != null) {
             val videos = dash.optJSONArray("video") ?: JSONArray()
             val audios = dash.optJSONArray("audio") ?: JSONArray()
@@ -3135,6 +3158,14 @@ class PlayerActivity : BaseActivity() {
                 val pickedQnFinal = qnOf(picked)
                 val pickedCodecid = picked.optInt("codecid", 0)
                 val pickedIsDolbyVision = isDolbyVisionTrack(picked)
+                dashVideoUrlForFallback = videoUrl
+                dashVideoMetaForFallback =
+                    Playable.VideoOnly(
+                        videoUrl = videoUrl,
+                        qn = pickedQnFinal,
+                        codecid = pickedCodecid,
+                        isDolbyVision = pickedIsDolbyVision,
+                    )
 
                 data class AudioCandidate(val obj: JSONObject, val kind: DashAudioKind, val id: Int, val bandwidth: Long)
 
@@ -3171,7 +3202,7 @@ class PlayerActivity : BaseActivity() {
                         compareBy<AudioCandidate> { it.bandwidth }.thenBy { if (it.id == desiredAudioId) 1 else 0 },
                     )
                 if (audioPicked == null) {
-                    AppLog.w("Player", "no DASH audio track picked; fallback to durl if possible")
+                    AppLog.w("Player", "no DASH audio track picked; fallback to durl if possible (or video-only if durl missing)")
                 } else {
                     val audioUrl = baseUrl(audioPicked.obj)
                     return Playable.Dash(
@@ -3220,6 +3251,13 @@ class PlayerActivity : BaseActivity() {
                 ""
             }
         if (fallbackUrl.isNotBlank()) return Playable.Progressive(fallbackUrl)
+
+        // If server returns DASH video without any audio tracks, allow video-only playback as a last resort.
+        // (We still prefer progressive durl when available because it usually contains audio.)
+        val dashVideoOnly = dashVideoMetaForFallback
+        if (dashVideoOnly != null && !dashVideoUrlForFallback.isNullOrBlank()) {
+            return dashVideoOnly
+        }
 
         error("No playable url in playurl response")
     }
@@ -3351,6 +3389,15 @@ class PlayerActivity : BaseActivity() {
                         exo.setMediaSource(buildMerged(videoFactory, audioFactory, playable.videoUrl, playable.audioUrl, subtitleConfig))
                         applyResolutionFallbackIfNeeded(requestedQn = session.targetQn, actualQn = playable.qn)
                         applyAudioFallbackIfNeeded(requestedAudioId = session.targetAudioId, actualAudioId = playable.audioId)
+                    }
+                    is Playable.VideoOnly -> {
+                        lastPickedDash = null
+                        session = session.copy(actualAudioId = 0)
+                        (binding.recyclerSettings.adapter as? PlayerSettingsAdapter)?.let { refreshSettings(it) }
+                        debugCdnHost = runCatching { Uri.parse(playable.videoUrl).host }.getOrNull()
+                        val mainFactory = createCdnFactory(DebugStreamKind.MAIN)
+                        exo.setMediaSource(buildProgressive(mainFactory, playable.videoUrl, subtitleConfig))
+                        applyResolutionFallbackIfNeeded(requestedQn = session.targetQn, actualQn = playable.qn)
                     }
                     is Playable.Progressive -> {
                         lastPickedDash = null
