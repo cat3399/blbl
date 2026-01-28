@@ -27,5 +27,9 @@ class BlblApp : Application() {
         @JvmStatic
         lateinit var instance: BlblApp
             private set
+
+        fun launchIo(block: suspend CoroutineScope.() -> Unit) {
+            instance.appScope.launch(block = block)
+        }
     }
 }

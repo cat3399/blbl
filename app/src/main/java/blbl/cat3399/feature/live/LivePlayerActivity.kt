@@ -72,6 +72,7 @@ class LivePlayerActivity : BaseActivity() {
 
         // Re-apply after layout changes so content-based auto-scale can take effect.
         binding.playerView.addOnLayoutChangeListener { _, l, t, r, b, ol, ot, or, ob ->
+            if (isFinishing) return@addOnLayoutChangeListener
             val w = r - l
             val h = b - t
             val ow = or - ol
@@ -179,13 +180,29 @@ class LivePlayerActivity : BaseActivity() {
     }
 
     override fun onDestroy() {
+        val t0 = SystemClock.elapsedRealtime()
+        AppLog.i("LivePlayer", "activity:onDestroy:start")
         messageClient?.close()
         messageClient = null
         debugJob?.cancel()
         autoHideJob?.cancel()
+        binding.playerView.player = null
+        val releaseStart = SystemClock.elapsedRealtime()
         player?.release()
+        val releaseCostMs = SystemClock.elapsedRealtime() - releaseStart
+        AppLog.i("LivePlayer", "exo:release:done cost=${releaseCostMs}ms")
         player = null
+        val totalCostMs = SystemClock.elapsedRealtime() - t0
+        AppLog.i("LivePlayer", "activity:onDestroy:beforeSuper cost=${totalCostMs}ms")
         super.onDestroy()
+    }
+
+    override fun finish() {
+        if (::binding.isInitialized) {
+            binding.playerView.player = null
+        }
+        super.finish()
+        overridePendingTransition(0, 0)
     }
 
     private fun applyUiMode() {

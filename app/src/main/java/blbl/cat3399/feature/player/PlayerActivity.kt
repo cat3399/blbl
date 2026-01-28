@@ -38,6 +38,7 @@ import androidx.media3.exoplayer.source.MergingMediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import androidx.media3.exoplayer.source.SingleSampleMediaSource
 import androidx.media3.ui.CaptionStyleCompat
+import blbl.cat3399.BlblApp
 import blbl.cat3399.R
 import blbl.cat3399.core.api.BiliApi
 import blbl.cat3399.core.api.BiliApiException
@@ -179,6 +180,8 @@ class PlayerActivity : BaseActivity() {
     private var lastReportAtMs: Long = 0L
     private var lastReportedProgressSec: Long = -1L
     private var currentViewDurationMs: Long? = null
+    private var exitCleanupRequested: Boolean = false
+    private var exitCleanupReason: String? = null
 
     private class PlaybackTrace(private val id: String) {
         private val startMs = SystemClock.elapsedRealtime()
@@ -197,6 +200,39 @@ class PlayerActivity : BaseActivity() {
 
     private var trace: PlaybackTrace? = null
     private var traceFirstFrameLogged: Boolean = false
+
+    private fun requestExitCleanup(reason: String) {
+        if (exitCleanupRequested) return
+        exitCleanupRequested = true
+        exitCleanupReason = reason
+        trace?.log("activity:exit:request", "reason=$reason")
+
+        if (::binding.isInitialized) {
+            binding.playerView.player = null
+        }
+        stopReportProgressLoop(flush = false, reason = reason)
+        enqueueExitProgressReport(reason = reason)
+    }
+
+    private fun enqueueExitProgressReport(reason: String) {
+        if (!shouldReportProgressNow()) return
+        val trace = trace
+        val exo = player ?: return
+        val aid = currentAid ?: return
+        val cid = currentCid
+        val progressSec = (exo.currentPosition.coerceAtLeast(0L) / 1000L)
+
+        trace?.log("report:history:enqueue", "sec=$progressSec reason=$reason")
+        BlblApp.launchIo {
+            runCatching {
+                BiliApi.historyReport(aid = aid, cid = cid, progressSec = progressSec, platform = "android")
+            }.onSuccess {
+                trace?.log("report:history", "ok=1 sec=$progressSec reason=$reason")
+            }.onFailure {
+                trace?.log("report:history", "ok=0 sec=$progressSec reason=$reason")
+            }
+        }
+    }
 
     private data class ResumeCandidate(
         val rawTime: Long,
@@ -236,6 +272,7 @@ class PlayerActivity : BaseActivity() {
 
         // Re-apply after layout changes so content-based auto-scale can take effect.
         binding.playerView.addOnLayoutChangeListener { _, l, t, r, b, ol, ot, or, ob ->
+            if (exitCleanupRequested || isFinishing) return@addOnLayoutChangeListener
             val w = r - l
             val h = b - t
             val ow = or - ol
@@ -350,7 +387,8 @@ class PlayerActivity : BaseActivity() {
                 if (isPlaying) {
                     startReportProgressLoop()
                 } else {
-                    stopReportProgressLoop(flush = true, reason = "pause")
+                    // Avoid flushing on every pause (and also avoid duplicate flushes when `onStop()` calls `pause()`).
+                    stopReportProgressLoop(flush = false, reason = "pause")
                 }
             }
 
@@ -1567,6 +1605,8 @@ class PlayerActivity : BaseActivity() {
             if (keyCode == KeyEvent.KEYCODE_BACK) {
                 if (finishOnBackKeyUp) {
                     finishOnBackKeyUp = false
+                    requestExitCleanup(reason = "back")
+                    trace?.log("activity:finish", "via=back")
                     finish()
                 }
                 return true
@@ -1608,7 +1648,6 @@ class PlayerActivity : BaseActivity() {
             KeyEvent.KEYCODE_BACK -> {
                 cancelPendingAutoResume(reason = "back")
                 cancelPendingAutoSkip(reason = "back", markIgnored = true)
-                stopReportProgressLoop(flush = true, reason = "back")
                 finishOnBackKeyUp = false
                 if (binding.settingsPanel.visibility == View.VISIBLE) {
                     binding.settingsPanel.visibility = View.GONE
@@ -1729,12 +1768,26 @@ class PlayerActivity : BaseActivity() {
     }
 
     override fun onStop() {
+        trace?.log("activity:onStop")
         super.onStop()
         player?.pause()
-        stopReportProgressLoop(flush = true, reason = "stop")
+        val flush = !isFinishing && !isChangingConfigurations && !exitCleanupRequested
+        stopReportProgressLoop(flush = flush, reason = if (flush) "stop" else "stop_skip")
+    }
+
+    override fun onPause() {
+        trace?.log("activity:onPause")
+        super.onPause()
+    }
+
+    override fun finish() {
+        requestExitCleanup(reason = "finish")
+        super.finish()
+        overridePendingTransition(0, 0)
     }
 
     override fun onDestroy() {
+        trace?.log("activity:onDestroy:start")
         debugJob?.cancel()
         progressJob?.cancel()
         autoResumeJob?.cancel()
@@ -1748,11 +1801,16 @@ class PlayerActivity : BaseActivity() {
         loadJob?.cancel()
         loadJob = null
         dismissAutoResumeHint()
-        stopReportProgressLoop(flush = true, reason = "destroy")
+        stopReportProgressLoop(flush = false, reason = "destroy")
+        trace?.log("exo:detachView")
+        binding.playerView.player = null
+        trace?.log("exo:release:start")
         player?.release()
+        trace?.log("exo:release:done")
         player = null
         playlistToken?.let(PlayerPlaylistStore::remove)
         ActivityStackLimiter.unregister(group = ACTIVITY_STACK_GROUP, activity = this)
+        trace?.log("activity:onDestroy:beforeSuper")
         super.onDestroy()
     }
 

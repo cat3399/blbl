@@ -38,7 +38,12 @@ class DanmakuView @JvmOverloads constructor(
         var lastDrawFrameId: Int = 0
     }
 
-    private val bitmapCache = IdentityHashMap<Danmaku, CachedBitmap>()
+    private enum class BitmapRecycleMode {
+        SYNC,
+        ASYNC,
+    }
+
+    private var bitmapCache = IdentityHashMap<Danmaku, CachedBitmap>()
     private val rendering = IdentityHashMap<Danmaku, Boolean>()
     private val bitmapPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         isFilterBitmap = true
@@ -285,14 +290,30 @@ class DanmakuView @JvmOverloads constructor(
     }
 
     private fun clearBitmaps() {
+        clearBitmaps(recycleMode = BitmapRecycleMode.SYNC)
+    }
+
+    private fun recycleBitmapsFromCache(cache: IdentityHashMap<Danmaku, CachedBitmap>) {
+        for (cached in cache.values) {
+            runCatching {
+                val bmp = cached.bitmap
+                if (!bmp.isRecycled) bmp.recycle()
+            }
+        }
+        cache.clear()
+    }
+
+    private fun clearBitmaps(recycleMode: BitmapRecycleMode) {
         bitmapRenderGeneration++
         stopBitmapRenderer()
         rendering.clear()
-        val it = bitmapCache.values.iterator()
-        while (it.hasNext()) {
-            runCatching { it.next().bitmap.recycle() }
+        val cache = bitmapCache
+        if (cache.isEmpty()) return
+        bitmapCache = IdentityHashMap()
+        when (recycleMode) {
+            BitmapRecycleMode.SYNC -> recycleBitmapsFromCache(cache)
+            BitmapRecycleMode.ASYNC -> recycleScope.launch { recycleBitmapsFromCache(cache) }
         }
-        bitmapCache.clear()
     }
 
     private fun stopBitmapRenderer() {
@@ -410,7 +431,7 @@ class DanmakuView @JvmOverloads constructor(
     }
 
     override fun onDetachedFromWindow() {
-        clearBitmaps()
+        clearBitmaps(recycleMode = BitmapRecycleMode.ASYNC)
         super.onDetachedFromWindow()
     }
 
@@ -432,5 +453,7 @@ class DanmakuView @JvmOverloads constructor(
         private const val MAX_FALLBACK_TEXT_PER_FRAME = 16
         private const val BITMAP_QUEUE_CAPACITY = 96
         private const val BITMAP_RENDER_WORKERS = 2
+
+        private val recycleScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     }
 }

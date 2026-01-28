@@ -14,6 +14,7 @@
         app:layout_constraintEnd_toStartOf="@id/settings_panel"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent"
+        app:surface_type="texture_view"
         app:use_controller="false" />
 
     <blbl.cat3399.feature.player.danmaku.DanmakuView
