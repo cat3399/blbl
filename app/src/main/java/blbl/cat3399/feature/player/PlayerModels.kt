@@ -1,7 +1,23 @@
 package blbl.cat3399.feature.player
 
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Rect
+import android.util.Log
+import android.util.LruCache
+import blbl.cat3399.core.api.BiliApi
+import blbl.cat3399.core.net.BiliClient
 import blbl.cat3399.feature.player.danmaku.DanmakuSessionSettings
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.withContext
 import org.json.JSONObject
+import java.io.ByteArrayInputStream
+import java.io.DataInputStream
+import java.util.concurrent.ConcurrentHashMap
 
 data class SegmentMark(
     val startFraction: Float,
@@ -227,3 +243,140 @@ internal fun PlayerSessionSettings.restoreFromEngineSwitchJsonString(raw: String
         debugEnabled = dbg,
     )
 }
+
+internal data class VideoShot(
+    val times: List<UShort>,
+    val images: List<ByteArray?>,
+    val imageCountX: Int,
+    val imageCountY: Int,
+    val imageWidth: Int,
+    val imageHeight: Int
+){
+    companion object {
+        suspend fun fromVideoShot(videoShot: BiliApi.VideoShotInfo): VideoShot? =
+            withContext(Dispatchers.IO) {
+                Log.d("videoShot", videoShot.toString())
+                val images = videoShot.image.map { imageUrl ->
+                    async {
+                        runCatching {
+                            BiliClient.getBytes("https:"+imageUrl)
+                        }.onFailure {
+                            Log.e("videoShot", "download video shot image failed: ${it.stackTraceToString()}")
+                        }.getOrNull()
+                    }
+                }.awaitAll()
+
+                if (images.any { it == null }) {
+                    println("download video shot images failed")
+                    return@withContext null
+                }
+
+                val timeBinary = runCatching {
+                    BiliClient.getBytes(
+                        "https:"+videoShot.pvData ?: throw IllegalStateException("pvData is null")
+                    )
+                }.onFailure {
+                    println("download video shot times binary failed: ${it.stackTraceToString()}")
+                    return@withContext null
+                }.getOrNull()
+
+                val times = mutableListOf<UShort>()
+
+                runCatching {
+                    DataInputStream(ByteArrayInputStream(timeBinary)).use {
+                        while (it.available() > 0) {
+                            times.add(it.readUnsignedShort().toUShort())
+                        }
+                    }
+                }.onFailure {
+                    println("parse video shot times binary failed: ${it.stackTraceToString()}")
+                    return@withContext null
+                }
+
+                return@withContext VideoShot(
+                    times = times.drop(1),
+                    images = images.filterNotNull(),
+                    imageCountX = videoShot.imgXLen,
+                    imageCountY = videoShot.imgYLen,
+                    imageWidth = videoShot.imgXSize,
+                    imageHeight = videoShot.imgYSize
+                )
+            }
+    }
+
+    suspend fun getSpriteFrame(time: Int, cache: VideoShotImageCache): SpriteFrame {
+        val index = findClosestValueIndex(times, time.toUShort())
+        val singleImgCount = imageCountX * imageCountY
+        val imagesIndex = index / singleImgCount
+        val imageIndex = index % singleImgCount
+
+        val spriteSheet = cache.getOrDecodeImage(
+            imagesIndex,
+            images[imagesIndex]!!
+        )
+
+        val cellWidth = spriteSheet.width / imageCountX
+        val cellHeight = spriteSheet.height / imageCountY
+
+        val left = (imageIndex % imageCountX) * cellWidth
+        val top = (imageIndex / imageCountX) * cellHeight
+
+        return SpriteFrame(
+            spriteSheet = spriteSheet,
+            srcRect = Rect(left, top, left + cellWidth, top + cellHeight)
+        )
+    }
+
+    private fun findClosestValueIndex(array: List<UShort>, target: UShort): Int {
+        var left = 0
+        var right = array.size - 1
+        while (left < right) {
+            val mid = left + (right - left) / 2
+            if (array[mid] < target) {
+                left = mid + 1
+            } else {
+                right = mid
+            }
+        }
+        return left
+    }
+}
+
+class VideoShotImageCache {
+    private val memoryCache = LruCache<Int, Bitmap>(3) // 缓存3张大图
+    private val activeTasks = ConcurrentHashMap<Int, Deferred<Bitmap>>()
+
+    companion object {
+        val bitmapOptions = BitmapFactory.Options().apply {
+            inPreferredConfig = Bitmap.Config.RGB_565
+            inScaled = false
+        }
+    }
+
+    suspend fun getOrDecodeImage(imagesIndex: Int, imageData: ByteArray): Bitmap = coroutineScope {
+        memoryCache.get(imagesIndex)?.let { return@coroutineScope it }
+
+        val task = activeTasks.getOrPut(imagesIndex) {
+            async(Dispatchers.IO) {
+                val decoded = BitmapFactory.decodeByteArray(imageData, 0, imageData.size, bitmapOptions)
+                memoryCache.put(imagesIndex, decoded)
+                decoded
+            }
+        }
+        try {
+            return@coroutineScope task.await()
+        } finally {
+            activeTasks.remove(imagesIndex)
+        }
+    }
+
+    fun clear() {
+        memoryCache.evictAll()
+        activeTasks.clear()
+    }
+}
+
+data class SpriteFrame(
+    val spriteSheet: Bitmap,
+    val srcRect: Rect
+)

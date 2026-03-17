@@ -310,6 +310,22 @@ internal fun PlayerActivity.startPlayback(
                         prepareDanmakuMeta(cid, currentAid ?: aid, trace)
                             .also { trace?.log("danmakuMeta:done", "segTotal=${it.segmentTotal} segMs=${it.segmentSizeMs}") }
                     }
+
+                val videoShotJob =
+                    async(Dispatchers.IO) {
+                        trace?.log("videoShot:start")
+                        runCatching {
+                            BiliApi.getWebVideoShot(bvid = resolvedBvid, cid = cid)
+                                .let { VideoShot.fromVideoShot(it) }
+                        }.onFailure { t ->
+                            AppLog.w("Player", "load videoShot failed bvid=$resolvedBvid cid=$cid", t)
+                        }.getOrNull().also { result ->
+                            currentVideoShot = result
+                            videoShotImageCache = VideoShotImageCache()
+                            trace?.log("videoShot:done", "ok=${result != null}")
+                        }
+                    }
+
                 val subtitleSupported = engine.capabilities.subtitlesSupported
                 val subJob =
                     if (subtitleSupported) {
@@ -415,6 +431,7 @@ internal fun PlayerActivity.startPlayback(
                 val dmMeta = dmJob.await()
                 trace?.log("danmakuMeta:awaitDone")
                 applyDanmakuMeta(dmMeta)
+                videoShotJob.await()
                 requestDanmakuSegmentsForPosition(engine.currentPosition.coerceAtLeast(0L), immediate = true)
             } catch (throwable: Throwable) {
                 if (throwable is CancellationException) return@launch

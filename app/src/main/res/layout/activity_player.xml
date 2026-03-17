@@ -507,6 +507,17 @@
         app:barrierDirection="top"
         app:constraint_referenced_ids="bottom_bar,seek_osd_container" />
 
+    <blbl.cat3399.core.ui.VideoShotPreviewView
+        android:id="@+id/video_shot_preview"
+        android:layout_width="160dp"
+        android:layout_height="90dp"
+        android:visibility="gone"
+        android:elevation="4dp"
+        android:background="@drawable/bg_rounded_preview"
+        app:layout_constraintBottom_toTopOf="@id/barrier_player_bottom_overlay_top"
+        app:layout_constraintStart_toStartOf="parent"
+        android:layout_marginBottom="8dp" />
+
     <TextView
         android:id="@+id/tv_debug"
         android:layout_width="0dp"

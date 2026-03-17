@@ -87,6 +87,7 @@ import blbl.cat3399.databinding.ActivityPlayerBinding
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CoroutineExceptionHandler
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
@@ -296,6 +297,10 @@ class PlayerActivity : BaseActivity() {
     private var playUrlAutoRefreshJob: kotlinx.coroutines.Job? = null
     private var playUrlAutoRefreshToken: Int = 0
     private var playUrlAutoRefreshLastReloadAtElapsedMs: Long = 0L
+
+    internal var currentVideoShot: VideoShot? = null
+    internal var videoShotImageCache: VideoShotImageCache? = VideoShotImageCache()
+    internal var videoShotFetchJob: Job? = null
 
     private fun isPlayerTeardownInProgress(): Boolean {
         return exitCleanupRequested || isFinishing || isDestroyed || decoderReleaseRequestedOnStopReason != null || resumeAfterDecoderRelease
@@ -1848,6 +1853,11 @@ class PlayerActivity : BaseActivity() {
                     if (duration != null) {
                         val previewPos = (duration * progress) / SEEK_MAX
                         binding.tvTime.text = "${formatHms(previewPos)} / ${formatHms(duration)}"
+
+                        if (currentVideoShot != null) {
+                            binding.videoShotPreview.visibility = View.VISIBLE
+                            updateVideoShotPreview(progress, SEEK_MAX, previewPos, duration, binding.seekProgress)
+                        }
                     }
 
                     if (binding.seekProgress.isFocused && duration != null) {

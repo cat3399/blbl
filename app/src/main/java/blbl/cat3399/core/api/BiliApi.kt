@@ -260,6 +260,16 @@ object BiliApi {
         val wsPort: Int,
     )
 
+    data class VideoShotInfo(
+        val pvData: String?,
+        val imgXLen: Int,
+        val imgYLen: Int,
+        val imgXSize: Int,
+        val imgYSize: Int,
+        val image: List<String>,
+        val index: List<UShort>?,
+    )
+
     suspend fun nav(): JSONObject {
         return BiliClient.getJson("https://api.bilibili.com/x/web-interface/nav")
     }
@@ -1895,5 +1905,64 @@ object BiliApi {
         val sb = StringBuilder(digest.size * 2)
         for (b in digest) sb.append(String.format(Locale.US, "%02x", b))
         return sb.toString()
+    }
+
+    suspend fun getWebVideoShot(
+        aid: Long? = null,
+        bvid: String? = null,
+        cid: Long? = null,
+        needJsonArrayIndex: Boolean = false
+    ): VideoShotInfo {
+
+        require(aid != null || bvid != null)
+
+        val params = buildMap<String, String> {
+            aid?.let { put("aid", it.toString()) }
+            bvid?.let { put("bvid", it) }
+            cid?.let { put("cid", it.toString()) }
+            put("index", if (needJsonArrayIndex) "1" else "0")
+        }
+
+        val url = BiliClient.withQuery(
+            "https://api.bilibili.com/x/player/videoshot",
+            params
+        )
+
+        val json = BiliClient.getJson(url)
+
+        val code = json.optInt("code", 0)
+        if (code != 0) {
+            val msg = json.optString("message", json.optString("msg", ""))
+            throw BiliApiException(code, msg)
+        }
+
+        val data = json.optJSONObject("data") ?: JSONObject()
+
+        val images = buildList {
+            val arr = data.optJSONArray("image")
+            if (arr != null) {
+                for (i in 0 until arr.length()) {
+                    add(arr.optString(i))
+                }
+            }
+        }
+
+        val indexList = data.optJSONArray("index")?.let { arr ->
+            buildList {
+                for (i in 0 until arr.length()) {
+                    add(arr.optInt(i).toUShort())
+                }
+            }
+        }
+
+        return VideoShotInfo(
+            pvData = data.optString("pvdata").takeIf { it.isNotBlank() },
+            imgXLen = data.optInt("img_x_len", 10),
+            imgYLen = data.optInt("img_y_len", 10),
+            imgXSize = data.optInt("img_x_size", 0),
+            imgYSize = data.optInt("img_y_size", 0),
+            image = images,
+            index = indexList
+        )
     }
 }

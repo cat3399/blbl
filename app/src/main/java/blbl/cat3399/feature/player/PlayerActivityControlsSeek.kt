@@ -60,7 +60,12 @@ internal fun PlayerActivity.setControlsVisible(visible: Boolean) {
     binding.tvTime.visibility = if (show) View.VISIBLE else View.GONE
     binding.topBar.visibility = if (show) View.VISIBLE else View.GONE
     binding.bottomBar.visibility = if (show) View.VISIBLE else View.GONE
-    if (show) applyBottomBarFullLayout()
+    if (show) {
+        applyBottomBarFullLayout()
+    } else {
+        binding.videoShotPreview.visibility = View.GONE
+        videoShotFetchJob?.cancel()
+    }
     updatePersistentBottomProgressBarVisibility()
     if (visible) noteUserInteraction() else autoHideJob?.cancel()
 }
@@ -96,6 +101,9 @@ internal fun PlayerActivity.showSeekOsd(posMs: Long, durationMs: Long, bufferedP
     val pos = posMs.coerceAtLeast(0L)
     val bufPos = bufferedPosMs.coerceAtLeast(0L)
 
+    // === 新增：判断是否有缩略图数据 ===
+    val hasVideoShot = currentVideoShot != null
+
     if (osdMode == PlayerActivity.OsdMode.Full) {
         // Full OSD: update the real SeekBar + time (useful for hold-scrub preview).
         binding.tvTime.text = "${formatHms(pos)} / ${formatHms(duration)}"
@@ -109,6 +117,12 @@ internal fun PlayerActivity.showSeekOsd(posMs: Long, durationMs: Long, bufferedP
             val pNow = ((pos.toDouble() / duration.toDouble()) * PlayerActivity.SEEK_MAX).toInt().coerceIn(0, PlayerActivity.SEEK_MAX)
             binding.seekProgress.secondaryProgress = bufferedProgress
             binding.seekProgress.progress = pNow
+
+            // === 新增：在 Full 模式下更新并显示缩略图，跟随主进度条 ===
+            if (hasVideoShot) {
+                binding.videoShotPreview.visibility = View.VISIBLE
+                updateVideoShotPreview(pNow, PlayerActivity.SEEK_MAX, pos, duration, binding.seekProgress)
+            }
         }
         noteUserInteraction()
         return
@@ -126,9 +140,16 @@ internal fun PlayerActivity.showSeekOsd(posMs: Long, durationMs: Long, bufferedP
         val pNow = ((pos.toDouble() / duration.toDouble()) * PlayerActivity.SEEK_MAX).toInt().coerceIn(0, PlayerActivity.SEEK_MAX)
         binding.progressSeekOsd.secondaryProgress = bufferedProgress
         binding.progressSeekOsd.progress = pNow
+
+        // === 新增：在瞬时 OSD 模式下更新并显示缩略图，跟随瞬时进度条 ===
+        if (hasVideoShot) {
+            binding.videoShotPreview.visibility = View.VISIBLE
+            updateVideoShotPreview(pNow, PlayerActivity.SEEK_MAX, pos, duration, binding.progressSeekOsd)
+        }
     } else {
         binding.progressSeekOsd.secondaryProgress = 0
         binding.progressSeekOsd.progress = 0
+        binding.videoShotPreview.visibility = View.GONE
     }
 
     transientSeekOsdVisible = true
@@ -160,6 +181,10 @@ internal fun PlayerActivity.scheduleHideSeekOsd() {
             delay(PlayerActivity.SEEK_OSD_HIDE_DELAY_MS)
             if (seekOsdToken != token) return@launch
             transientSeekOsdVisible = false
+
+            binding.videoShotPreview.visibility = View.GONE
+            videoShotFetchJob?.cancel() // 及时取消异步请求
+
             updatePersistentBottomProgressBarVisibility()
         }
 }
@@ -579,4 +604,45 @@ internal fun PlayerActivity.updatePlayPauseIcon(isPlaying: Boolean) {
     binding.btnPlayPause.setImageResource(
         if (isPlaying) blbl.cat3399.R.drawable.ic_player_pause else blbl.cat3399.R.drawable.ic_player_play,
     )
+}
+
+internal fun PlayerActivity.updateVideoShotPreview(
+    progress: Int,
+    max: Int,
+    positionMs: Long,
+    durationMs: Long,
+    trackView: View // 传入当前正在使用的进度条控件
+) {
+    val previewView = binding.videoShotPreview ?: return
+    val shot = currentVideoShot ?: return
+    val cache = videoShotImageCache ?: return
+
+    videoShotFetchJob?.cancel()
+    videoShotFetchJob = lifecycleScope.launch {
+        delay(16) // 16ms 防抖
+        val frame = shot.getSpriteFrame((positionMs / 1000).toInt(), cache)
+
+        previewView.spriteFrame = frame
+
+        // === 处理 X 轴随 trackView 平移 ===
+        val containerWidth = trackView.width
+        val imageWidth = previewView.width
+
+        if (containerWidth > 0 && imageWidth > 0 && durationMs > 0) {
+            val progressRatio = progress.toDouble() / max.toDouble()
+
+            // 基于指定的 trackView 的内部宽度计算相对坐标
+            var rawOffset = (containerWidth * progressRatio) - (imageWidth / 2.0)
+
+            // 如果 trackView（如 progressSeekOsd）有 marginStart，补偿它的 left 坐标差异
+            rawOffset += trackView.left
+
+            // 限制边界：不能超出屏幕左边，也不能超出屏幕右边
+            val minOffset = 0.0
+            val parentWidth = (previewView.parent as? View)?.width ?: containerWidth
+            val maxOffset = (parentWidth - imageWidth).toDouble()
+
+            previewView.translationX = rawOffset.coerceIn(minOffset, maxOffset).toFloat()
+        }
+    }
 }
