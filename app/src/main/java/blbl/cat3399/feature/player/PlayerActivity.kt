@@ -1740,7 +1740,12 @@ class PlayerActivity : BaseActivity() {
                 }
                 if (isSidePanelVisible()) return super.dispatchKeyEvent(event)
                 if (osdMode == OsdMode.Full && binding.seekProgress.isFocused) return super.dispatchKeyEvent(event)
-                if (osdMode == OsdMode.Full && (binding.topBar.hasFocus() || binding.bottomBar.hasFocus())) return super.dispatchKeyEvent(event)
+                if (
+                    osdMode == OsdMode.Full &&
+                    (binding.topBar.hasFocus() || binding.cardUpQuick.hasFocus() || binding.bottomBar.hasFocus())
+                ) {
+                    return super.dispatchKeyEvent(event)
+                }
 
                 if (event.repeatCount > 0) {
                     showSeekOsd()
@@ -1760,7 +1765,12 @@ class PlayerActivity : BaseActivity() {
             -> {
                 if (isSidePanelVisible()) return super.dispatchKeyEvent(event)
                 if (osdMode == OsdMode.Full && binding.seekProgress.isFocused) return super.dispatchKeyEvent(event)
-                if (osdMode == OsdMode.Full && (binding.topBar.hasFocus() || binding.bottomBar.hasFocus())) return super.dispatchKeyEvent(event)
+                if (
+                    osdMode == OsdMode.Full &&
+                    (binding.topBar.hasFocus() || binding.cardUpQuick.hasFocus() || binding.bottomBar.hasFocus())
+                ) {
+                    return super.dispatchKeyEvent(event)
+                }
 
                 if (event.repeatCount > 0) {
                     showSeekOsd()

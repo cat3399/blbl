@@ -60,6 +60,7 @@ internal fun PlayerActivity.setControlsVisible(visible: Boolean) {
     binding.controlsRow.visibility = if (show) View.VISIBLE else View.GONE
     binding.tvTime.visibility = if (show) View.VISIBLE else View.GONE
     binding.topBar.visibility = if (show) View.VISIBLE else View.GONE
+    binding.cardUpQuick.visibility = if (show && currentUpMid > 0L) View.VISIBLE else View.GONE
     binding.bottomBar.visibility = if (show) View.VISIBLE else View.GONE
     if (show) {
         applyBottomBarFullLayout()
@@ -242,7 +243,11 @@ internal fun PlayerActivity.scheduleKeyScrubEnd() {
 }
 
 internal fun PlayerActivity.hasControlsFocus(): Boolean =
-    binding.topBar.hasFocus() || binding.bottomBar.hasFocus() || binding.settingsPanel.hasFocus() || binding.commentsPanel.hasFocus()
+    binding.topBar.hasFocus() ||
+        binding.cardUpQuick.hasFocus() ||
+        binding.bottomBar.hasFocus() ||
+        binding.settingsPanel.hasFocus() ||
+        binding.commentsPanel.hasFocus()
 
 internal fun PlayerActivity.focusFirstControl() {
     binding.btnPlayPause.post { binding.btnPlayPause.requestFocus() }
