@@ -88,6 +88,9 @@
     <string name="player_list_empty">暂无内容</string>
     <string name="player_btn_comments">评论</string>
     <string name="player_btn_detail">视频详情页</string>
+    <string name="player_up_quick_follow">关注</string>
+    <string name="player_up_quick_followed">已关注</string>
+    <string name="player_up_quick_open_profile">打开 UP 主主页</string>
     <string name="player_comment_sort">排序</string>
     <string name="player_comment_sort_hot">热门</string>
     <string name="player_comment_sort_new">最新</string>

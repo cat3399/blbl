@@ -220,6 +220,11 @@ class PlayerActivity : BaseActivity() {
     internal var currentUpMid: Long = 0L
     internal var currentUpName: String? = null
     internal var currentUpAvatar: String? = null
+    internal var currentUpFollowed: Boolean? = null
+    internal var upFollowActionInFlight: Boolean = false
+    internal var upFollowActionJob: Job? = null
+    internal var upFollowStateJob: Job? = null
+    internal var upFollowStateToken: Int = 0
 
     internal var pageListToken: String? = null
     internal var pageListSource: String? = null
@@ -304,8 +309,10 @@ class PlayerActivity : BaseActivity() {
     @Volatile
     private var exitTraceNavTargetFirstPreDrawLogged: Boolean = false
     private var decoderReleaseRequestedOnStopReason: String? = null
+    private var decoderReleaseRequestedResumePlayWhenReady: Boolean? = null
     private var resumeAfterDecoderRelease: Boolean = false
     private var resumeAfterDecoderReleasePositionMs: Long = 0L
+    private var resumeAfterDecoderReleasePlayWhenReady: Boolean = true
     private var resumeExpiredUrlReloadArmed: Boolean = false
     private var resumeExpiredUrlReloadAttempted: Boolean = false
     private var playUrlAutoRefreshJob: kotlinx.coroutines.Job? = null
@@ -508,8 +515,10 @@ class PlayerActivity : BaseActivity() {
 
     private fun requestDecoderReleaseOnStop(reason: String) {
         if (reason.isBlank()) return
-        if (player !is ExoPlayerEngine) return
+        val engine = player as? ExoPlayerEngine ?: return
         decoderReleaseRequestedOnStopReason = reason
+        // Snapshot the pre-navigation auto-play intent before onPause() forces pause().
+        decoderReleaseRequestedResumePlayWhenReady = engine.isPlaying || engine.playWhenReady
         trace?.log("exo:releaseOnStop:request", "reason=$reason")
     }
 
@@ -518,6 +527,10 @@ class PlayerActivity : BaseActivity() {
         if (engine !is ExoPlayerEngine) return
         if (exitCleanupRequested || isFinishing || isDestroyed) return
         val pos = engine.currentPosition.coerceAtLeast(0L)
+        val shouldPlayAfterReturn =
+            decoderReleaseRequestedResumePlayWhenReady
+                ?: (engine.isPlaying || engine.playWhenReady)
+        decoderReleaseRequestedResumePlayWhenReady = null
         trace?.log("exo:releaseOnStop:do", "reason=$reason pos=${pos}ms")
 
         // Stop progress reporting before stopping the player (stop() resets currentPosition).
@@ -526,6 +539,7 @@ class PlayerActivity : BaseActivity() {
 
         resumeAfterDecoderRelease = true
         resumeAfterDecoderReleasePositionMs = pos
+        resumeAfterDecoderReleasePlayWhenReady = shouldPlayAfterReturn
 
         // Detach the surface early so codecs can be released immediately.
         if (::binding.isInitialized) {
@@ -1627,6 +1641,18 @@ class PlayerActivity : BaseActivity() {
                     if (showListPanelFromShortcut()) return true
                 }
                 setControlsVisible(true)
+                // Narrow exception: when touch-lock button is focused and UP quick card is visible,
+                // allow UP to enter the quick card instead of forcing seek bar focus.
+                if (
+                    currentFocus === binding.btnTouchLock &&
+                    binding.cardUpQuick.visibility == View.VISIBLE &&
+                    binding.btnUpQuickProfile.visibility == View.VISIBLE &&
+                    binding.btnUpQuickProfile.isEnabled &&
+                    binding.btnUpQuickProfile.isFocusable
+                ) {
+                    binding.btnUpQuickProfile.requestFocus()
+                    return true
+                }
                 if (!binding.seekProgress.isFocused) {
                     focusSeekBar()
                     return true
@@ -1765,6 +1791,7 @@ class PlayerActivity : BaseActivity() {
         trace?.log("activity:onStop")
         val releaseReason = decoderReleaseRequestedOnStopReason
         decoderReleaseRequestedOnStopReason = null
+        if (releaseReason == null) decoderReleaseRequestedResumePlayWhenReady = null
         super.onStop()
         player?.pause()
         if ((exitCleanupRequested || isFinishing) && !isChangingConfigurations) {
@@ -1793,8 +1820,10 @@ class PlayerActivity : BaseActivity() {
         if (exitCleanupRequested || isFinishing || isDestroyed) return
 
         val pos = resumeAfterDecoderReleasePositionMs.coerceAtLeast(0L)
+        val playWhenReadyAfterReturn = resumeAfterDecoderReleasePlayWhenReady
         resumeAfterDecoderRelease = false
         resumeAfterDecoderReleasePositionMs = 0L
+        resumeAfterDecoderReleasePlayWhenReady = true
         trace?.log("exo:releaseOnStop:resume", "pos=${pos}ms")
 
         if (::binding.isInitialized && binding.playerView.player == null) {
@@ -1802,7 +1831,7 @@ class PlayerActivity : BaseActivity() {
         }
         resumeExpiredUrlReloadArmed = true
         resumeExpiredUrlReloadAttempted = false
-        engine.playWhenReady = false
+        engine.playWhenReady = playWhenReadyAfterReturn
         engine.prepare()
         if (pos > 0L) engine.seekTo(pos)
     }
@@ -2055,6 +2084,7 @@ class PlayerActivity : BaseActivity() {
             openCurrentUpDetail()
             setControlsVisible(true)
         }
+        setupUpQuickCardActions()
 
         binding.seekProgress.max = SEEK_MAX
         binding.seekProgress.setOnSeekBarChangeListener(
@@ -2143,6 +2173,7 @@ class PlayerActivity : BaseActivity() {
         currentUpName = owner.optString("name", "").trim().takeIf { it.isNotBlank() }
         currentUpAvatar = owner.optString("face", "").trim().takeIf { it.isNotBlank() }
         updateUpButton()
+        applyUpFollowStateFromView(viewData)
     }
 
     internal fun updateTopTitleUi(placeholder: String?) {

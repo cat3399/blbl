@@ -383,6 +383,7 @@ internal fun PlayerActivity.updateUpButton() {
     val alpha = if (enabled) 1.0f else 0.35f
     binding.btnUp.isEnabled = enabled
     binding.btnUp.alpha = alpha
+    updateUpQuickCardUi()
 }
 
 internal fun PlayerActivity.pickRecommendedVideo(items: List<VideoCard>, excludeBvid: String): VideoCard? {

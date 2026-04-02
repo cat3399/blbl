@@ -77,6 +77,14 @@ internal fun PlayerActivity.resetPlaybackStateForNewMedia(
     currentUpMid = 0L
     currentUpName = null
     currentUpAvatar = null
+    currentUpFollowed = null
+    upFollowActionInFlight = false
+    upFollowActionJob?.cancel()
+    upFollowActionJob = null
+    upFollowStateJob?.cancel()
+    upFollowStateJob = null
+    upFollowStateToken++
+    updateUpQuickCardUi()
     danmakuShield = null
     cancelDanmakuLoading(reason = "new_media")
     danmakuLoadedSegments.clear()
