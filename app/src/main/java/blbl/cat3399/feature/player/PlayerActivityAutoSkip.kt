@@ -97,16 +97,22 @@ internal fun PlayerActivity.cancelPendingAutoResume(reason: String) {
 internal fun PlayerActivity.showAutoResumeHint(targetMs: Long) {
     dismissAutoResumeHint()
     val timeText = formatHms(targetMs.coerceAtLeast(0L))
-    val msg = "将要跳到上次播放位置（$timeText），按返回取消"
+    val msg = "已续播到上次播放位置（$timeText），3秒内按返回从头播放"
     autoResumeHintVisible = true
     autoResumeHintText = msg
+    autoResumeUndoTargetMs = targetMs.coerceAtLeast(0L)
+    autoResumeUndoDeadlineElapsedMs = SystemClock.elapsedRealtime() + PlayerActivity.AUTO_RESUME_BACK_RESTART_WINDOW_MS
     // Reuse the existing bottom "seek hint" component for consistent look & feel.
     showSeekHint(msg, hold = true)
-    // Keep the hint visible until either:
-    // - user cancels (back / user seek), or
-    // - auto-resume seek happens.
     autoResumeHintTimeoutJob?.cancel()
-    autoResumeHintTimeoutJob = null
+    autoResumeHintTimeoutJob =
+        lifecycleScope.launch {
+            delay(PlayerActivity.AUTO_RESUME_BACK_RESTART_WINDOW_MS)
+            if (!isActive) return@launch
+            if (SystemClock.elapsedRealtime() >= autoResumeUndoDeadlineElapsedMs) {
+                dismissAutoResumeHint()
+            }
+        }
 }
 
 internal fun PlayerActivity.dismissAutoResumeHint() {
@@ -116,11 +122,27 @@ internal fun PlayerActivity.dismissAutoResumeHint() {
     autoResumeHintText = null
     autoResumeHintTimeoutJob?.cancel()
     autoResumeHintTimeoutJob = null
+    autoResumeUndoDeadlineElapsedMs = 0L
+    autoResumeUndoTargetMs = -1L
     // tvSeekHint is shared; only hide it if we are still showing our own message.
     if (msg != null && binding.tvSeekHint.text?.toString() == msg) {
         seekHintJob?.cancel()
         binding.tvSeekHint.visibility = View.GONE
     }
+}
+
+internal fun PlayerActivity.tryRollbackAutoResumeOnBack(): Boolean {
+    if (!autoResumeHintVisible) return false
+    val deadline = autoResumeUndoDeadlineElapsedMs
+    if (deadline <= 0L) return false
+    if (SystemClock.elapsedRealtime() > deadline) return false
+    val exo = player ?: return false
+    autoResumeCancelledByUser = true
+    trace?.log("resume:rollback", "from=${autoResumeUndoTargetMs.coerceAtLeast(0L)}ms")
+    dismissAutoResumeHint()
+    exo.seekTo(0L)
+    showSeekHint("已从头播放", hold = false)
+    return true
 }
 
 internal fun PlayerActivity.cancelPendingAutoSkip(reason: String, markIgnored: Boolean) {
@@ -476,19 +498,15 @@ internal fun PlayerActivity.scheduleAutoResume(engine: BlblPlayerEngine, candida
     dismissAutoResumeHint()
     trace?.log("resume:pending", "src=${candidate.source} raw=${candidate.rawTime}")
 
-    val delayMs = 3_000L
-    val showAtMs = SystemClock.elapsedRealtime()
-    val seekNotBeforeAtMs = showAtMs + delayMs
     val previewDurationMs = engine.duration.takeIf { it > 0 } ?: currentViewDurationMs
     val previewTargetMs = normalizeResumePositionMs(candidate.rawTime, candidate.rawTimeUnitHint, previewDurationMs)
     if (previewTargetMs == null) return
     if (!shouldAutoResumeTo(previewTargetMs, previewDurationMs)) return
-    showAutoResumeHint(targetMs = previewTargetMs)
 
     autoResumeJob =
         lifecycleScope.launch {
             // Seeking too early (while the beginning is still buffering) can cause some long videos to get stuck
-            // with a black screen. Wait until the player becomes READY, then apply the minimum delay.
+            // with a black screen. Wait until the player becomes READY, then seek immediately.
             val readyDeadlineAtMs = SystemClock.elapsedRealtime() + 30_000L
             while (isActive) {
                 if (autoResumeCancelledByUser) return@launch
@@ -501,9 +519,6 @@ internal fun PlayerActivity.scheduleAutoResume(engine: BlblPlayerEngine, candida
                 if (SystemClock.elapsedRealtime() >= readyDeadlineAtMs) return@launch
                 delay(50L)
             }
-
-            val remainMs = (seekNotBeforeAtMs - SystemClock.elapsedRealtime()).coerceAtLeast(0L)
-            if (remainMs > 0) delay(remainMs)
             if (!isActive) return@launch
             if (autoResumeCancelledByUser) return@launch
             if (playbackToken != autoResumeToken) return@launch
@@ -515,7 +530,7 @@ internal fun PlayerActivity.scheduleAutoResume(engine: BlblPlayerEngine, candida
             if (!shouldAutoResumeTo(targetMs, durationMs)) return@launch
             val clamped = durationMs?.let { dur -> targetMs.coerceIn(0L, (dur - 500L).coerceAtLeast(0L)) } ?: targetMs
             trace?.log("resume:seek", "to=${clamped}ms src=${candidate.source}")
-            dismissAutoResumeHint()
             p.seekTo(clamped)
+            showAutoResumeHint(targetMs = clamped)
         }
 }

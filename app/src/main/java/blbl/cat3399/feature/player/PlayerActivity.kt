@@ -122,6 +122,8 @@ class PlayerActivity : BaseActivity() {
     internal var autoResumeHintTimeoutJob: kotlinx.coroutines.Job? = null
     internal var autoResumeHintVisible: Boolean = false
     internal var autoResumeHintText: String? = null
+    internal var autoResumeUndoDeadlineElapsedMs: Long = 0L
+    internal var autoResumeUndoTargetMs: Long = -1L
     internal var autoSkipFetchJob: kotlinx.coroutines.Job? = null
     internal var autoSkipHintVisible: Boolean = false
     internal var autoSkipHintText: String? = null
@@ -1577,7 +1579,8 @@ class PlayerActivity : BaseActivity() {
             }
 
             KeyEvent.KEYCODE_BACK -> {
-                val cancelledAutoResume = autoResumeHintVisible
+                val rolledBackAutoResume = tryRollbackAutoResumeOnBack()
+                val cancelledAutoResume = !rolledBackAutoResume && autoResumeHintVisible
                 val cancelledAutoSkip = autoSkipHintVisible || autoSkipPending != null
                 // Only treat BACK as "cancel auto-next" when the user can actually see the hint.
                 // If we're deferring auto-next due to OSD/panels, BACK should close those first.
@@ -1585,11 +1588,11 @@ class PlayerActivity : BaseActivity() {
                 if (cancelledAutoResume) cancelPendingAutoResume(reason = "back")
                 if (cancelledAutoSkip) cancelPendingAutoSkip(reason = "back", markIgnored = true)
                 if (cancelledAutoNext) cancelPendingAutoNext(reason = "back", markCancelledByUser = true)
-                if (cancelledAutoResume || cancelledAutoSkip || cancelledAutoNext) {
+                if (rolledBackAutoResume || cancelledAutoResume || cancelledAutoSkip || cancelledAutoNext) {
                     finishOnBackKeyUp = false
                     exitTraceLog(
                         "back:down action=cancel_hint",
-                        "resume=${if (cancelledAutoResume) 1 else 0} skip=${if (cancelledAutoSkip) 1 else 0} next=${if (cancelledAutoNext) 1 else 0} osd=$osdMode sidePanel=${if (isSidePanelVisible()) 1 else 0}",
+                        "resume=${if (rolledBackAutoResume || cancelledAutoResume) 1 else 0} rollback=${if (rolledBackAutoResume) 1 else 0} skip=${if (cancelledAutoSkip) 1 else 0} next=${if (cancelledAutoNext) 1 else 0} osd=$osdMode sidePanel=${if (isSidePanelVisible()) 1 else 0}",
                     )
                     return true
                 }
@@ -3549,6 +3552,7 @@ class PlayerActivity : BaseActivity() {
         internal const val SEEK_OSD_HIDE_DELAY_MS = 1_500L
         internal const val AUTO_SKIP_START_WINDOW_MS = 1_000L
         internal const val AUTO_SKIP_DELAY_MS = 2_000L
+        internal const val AUTO_RESUME_BACK_RESTART_WINDOW_MS = 3_000L
         internal const val KEY_SCRUB_END_DELAY_MS = 800L
         private const val DANMAKU_DEFAULT_SEGMENT_MS = 6 * 60 * 1000
         private const val DANMAKU_PREFETCH_SEGMENTS = 2
