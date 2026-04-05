@@ -20,13 +20,15 @@
             android:id="@+id/iv_cover"
             android:layout_width="0dp"
             android:layout_height="0dp"
-            android:contentDescription="@string/app_name"
             android:background="?attr/colorSurface"
+            android:contentDescription="@string/app_name"
             android:scaleType="centerCrop"
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintHorizontal_bias="0.0"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintVertical_bias="0.0"
             app:shapeAppearanceOverlay="@style/ShapeAppearanceOverlay_Blbl_Rounded" />
 
         <com.google.android.material.imageview.ShapeableImageView
@@ -138,17 +140,28 @@
         </LinearLayout>
     </com.google.android.material.card.MaterialCardView>
 
-    <TextView
-        android:id="@+id/tv_desc"
+    <LinearLayout
+        android:id="@+id/ll_desc_container"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:layout_marginTop="12dp"
         android:layout_marginEnd="12dp"
-        android:textColor="?android:attr/textColorSecondary"
-        android:textSize="20sp"
+        android:orientation="vertical"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="@id/tv_title"
-        app:layout_constraintTop_toBottomOf="@id/card_up" />
+        app:layout_constraintTop_toBottomOf="@id/card_up">
+
+        <TextView
+            android:id="@+id/tv_desc"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="?android:attr/textColorSecondary"
+            android:textSize="20sp"
+            android:maxLines="3"
+            android:ellipsize="end"
+            android:clickable="true"
+            android:focusable="true" />
+    </LinearLayout>
 
     <com.google.android.material.chip.ChipGroup
         android:id="@+id/chip_group_tags"
@@ -161,7 +174,7 @@
         app:chipSpacingVertical="10dp"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="@id/tv_title"
-        app:layout_constraintTop_toBottomOf="@id/tv_desc"
+        app:layout_constraintTop_toBottomOf="@id/ll_desc_container"
         app:singleLine="false" />
 
     <com.google.android.material.card.MaterialCardView

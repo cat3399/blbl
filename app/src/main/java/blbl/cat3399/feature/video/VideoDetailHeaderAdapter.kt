@@ -258,6 +258,8 @@ class VideoDetailHeaderAdapter(
         private var partsSelectedKey: String? = null
         private var seasonSelectedKey: String? = null
         private var lastTagsKey: String? = null
+        private var isDescExpanded: Boolean = false
+        private var currentDesc: String? = null
 
         private val partsAdapter =
             VideoCardAdapter(
@@ -315,6 +317,11 @@ class VideoDetailHeaderAdapter(
 
             binding.btnPartsOrder.setOnClickListener { onPartsOrderClick() }
             binding.btnSeasonOrder.setOnClickListener { onSeasonOrderClick() }
+
+            binding.tvDesc.setOnClickListener {
+                isDescExpanded = !isDescExpanded
+                updateDescExpandState()
+            }
 
             binding.recyclerParts.layoutManager =
                 LinearLayoutManager(binding.root.context, LinearLayoutManager.HORIZONTAL, false)
@@ -396,6 +403,12 @@ class VideoDetailHeaderAdapter(
 
             val safeDesc = desc?.trim().takeIf { !it.isNullOrBlank() }
             binding.tvDesc.text = safeDesc ?: "暂无简介"
+            
+            // 重置展开状态
+            isDescExpanded = false
+            currentDesc = safeDesc
+            binding.tvDesc.maxLines = 3
+            binding.tvDesc.ellipsize = android.text.TextUtils.TruncateAt.END
 
             bindTags(tags)
 
@@ -594,6 +607,31 @@ class VideoDetailHeaderAdapter(
                 val lm = binding.recyclerSeason.layoutManager as? LinearLayoutManager ?: return@post
                 lm.scrollToPositionWithOffset(0, binding.recyclerSeason.paddingLeft)
             }
+        }
+
+        private fun updateDescExpandState() {
+            if (isDescExpanded) {
+                binding.tvDesc.maxLines = Integer.MAX_VALUE
+                binding.tvDesc.ellipsize = null
+                
+                // 添加动画效果
+                binding.tvDesc.animate()
+                    .setDuration(300)
+                    .alpha(1f)
+                    .start()
+            } else {
+                binding.tvDesc.maxLines = 3
+                binding.tvDesc.ellipsize = android.text.TextUtils.TruncateAt.END
+                
+                // 添加动画效果
+                binding.tvDesc.animate()
+                    .setDuration(300)
+                    .alpha(1f)
+                    .start()
+            }
+            
+            // 请求重新布局
+            binding.root.requestLayout()
         }
 
         private fun cardStableKey(card: VideoCard): String =
