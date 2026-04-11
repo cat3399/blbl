@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<selector xmlns:android="http://schemas.android.com/apk/res/android">
-    <item android:state_selected="true" android:drawable="@drawable/ic_player_danmaku_on" />
-    <item android:drawable="@drawable/ic_player_danmaku_off" />
-</selector>
+<!-- API 19 fallback: plain transparent shape; actual icon set programmatically via AppCompatResources -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="@android:color/transparent" />
+</shape>

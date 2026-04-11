@@ -103,7 +103,10 @@ internal object IjkPlayerPlugin {
 
     fun soFile(context: Context, abi: String = deviceAbi().orEmpty()): File {
         val safeAbi = abi.trim()
-        val dir = File(context.applicationContext.filesDir, "plugins/ijkplayer/$safeAbi").apply { mkdirs() }
+        // Use a separate directory for the API 19 build so it doesn't collide with the
+        // standard build if the user ever upgrades to a newer device.
+        val variant = if (Build.VERSION.SDK_INT < 21) "$safeAbi-api19" else safeAbi
+        val dir = File(context.applicationContext.filesDir, "plugins/ijkplayer/$variant").apply { mkdirs() }
         return File(dir, SO_FILE_NAME)
     }
 
@@ -148,7 +151,10 @@ internal object IjkPlayerPlugin {
 
     private fun zipUrl(abi: String): String {
         val safeAbi = abi.trim()
-        return "$BASE_URL/$safeAbi/$ZIP_FILE_NAME?cb=${System.currentTimeMillis()}"
+        // API 19 needs a .so built with an older NDK (no _FORTIFY_SOURCE) to avoid
+        // UnsatisfiedLinkError on missing __read_chk / __write_chk symbols.
+        val variant = if (Build.VERSION.SDK_INT < 21) "$safeAbi-api19" else safeAbi
+        return "$BASE_URL/$variant/$ZIP_FILE_NAME?cb=${System.currentTimeMillis()}"
     }
 
     private val okHttp: OkHttpClient by lazy {

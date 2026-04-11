@@ -7,6 +7,7 @@ import android.graphics.Paint
 import android.graphics.RectF
 import android.graphics.Typeface
 import androidx.appcompat.content.res.AppCompatResources
+import androidx.core.graphics.drawable.DrawableCompat
 import blbl.cat3399.BlblApp
 import blbl.cat3399.R
 import android.os.Handler
@@ -95,7 +96,7 @@ internal class CacheManager(
     private val emoteRect = RectF()
     private val inlineLikeIcon by lazy(LazyThreadSafetyMode.NONE) {
         AppCompatResources.getDrawable(BlblApp.instance, R.drawable.ic_action_like)?.mutate()?.apply {
-            setTint(HIGH_LIKE_ICON_COLOR)
+            DrawableCompat.setTint(DrawableCompat.wrap(this), HIGH_LIKE_ICON_COLOR)
         }
     }
 

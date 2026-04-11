@@ -139,9 +139,11 @@ internal object PlayerUiMode {
                 }
             binding.videoShotPreview.setShortEdge(scaledPx(shortEdgeId))
 
-            val elevationPx = scaledPxF(R.dimen.player_videoshot_preview_elevation)
-            if (binding.videoShotPreview.elevation != elevationPx) {
-                binding.videoShotPreview.elevation = elevationPx
+            if (android.os.Build.VERSION.SDK_INT >= 21) {
+                val elevationPx = scaledPxF(R.dimen.player_videoshot_preview_elevation)
+                if (binding.videoShotPreview.elevation != elevationPx) {
+                    binding.videoShotPreview.elevation = elevationPx
+                }
             }
 
             (binding.videoShotPreview.layoutParams as? MarginLayoutParams)?.let { lp ->

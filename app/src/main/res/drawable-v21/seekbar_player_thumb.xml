@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:width="@dimen/player_seekbar_height"
+        android:height="@dimen/player_seekbar_height"
+        android:drawable="@drawable/ic_player_seek_thumb_tv"
+        android:gravity="center" />
+</layer-list>

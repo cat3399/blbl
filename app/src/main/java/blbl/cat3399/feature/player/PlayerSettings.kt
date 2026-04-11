@@ -3,6 +3,7 @@
 package blbl.cat3399.feature.player
 
 import android.content.Intent
+import android.os.Build
 import android.util.TypedValue
 import android.view.View
 import androidx.lifecycle.lifecycleScope
@@ -613,14 +614,15 @@ private fun PlayerActivity.restartForEngineSwitch(picked: PlayerEngineKind) {
 
 internal fun PlayerActivity.showPlayerEngineDialog() {
     val currentKind = player?.kind ?: session.engineKind
-    val items = listOf("ExoPlayer", "IjkPlayer")
-    val checked = if (currentKind == PlayerEngineKind.IjkPlayer) 1 else 0
+    // ExoPlayer requires API 21+; hide it on older devices.
+    val items = if (Build.VERSION.SDK_INT < 21) listOf("IjkPlayer") else listOf("ExoPlayer", "IjkPlayer")
+    val checked = if (currentKind == PlayerEngineKind.IjkPlayer) items.indexOf("IjkPlayer") else 0
     showSettingsSingleChoiceDialog(
         title = "播放器内核",
         items = items,
         checkedIndex = checked,
     ) { which, _ ->
-        val picked = if (which == 1) PlayerEngineKind.IjkPlayer else PlayerEngineKind.ExoPlayer
+        val picked = if (items[which] == "IjkPlayer") PlayerEngineKind.IjkPlayer else PlayerEngineKind.ExoPlayer
         if (picked == currentKind) return@showSettingsSingleChoiceDialog
         if (picked == PlayerEngineKind.IjkPlayer) {
             IjkPlayerPluginUi.ensureInstalled(this) {

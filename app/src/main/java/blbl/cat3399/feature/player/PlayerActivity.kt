@@ -23,6 +23,7 @@ import android.view.ViewGroup.MarginLayoutParams
 import android.widget.FrameLayout
 import android.widget.SeekBar
 import androidx.constraintlayout.widget.ConstraintSet
+import androidx.appcompat.content.res.AppCompatResources
 import androidx.core.content.ContextCompat
 import androidx.core.widget.ImageViewCompat
 import androidx.lifecycle.lifecycleScope
@@ -841,6 +842,8 @@ class PlayerActivity : BaseActivity() {
             when {
                 Build.VERSION.SDK_INT < 21 && desiredEngineKind == PlayerEngineKind.ExoPlayer -> {
                     AppLog.i("PlayerActivity", "ExoPlayer requires API 21+, falling back to IjkPlayer")
+                    // Also persist the correction so the toast doesn't repeat every launch.
+                    prefs.playerEngineKind = blbl.cat3399.core.prefs.AppPrefs.PLAYER_ENGINE_IJK
                     PlayerEngineKind.IjkPlayer
                 }
                 Build.VERSION.SDK_INT < 21 &&
@@ -2411,7 +2414,13 @@ class PlayerActivity : BaseActivity() {
 
     internal fun updateDanmakuButton() {
         ImageViewCompat.setImageTintList(binding.btnDanmaku, null)
-        binding.btnDanmaku.isSelected = session.danmaku.enabled
+        if (Build.VERSION.SDK_INT < 21) {
+            // API 19: selector with vector items not supported; swap icon manually
+            val res = if (session.danmaku.enabled) R.drawable.ic_player_danmaku_on else R.drawable.ic_player_danmaku_off
+            binding.btnDanmaku.setImageDrawable(AppCompatResources.getDrawable(this, res))
+        } else {
+            binding.btnDanmaku.isSelected = session.danmaku.enabled
+        }
     }
 
     internal fun setDanmakuEnabled(enabled: Boolean) {
@@ -2566,7 +2575,7 @@ class PlayerActivity : BaseActivity() {
     private fun shouldAttemptHighSpecFallback(error: PlaybackException): Boolean {
         return when (error.errorCode) {
             PlaybackException.ERROR_CODE_FAILED_RUNTIME_CHECK,
-            PlaybackException.ERROR_CODE_NOT_SUPPORTED,
+            4004, // PlaybackException.ERROR_CODE_NOT_SUPPORTED (added in media3 1.4.0)
             PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED,
             PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED,
             PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,

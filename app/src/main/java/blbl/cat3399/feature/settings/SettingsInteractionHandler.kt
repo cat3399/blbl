@@ -1409,7 +1409,8 @@ class SettingsInteractionHandler(
             }
 
             SettingId.PlayerEngineKind -> {
-                val options = listOf("ExoPlayer", "IjkPlayer")
+                // ExoPlayer requires API 21+; only offer IjkPlayer on older devices.
+                val options = if (Build.VERSION.SDK_INT < 21) listOf("IjkPlayer") else listOf("ExoPlayer", "IjkPlayer")
                 showChoiceDialog(
                     title = "播放器内核",
                     items = options,

@@ -8,6 +8,7 @@ import android.graphics.Typeface
 import android.util.DisplayMetrics
 import android.util.TypedValue
 import androidx.appcompat.content.res.AppCompatResources
+import androidx.core.graphics.drawable.DrawableCompat
 import blbl.cat3399.BlblApp
 import blbl.cat3399.R
 import blbl.cat3399.core.emote.EmoteBitmapLoader
@@ -172,7 +173,7 @@ internal class DanmakuEngine(
     private val emoteTmpRectF = RectF()
     private val inlineLikeIcon by lazy(LazyThreadSafetyMode.NONE) {
         AppCompatResources.getDrawable(BlblApp.instance, R.drawable.ic_action_like)?.mutate()?.apply {
-            setTint(HIGH_LIKE_ICON_COLOR)
+            DrawableCompat.setTint(DrawableCompat.wrap(this), HIGH_LIKE_ICON_COLOR)
         }
     }
 
