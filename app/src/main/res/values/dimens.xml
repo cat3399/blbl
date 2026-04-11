@@ -24,7 +24,7 @@
     <dimen name="sidebar_nav_icon_size">32dp</dimen>
     <dimen name="sidebar_nav_label_margin_top">4dp</dimen>
     <dimen name="sidebar_nav_label_text_size">14sp</dimen>
-    <dimen name="sidebar_nav_item_height_default">48dp</dimen>
+    <dimen name="sidebar_nav_item_height_default">52dp</dimen>
     <dimen name="sidebar_nav_item_height_selected">84dp</dimen>
     <dimen name="sidebar_nav_item_height_labeled">72dp</dimen>
 

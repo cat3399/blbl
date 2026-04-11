@@ -12,6 +12,7 @@
     app:cardBackgroundColor="@android:color/transparent"
     app:cardCornerRadius="10dp"
     app:cardElevation="0dp"
+    app:cardPreventCornerOverlap="false"
     app:strokeColor="?attr/blblFocusStrokeFocusOnlyColor"
     app:strokeWidth="2dp">
 
