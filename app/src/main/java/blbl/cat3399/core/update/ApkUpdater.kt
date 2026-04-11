@@ -53,7 +53,7 @@ object ApkUpdater {
         get() = okHttpLazy.value
 
     fun evictConnections() {
-        if (okHttpLazy.isInitialized()) okHttp.connectionPool.evictAll()
+        if (okHttpLazy.isInitialized()) okHttp.connectionPool().evictAll()
     }
 
     sealed class Progress {
@@ -134,8 +134,8 @@ object ApkUpdater {
         val call = okHttp.newCall(req)
         val res = call.execute()
         res.use { r ->
-            check(r.isSuccessful) { "HTTP ${r.code} ${r.message}" }
-            val body = r.body ?: error("empty body")
+            check(r.isSuccessful) { "HTTP ${r.code()} ${r.message()}" }
+            val body = r.body() ?: error("empty body")
             return parseChangelog(body.string())
         }
     }
@@ -220,8 +220,8 @@ object ApkUpdater {
         val call = okHttp.newCall(req)
         val res = call.await()
         res.use { r ->
-            check(r.isSuccessful) { "HTTP ${r.code} ${r.message}" }
-            val body = r.body ?: error("empty body")
+            check(r.isSuccessful) { "HTTP ${r.code()} ${r.message()}" }
+            val body = r.body() ?: error("empty body")
             val total = body.contentLength().takeIf { it > 0 }
             withContext(Dispatchers.IO) {
                 body.byteStream().use { input ->

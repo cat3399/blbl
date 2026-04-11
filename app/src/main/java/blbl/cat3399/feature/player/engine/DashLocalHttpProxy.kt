@@ -152,8 +152,8 @@ internal class DashLocalHttpProxy(
                 }
                 .onSuccess { upstreamRes ->
                     upstreamRes.use { res ->
-                        if (BuildConfig.DEBUG && range != null && res.code != 206) {
-                            AppLog.w("DashProxy", "range request got http=${res.code} key=$key range=$range")
+                        if (BuildConfig.DEBUG && range != null && res.code() != 206) {
+                            AppLog.w("DashProxy", "range request got http=${res.code()} key=$key range=$range")
                         }
                         val out = BufferedOutputStream(s.getOutputStream())
                         writeStatusLine(out, res)
@@ -170,7 +170,7 @@ internal class DashLocalHttpProxy(
                         acceptRanges?.let { writeHeader(out, "Accept-Ranges", it) }
                         contentRange?.let { writeHeader(out, "Content-Range", it) }
 
-                        val body = res.body
+                        val body = res.body()
                         val bodyLen = body?.contentLength() ?: -1L
                         val resolvedLen =
                             upstreamContentLength
@@ -182,7 +182,7 @@ internal class DashLocalHttpProxy(
                             val teShort = upstreamTransferEncoding ?: "null"
                             AppLog.i(
                                 "DashProxy",
-                                "res http=${res.code} key=$key range=$range len=${resolvedLen ?: -1L} te=$teShort cr=$crShort",
+                                "res http=${res.code()} key=$key range=$range len=${resolvedLen ?: -1L} te=$teShort cr=$crShort",
                             )
                         }
                         if (method == "HEAD") {
@@ -218,11 +218,11 @@ internal class DashLocalHttpProxy(
                             return
                         }
 
-                        if (range != null || res.code == 206) {
+                        if (range != null || res.code() == 206) {
                             // Range response without a reliable length is not seekable for some ijk/ffmpeg paths.
                             AppLog.w(
                                 "DashProxy",
-                                "range response missing Content-Length/Content-Range; http=${res.code} key=$key range=$range",
+                                "range response missing Content-Length/Content-Range; http=${res.code()} key=$key range=$range",
                             )
                             finishHeaders(out)
                             out.flush()
@@ -276,8 +276,8 @@ internal class DashLocalHttpProxy(
     }
 
     private fun writeStatusLine(out: BufferedOutputStream, res: Response) {
-        val msg = res.message.takeIf { it.isNotBlank() } ?: "OK"
-        out.write("HTTP/1.1 ${res.code} $msg\r\n".toByteArray(StandardCharsets.ISO_8859_1))
+        val msg = res.message().takeIf { it.isNotBlank() } ?: "OK"
+        out.write("HTTP/1.1 ${res.code()} $msg\r\n".toByteArray(StandardCharsets.ISO_8859_1))
     }
 
     private fun writeHeader(out: BufferedOutputStream, name: String, value: String) {

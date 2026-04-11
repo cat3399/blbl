@@ -131,7 +131,7 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer-dash:1.8.0")
     implementation("androidx.media3:media3-exoplayer-hls:1.8.0")
     implementation("androidx.media3:media3-ui:1.8.0")
-    implementation("androidx.media3:media3-datasource-okhttp:1.8.0")
+    implementation("androidx.media3:media3-datasource:1.8.0")
 
     implementation("com.google.protobuf:protobuf-javalite:3.25.5")
     implementation("io.grpc:grpc-okhttp:1.72.0")

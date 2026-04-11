@@ -9,8 +9,6 @@ import kotlinx.coroutines.withContext
 import okhttp3.CookieJar
 import okhttp3.FormBody
 import okhttp3.HttpUrl
-import okhttp3.HttpUrl.Companion.toHttpUrl
-import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Protocol
 import okhttp3.Request
@@ -84,7 +82,7 @@ object BiliClient {
                 val res = chain.proceed(req)
                 val costMs = (System.nanoTime() - start) / 1_000_000
                 if (LOG_HTTP_REQUESTS) {
-                    AppLog.d(TAG, "${req.method} ${req.url.host}${req.url.encodedPath} -> ${res.code} (${costMs}ms)")
+                    AppLog.d(TAG, "${req.method()} ${req.url().host()}${req.url().encodedPath()} -> ${res.code()} (${costMs}ms)")
                 }
                 res
             }
@@ -108,7 +106,7 @@ object BiliClient {
                 val res = chain.proceed(req)
                 val costMs = (System.nanoTime() - start) / 1_000_000
                 if (LOG_HTTP_REQUESTS) {
-                    AppLog.d(TAG, "CDN ${req.method} ${req.url.host}${req.url.encodedPath} -> ${res.code} (${costMs}ms)")
+                    AppLog.d(TAG, "CDN ${req.method()} ${req.url().host()}${req.url().encodedPath()} -> ${res.code()} (${costMs}ms)")
                 }
                 res
             }
@@ -152,7 +150,7 @@ object BiliClient {
     }
 
     private fun clientFor(url: String, noCookies: Boolean = false): OkHttpClient {
-        val host = runCatching { url.toHttpUrlOrNull()?.host }.getOrNull().orEmpty()
+        val host = runCatching { HttpUrl.parse(url)?.host() }.getOrNull().orEmpty()
         return if (
             host.endsWith("hdslb.com") ||
             host.contains("bilivideo.com") ||
@@ -190,8 +188,8 @@ object BiliClient {
         }
         val res = clientFor(url, noCookies = noCookies).newCall(reqBuilder.build()).await()
         res.use { r ->
-            val raw = withContext(Dispatchers.IO) { r.body?.string() ?: "" }
-            return StringResponse(code = r.code, message = r.message, body = raw)
+            val raw = withContext(Dispatchers.IO) { r.body()?.string() ?: "" }
+            return StringResponse(code = r.code(), message = r.message(), body = raw)
         }
     }
 
@@ -217,13 +215,10 @@ object BiliClient {
         for ((k, v) in headers) reqBuilder.header(k, v)
         val res = clientFor(url, noCookies = noCookies).newCall(reqBuilder.build()).await()
         res.use { r ->
-            val bytes = withContext(Dispatchers.IO) { r.body?.bytes() ?: ByteArray(0) }
+            val bytes = withContext(Dispatchers.IO) { r.body()?.bytes() ?: ByteArray(0) }
             if (!r.isSuccessful) {
-                // Some networks/proxies may return unexpected non-2xx (e.g. 304) while still
-                // attaching a body; prefer using the body when available to avoid breaking flows
-                // like danmaku segment parsing.
                 if (bytes.isNotEmpty()) return bytes
-                throw IOException("HTTP ${r.code} ${r.message}")
+                throw IOException("HTTP ${r.code()} ${r.message()}")
             }
             return bytes
         }
@@ -249,7 +244,7 @@ object BiliClient {
     }
 
     fun withQuery(url: String, params: Map<String, String>): String {
-        val httpUrl = url.toHttpUrlOrNull()?.newBuilder() ?: return url
+        val httpUrl = HttpUrl.parse(url)?.newBuilder() ?: return url
         for ((k, v) in params) httpUrl.addQueryParameter(k, v)
         return httpUrl.build().toString()
     }

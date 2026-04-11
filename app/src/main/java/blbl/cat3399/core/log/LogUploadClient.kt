@@ -6,14 +6,13 @@ import blbl.cat3399.core.net.ipv4OnlyDns
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType
-import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody
 import okio.Buffer
 import okio.BufferedSink
 import okio.ForwardingSink
-import okio.buffer
+import okio.Okio
 import org.json.JSONObject
 import java.io.File
 import java.io.IOException
@@ -58,7 +57,7 @@ object LogUploadClient {
         if (len > MAX_UPLOAD_BYTES) throw IOException("日志文件过大：${len}B（上限 ${MAX_UPLOAD_BYTES}B）")
 
         val safeName = sanitizeFileName(fileName).ifBlank { f.name }
-        val rawBody = RequestBody.create("application/zip".toMediaType(), f)
+        val rawBody = RequestBody.create(MediaType.parse("application/zip"), f)
         val body =
             if (onProgress == null) {
                 rawBody
@@ -80,14 +79,14 @@ object LogUploadClient {
 
         val res = okHttp.newCall(req).await()
         res.use { r ->
-            val raw = withContext(Dispatchers.IO) { r.body?.string().orEmpty() }
+            val raw = withContext(Dispatchers.IO) { r.body()?.string().orEmpty() }
             val jsonMessage =
                 runCatching { JSONObject(raw).optString("message", "").trim() }.getOrNull()
                     ?.takeIf { it.isNotBlank() }
             if (!r.isSuccessful) {
-                AppLog.w(TAG, "upload failed http=${r.code} msg=${r.message} body=${raw.take(200)}")
+                AppLog.w(TAG, "upload failed http=${r.code()} msg=${r.message()} body=${raw.take(200)}")
                 val hint = jsonMessage?.let { "（$it）" }.orEmpty()
-                throw IOException("HTTP ${r.code} ${r.message}$hint")
+                throw IOException("HTTP ${r.code()} ${r.message()}$hint")
             }
 
             val json = runCatching { JSONObject(raw) }.getOrNull() ?: throw IOException("响应解析失败")
@@ -131,7 +130,7 @@ object LogUploadClient {
                         onProgress(sent.coerceAtMost(totalBytes), totalBytes)
                     }
                 }
-            val buffered = forwardingSink.buffer()
+            val buffered = Okio.buffer(forwardingSink)
             delegate.writeTo(buffered)
             buffered.flush()
         }

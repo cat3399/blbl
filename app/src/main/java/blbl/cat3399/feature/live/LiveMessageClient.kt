@@ -222,8 +222,8 @@ class LiveMessageClient(
 
         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
             onStatus("弹幕连接失败：${t.message}")
-            AppLog.w("LiveWs", "onFailure roomId=$roomId code=${response?.code}", t)
-            scheduleReconnect("onFailure code=${response?.code} ${t::class.java.simpleName}:${t.message}")
+            AppLog.w("LiveWs", "onFailure roomId=$roomId code=${response?.code()}", t)
+            scheduleReconnect("onFailure code=${response?.code()} ${t::class.java.simpleName}:${t.message}")
         }
 
         override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {

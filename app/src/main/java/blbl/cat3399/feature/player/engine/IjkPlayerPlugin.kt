@@ -181,8 +181,8 @@ internal object IjkPlayerPlugin {
         val res = call.await()
 
         res.use { r ->
-            check(r.isSuccessful) { "HTTP ${r.code} ${r.message}" }
-            val body = r.body ?: error("empty body")
+            check(r.isSuccessful) { "HTTP ${r.code()} ${r.message()}" }
+            val body = r.body() ?: error("empty body")
             val total = body.contentLength().takeIf { it > 0 }
             body.byteStream().use { input ->
                 FileOutputStream(part).use { output ->

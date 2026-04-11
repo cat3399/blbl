@@ -9,7 +9,6 @@ import blbl.cat3399.R
 import blbl.cat3399.core.log.AppLog
 import blbl.cat3399.core.net.BiliClient
 import okhttp3.HttpUrl
-import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -84,7 +83,7 @@ object ImageLoader {
         if (raw.startsWith("//")) return "https:$raw"
         if (!raw.startsWith("http://")) return raw
 
-        val host = raw.toHttpUrlOrNull()?.host?.lowercase().orEmpty()
+        val host = HttpUrl.parse(raw)?.host()?.lowercase().orEmpty()
         val isBiliCdn =
             host == "hdslb.com" ||
                 host.endsWith(".hdslb.com") ||

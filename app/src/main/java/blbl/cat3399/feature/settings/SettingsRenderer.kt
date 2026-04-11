@@ -548,7 +548,7 @@ class SettingsRenderer(
     private fun gaiaVgateStatusText(): String {
         val now = System.currentTimeMillis()
         val tokenCookie = BiliClient.cookies.getCookie("x-bili-gaia-vtoken")
-        val tokenOk = tokenCookie != null && tokenCookie.expiresAt > now
+        val tokenOk = tokenCookie != null && tokenCookie.expiresAt() > now
         val voucherOk = !BiliClient.prefs.gaiaVgateVVoucher.isNullOrBlank()
         return when {
             tokenOk -> "已通过"
