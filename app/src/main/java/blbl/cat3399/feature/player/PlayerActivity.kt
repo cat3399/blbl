@@ -24,6 +24,7 @@ import android.widget.FrameLayout
 import android.widget.SeekBar
 import androidx.constraintlayout.widget.ConstraintSet
 import androidx.core.content.ContextCompat
+import androidx.core.widget.ImageViewCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.media3.common.C
 import androidx.media3.common.Format
@@ -2409,7 +2410,7 @@ class PlayerActivity : BaseActivity() {
     }
 
     internal fun updateDanmakuButton() {
-        binding.btnDanmaku.imageTintList = null
+        ImageViewCompat.setImageTintList(binding.btnDanmaku, null)
         binding.btnDanmaku.isSelected = session.danmaku.enabled
     }
 
@@ -2421,15 +2422,15 @@ class PlayerActivity : BaseActivity() {
         if (!subtitleAvailabilityKnown) {
             binding.btnSubtitle.isEnabled = true
             binding.btnSubtitle.alpha = 1.0f
-            binding.btnSubtitle.imageTintList =
-                ContextCompat.getColorStateList(this, blbl.cat3399.R.color.player_button_tint)
+            ImageViewCompat.setImageTintList(binding.btnSubtitle,
+                ContextCompat.getColorStateList(this, blbl.cat3399.R.color.player_button_tint))
             return
         }
         if (!subtitleAvailable) {
             binding.btnSubtitle.isEnabled = false
             binding.btnSubtitle.alpha = 0.35f
-            binding.btnSubtitle.imageTintList =
-                ContextCompat.getColorStateList(this, blbl.cat3399.R.color.player_button_tint)
+            ImageViewCompat.setImageTintList(binding.btnSubtitle,
+                ContextCompat.getColorStateList(this, blbl.cat3399.R.color.player_button_tint))
             return
         }
 
@@ -2441,7 +2442,7 @@ class PlayerActivity : BaseActivity() {
             } else {
                 blbl.cat3399.R.color.player_button_tint
             }
-        binding.btnSubtitle.imageTintList = ContextCompat.getColorStateList(this, colorRes)
+        ImageViewCompat.setImageTintList(binding.btnSubtitle, ContextCompat.getColorStateList(this, colorRes))
     }
 
     internal fun toggleSubtitles(exo: ExoPlayer) {

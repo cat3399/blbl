@@ -3,6 +3,7 @@ package blbl.cat3399.feature.dynamic
 import android.view.LayoutInflater
 import android.view.ViewGroup
 import androidx.core.view.isVisible
+import androidx.core.widget.ImageViewCompat
 import androidx.recyclerview.widget.RecyclerView
 import blbl.cat3399.core.image.ImageLoader
 import blbl.cat3399.core.image.ImageUrl
@@ -79,12 +80,14 @@ class FollowingAdapter(
             val secondaryText = ThemeColor.resolve(ctx, android.R.attr.textColorSecondary, blbl.cat3399.R.color.blbl_text_secondary)
             if (item.isAll) {
                 binding.ivAvatar.setImageResource(blbl.cat3399.R.drawable.ic_all)
-                binding.ivAvatar.imageTintList =
+                ImageViewCompat.setImageTintList(
+                    binding.ivAvatar,
                     android.content.res.ColorStateList.valueOf(
                         primaryText,
                     )
+                )
             } else {
-                binding.ivAvatar.imageTintList = null
+                ImageViewCompat.setImageTintList(binding.ivAvatar, null)
                 ImageLoader.loadInto(binding.ivAvatar, ImageUrl.avatar(item.avatarUrl))
             }
             binding.vAvatarUpdateDot.isVisible = !item.isAll && item.showRecentUpdateDot

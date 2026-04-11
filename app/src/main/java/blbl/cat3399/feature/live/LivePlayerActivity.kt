@@ -20,6 +20,7 @@ import android.view.ViewGroup.MarginLayoutParams
 import android.widget.FrameLayout
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleCoroutineScope
+import androidx.core.widget.ImageViewCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.media3.common.C
 import androidx.media3.common.Format
@@ -1937,7 +1938,7 @@ class LivePlayerActivity : BaseActivity() {
     }
 
     private fun updateDanmakuButton() {
-        binding.btnDanmaku.imageTintList = null
+        ImageViewCompat.setImageTintList(binding.btnDanmaku, null)
         binding.btnDanmaku.isSelected = session.danmaku.enabled
     }
 

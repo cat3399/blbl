@@ -5,6 +5,7 @@ import android.os.SystemClock
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import androidx.core.widget.ImageViewCompat
 import androidx.recyclerview.widget.RecyclerView
 import blbl.cat3399.R
 import blbl.cat3399.core.log.AppLog
@@ -107,7 +108,7 @@ class SidebarNavAdapter(
                 } else {
                     ThemeColor.resolve(ctx, R.attr.blblOnPageBackdropSecondary, R.color.blbl_text_secondary)
                 }
-            binding.ivIcon.imageTintList = ColorStateList.valueOf(iconTint)
+            ImageViewCompat.setImageTintList(binding.ivIcon, ColorStateList.valueOf(iconTint))
 
             val heightRes =
                 when {

@@ -3,6 +3,7 @@ package blbl.cat3399.feature.player
 import blbl.cat3399.core.log.AppLog
 import android.view.View
 import androidx.core.content.ContextCompat
+import androidx.core.widget.ImageViewCompat
 import androidx.lifecycle.lifecycleScope
 import blbl.cat3399.R
 import blbl.cat3399.core.api.BiliApi
@@ -60,7 +61,7 @@ internal fun PlayerActivity.updateActionButtonsUi() {
 internal fun PlayerActivity.updateLikeButtonUi() {
     val active = actionLiked
     val colorRes = if (active) R.color.blbl_blue else R.color.blbl_text
-    binding.btnLike.imageTintList = ContextCompat.getColorStateList(this, colorRes)
+    ImageViewCompat.setImageTintList(binding.btnLike, ContextCompat.getColorStateList(this, colorRes))
     binding.btnLike.isEnabled = true
     binding.btnLike.alpha = 1.0f
 }
@@ -68,7 +69,7 @@ internal fun PlayerActivity.updateLikeButtonUi() {
 internal fun PlayerActivity.updateCoinButtonUi() {
     val active = actionCoinCount > 0
     val colorRes = if (active) R.color.blbl_blue else R.color.blbl_text
-    binding.btnCoin.imageTintList = ContextCompat.getColorStateList(this, colorRes)
+    ImageViewCompat.setImageTintList(binding.btnCoin, ContextCompat.getColorStateList(this, colorRes))
     binding.btnCoin.isEnabled = true
     binding.btnCoin.alpha = 1.0f
 }
@@ -76,7 +77,7 @@ internal fun PlayerActivity.updateCoinButtonUi() {
 internal fun PlayerActivity.updateFavButtonUi() {
     val active = actionFavored
     val colorRes = if (active) R.color.blbl_blue else R.color.blbl_text
-    binding.btnFav.imageTintList = ContextCompat.getColorStateList(this, colorRes)
+    ImageViewCompat.setImageTintList(binding.btnFav, ContextCompat.getColorStateList(this, colorRes))
     binding.btnFav.isEnabled = true
     binding.btnFav.alpha = 1.0f
 }
