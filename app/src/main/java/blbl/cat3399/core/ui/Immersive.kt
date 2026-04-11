@@ -8,14 +8,18 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 
 object Immersive {
-    fun apply(activity: Activity, enabled: Boolean) {
+    /**
+     * @param playerScreen Pass true only for full-screen player activities.
+     *   On API 19, non-player screens always show system bars regardless of [enabled],
+     *   because edge-to-edge layout requires insets handling that those screens don't implement.
+     */
+    fun apply(activity: Activity, enabled: Boolean, playerScreen: Boolean = false) {
         val window = activity.window ?: return
         if (Build.VERSION.SDK_INT < 21) {
-            // WindowCompat.setDecorFitsSystemWindows is a no-op below API 30, and
-            // WindowInsetsControllerCompat does not set the LAYOUT_* flags on API 19.
-            // Drive systemUiVisibility directly so content extends under the bars.
+            // On API 19, only player screens go immersive. All other screens keep system bars
+            // visible so UI elements are not obscured.
             @Suppress("DEPRECATION")
-            window.decorView.systemUiVisibility = if (enabled) {
+            window.decorView.systemUiVisibility = if (enabled && playerScreen) {
                 View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
                     View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
                     View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or
