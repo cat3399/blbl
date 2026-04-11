@@ -5,6 +5,6 @@
 
     <shape android:shape="rectangle">
         <size android:height="2dp" />
-        <solid android:color="?attr/blblAccent" />
+        <solid android:color="#FB7299" />
     </shape>
 </inset>

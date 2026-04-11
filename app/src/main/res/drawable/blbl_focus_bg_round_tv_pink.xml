@@ -20,7 +20,7 @@
                     <solid android:color="@color/blbl_focus_fill" />
                     <stroke
                         android:width="2dp"
-                        android:color="?attr/blblAccent" />
+                        android:color="#FB7299" />
                     <corners android:radius="10dp" />
                 </shape>
             </item>
@@ -46,7 +46,7 @@
                     <solid android:color="@color/blbl_focus_fill_pressed" />
                     <stroke
                         android:width="2dp"
-                        android:color="?attr/blblAccent" />
+                        android:color="#FB7299" />
                     <corners android:radius="10dp" />
                 </shape>
             </item>

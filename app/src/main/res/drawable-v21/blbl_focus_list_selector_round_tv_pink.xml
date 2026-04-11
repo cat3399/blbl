@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="utf-8"?>
+<inset xmlns:android="http://schemas.android.com/apk/res/android"
+    android:insetLeft="12dp"
+    android:insetTop="6dp"
+    android:insetRight="12dp"
+    android:insetBottom="6dp">
+
+    <selector>
+        <item android:state_pressed="true">
+            <layer-list>
+                <item>
+                    <shape android:shape="rectangle">
+                        <solid android:color="@android:color/transparent" />
+                        <stroke
+                            android:width="3dp"
+                            android:color="@color/blbl_focus_shadow" />
+                        <corners android:radius="10dp" />
+                    </shape>
+                </item>
+                <item
+                    android:left="1dp"
+                    android:top="1dp"
+                    android:right="1dp"
+                    android:bottom="1dp">
+                    <shape android:shape="rectangle">
+                        <solid android:color="@color/blbl_focus_fill_pressed" />
+                        <stroke
+                            android:width="2dp"
+                            android:color="?attr/blblAccent" />
+                        <corners android:radius="10dp" />
+                    </shape>
+                </item>
+            </layer-list>
+        </item>
+        <item android:state_focused="true">
+            <layer-list>
+                <item>
+                    <shape android:shape="rectangle">
+                        <solid android:color="@android:color/transparent" />
+                        <stroke
+                            android:width="3dp"
+                            android:color="@color/blbl_focus_shadow" />
+                        <corners android:radius="10dp" />
+                    </shape>
+                </item>
+                <item
+                    android:left="1dp"
+                    android:top="1dp"
+                    android:right="1dp"
+                    android:bottom="1dp">
+                    <shape android:shape="rectangle">
+                        <solid android:color="@color/blbl_focus_fill" />
+                        <stroke
+                            android:width="2dp"
+                            android:color="?attr/blblAccent" />
+                        <corners android:radius="10dp" />
+                    </shape>
+                </item>
+            </layer-list>
+        </item>
+        <item android:state_selected="true">
+            <layer-list>
+                <item>
+                    <shape android:shape="rectangle">
+                        <solid android:color="@android:color/transparent" />
+                        <stroke
+                            android:width="3dp"
+                            android:color="@color/blbl_focus_shadow" />
+                        <corners android:radius="10dp" />
+                    </shape>
+                </item>
+                <item
+                    android:left="1dp"
+                    android:top="1dp"
+                    android:right="1dp"
+                    android:bottom="1dp">
+                    <shape android:shape="rectangle">
+                        <solid android:color="@color/blbl_focus_fill" />
+                        <stroke
+                            android:width="2dp"
+                            android:color="?attr/blblAccent" />
+                        <corners android:radius="10dp" />
+                    </shape>
+                </item>
+            </layer-list>
+        </item>
+        <item android:state_activated="true">
+            <layer-list>
+                <item>
+                    <shape android:shape="rectangle">
+                        <solid android:color="@android:color/transparent" />
+                        <stroke
+                            android:width="3dp"
+                            android:color="@color/blbl_focus_shadow" />
+                        <corners android:radius="10dp" />
+                    </shape>
+                </item>
+                <item
+                    android:left="1dp"
+                    android:top="1dp"
+                    android:right="1dp"
+                    android:bottom="1dp">
+                    <shape android:shape="rectangle">
+                        <solid android:color="@color/blbl_focus_fill" />
+                        <stroke
+                            android:width="2dp"
+                            android:color="?attr/blblAccent" />
+                        <corners android:radius="10dp" />
+                    </shape>
+                </item>
+            </layer-list>
+        </item>
+        <item>
+            <shape android:shape="rectangle">
+                <solid android:color="#00000000" />
+                <corners android:radius="10dp" />
+            </shape>
+        </item>
+    </selector>
+</inset>
