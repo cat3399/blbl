@@ -67,7 +67,7 @@
                     android:layout_width="14dp"
                     android:layout_height="14dp"
                     android:contentDescription="@string/app_name"
-                    android:src="@drawable/ic_stat_play"
+                    app:srcCompat="@drawable/ic_stat_play"
                     app:tint="?android:attr/textColorSecondary" />
 
                 <TextView
@@ -84,7 +84,7 @@
                     android:layout_height="14dp"
                     android:layout_marginStart="10dp"
                     android:contentDescription="@string/app_name"
-                    android:src="@drawable/ic_stat_danmaku"
+                    app:srcCompat="@drawable/ic_stat_danmaku"
                     app:tint="?android:attr/textColorSecondary" />
 
                 <TextView

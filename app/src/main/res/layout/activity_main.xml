@@ -82,7 +82,7 @@
                 android:layout_height="match_parent"
                 android:contentDescription="@null"
                 android:scaleType="fitCenter"
-                android:src="@drawable/ic_nav_settings"
+                app:srcCompat="@drawable/ic_nav_settings"
                 app:tint="?attr/blblOnPageBackdropSecondary" />
         </com.google.android.material.card.MaterialCardView>
     </LinearLayout>

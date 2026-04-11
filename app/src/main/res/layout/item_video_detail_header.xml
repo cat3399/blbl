@@ -256,7 +256,7 @@
             android:layout_height="match_parent"
             android:contentDescription="@string/app_name"
             android:padding="10dp"
-            android:src="@drawable/ic_action_like"
+            app:srcCompat="@drawable/ic_action_like"
             app:tint="?android:attr/textColorSecondary" />
     </blbl.cat3399.feature.player.HoldProgressCardView>
 
@@ -283,7 +283,7 @@
             android:layout_height="match_parent"
             android:contentDescription="@string/app_name"
             android:padding="10dp"
-            android:src="@drawable/ic_action_coin"
+            app:srcCompat="@drawable/ic_action_coin"
             app:tint="?android:attr/textColorSecondary" />
     </com.google.android.material.card.MaterialCardView>
 
@@ -310,7 +310,7 @@
             android:layout_height="match_parent"
             android:contentDescription="@string/app_name"
             android:padding="10dp"
-            android:src="@drawable/ic_action_fav"
+            app:srcCompat="@drawable/ic_action_fav"
             app:tint="?android:attr/textColorSecondary" />
     </com.google.android.material.card.MaterialCardView>
 
@@ -337,7 +337,7 @@
             android:layout_height="match_parent"
             android:contentDescription="@string/player_btn_comments"
             android:padding="10dp"
-            android:src="@drawable/ic_comment"
+            app:srcCompat="@drawable/ic_comment"
             app:tint="?android:attr/textColorSecondary" />
     </com.google.android.material.card.MaterialCardView>
 
@@ -415,7 +415,7 @@
                 android:layout_height="18dp"
                 android:layout_marginEnd="6dp"
                 android:contentDescription="@string/my_episode_order"
-                android:src="@drawable/ic_sort"
+                app:srcCompat="@drawable/ic_sort"
                 app:tint="?android:attr/textColorSecondary" />
 
             <TextView
@@ -487,7 +487,7 @@
                 android:layout_height="18dp"
                 android:layout_marginEnd="6dp"
                 android:contentDescription="@string/my_episode_order"
-                android:src="@drawable/ic_sort"
+                app:srcCompat="@drawable/ic_sort"
                 app:tint="?android:attr/textColorSecondary" />
 
             <TextView

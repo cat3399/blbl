@@ -29,7 +29,7 @@
             android:layout_height="@dimen/search_hot_icon_size"
             android:layout_marginEnd="@dimen/search_hot_icon_margin_end"
             android:contentDescription="@string/tab_search"
-            android:src="@drawable/ic_hot_fire"
+            app:srcCompat="@drawable/ic_hot_fire"
             app:tint="?android:attr/textColorSecondary" />
 
         <TextView

@@ -97,7 +97,7 @@
                         android:layout_height="@dimen/video_card_action_icon_watch_later_size"
                         android:layout_gravity="center"
                         android:contentDescription="@string/video_card_action_watch_later"
-                        android:src="@drawable/ic_video_card_watch_later"
+                        app:srcCompat="@drawable/ic_video_card_watch_later"
                         android:tint="@android:color/white" />
                 </FrameLayout>
 
@@ -118,7 +118,7 @@
                         android:layout_height="@dimen/video_card_action_icon_detail_size"
                         android:layout_gravity="center"
                         android:contentDescription="@string/video_card_action_open_detail"
-                        android:src="@drawable/ic_player_detail"
+                        app:srcCompat="@drawable/ic_player_detail"
                         android:tint="@android:color/white" />
                 </FrameLayout>
 
@@ -139,7 +139,7 @@
                         android:layout_height="@dimen/video_card_action_icon_up_size"
                         android:layout_gravity="center"
                         android:contentDescription="@string/video_card_action_open_up"
-                        android:src="@drawable/ic_player_up"
+                        app:srcCompat="@drawable/ic_player_up"
                         android:tint="@android:color/white" />
                 </FrameLayout>
 
@@ -160,7 +160,7 @@
                         android:layout_height="@dimen/video_card_action_icon_dismiss_size"
                         android:layout_gravity="center"
                         android:contentDescription="@string/video_card_action_not_interested"
-                        android:src="@drawable/ic_video_card_delete"
+                        app:srcCompat="@drawable/ic_video_card_delete"
                         android:tint="@android:color/white" />
                 </FrameLayout>
             </LinearLayout>
@@ -279,7 +279,7 @@
                     android:layout_height="@dimen/video_card_stat_icon_size"
                     android:layout_gravity="center_vertical"
                     android:contentDescription="@string/app_name"
-                    android:src="@drawable/ic_stat_play" />
+                    app:srcCompat="@drawable/ic_stat_play" />
 
                 <TextView
                     android:id="@+id/tv_view"
@@ -300,7 +300,7 @@
                     android:layout_marginStart="10dp"
                     android:layout_gravity="center_vertical"
                     android:contentDescription="@string/app_name"
-                    android:src="@drawable/ic_stat_danmaku" />
+                    app:srcCompat="@drawable/ic_stat_danmaku" />
 
                 <TextView
                     android:id="@+id/tv_danmaku"

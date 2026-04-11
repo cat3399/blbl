@@ -87,7 +87,7 @@
                     android:layout_height="@dimen/video_card_stat_icon_size"
                     android:layout_gravity="center_vertical"
                     android:contentDescription="@string/app_name"
-                    android:src="@drawable/ic_stat_play" />
+                    app:srcCompat="@drawable/ic_stat_play" />
 
                 <TextView
                     android:id="@+id/tv_online"
