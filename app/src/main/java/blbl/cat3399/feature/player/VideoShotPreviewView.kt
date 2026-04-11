@@ -21,6 +21,14 @@ class VideoShotPreviewView @JvmOverloads constructor(
         private const val DEFAULT_CONTENT_HEIGHT = 9
     }
 
+    init {
+        // On API 19, hardware acceleration can cause bitmap drawing issues in some cases.
+        // Force software rendering for this view to ensure thumbnails display correctly.
+        if (android.os.Build.VERSION.SDK_INT < 21) {
+            setLayerType(LAYER_TYPE_SOFTWARE, null)
+        }
+    }
+
     private val paint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG)
 
     private val srcRect = Rect()
