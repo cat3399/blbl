@@ -5,11 +5,11 @@ import blbl.cat3399.core.net.await
 import blbl.cat3399.core.net.ipv4OnlyDns
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.MediaType
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody
-import okhttp3.RequestBody.Companion.asRequestBody
 import okio.Buffer
 import okio.BufferedSink
 import okio.ForwardingSink
@@ -58,7 +58,7 @@ object LogUploadClient {
         if (len > MAX_UPLOAD_BYTES) throw IOException("日志文件过大：${len}B（上限 ${MAX_UPLOAD_BYTES}B）")
 
         val safeName = sanitizeFileName(fileName).ifBlank { f.name }
-        val rawBody = f.asRequestBody("application/zip".toMediaType())
+        val rawBody = RequestBody.create("application/zip".toMediaType(), f)
         val body =
             if (onProgress == null) {
                 rawBody

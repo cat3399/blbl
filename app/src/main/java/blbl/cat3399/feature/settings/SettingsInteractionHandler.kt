@@ -18,6 +18,7 @@ import android.widget.TextView
 import androidx.activity.result.ActivityResult
 import androidx.activity.result.ActivityResultLauncher
 import androidx.lifecycle.lifecycleScope
+import blbl.cat3399.core.util.DeviceAbi
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import blbl.cat3399.R
@@ -546,7 +547,7 @@ class SettingsInteractionHandler(
                         .put("model", Build.MODEL)
                         .put("sdk_int", Build.VERSION.SDK_INT)
                         .put("release", Build.VERSION.RELEASE)
-                        .put("abi", Build.SUPPORTED_ABIS.firstOrNull().orEmpty())
+                        .put("abi", DeviceAbi.getFirstAbi())
                         .put("ram", SettingsText.ramText(activity))
                         .put("hardware_decoder", SettingsText.hardDecoderSupportText()),
                 )

@@ -3,6 +3,7 @@ package blbl.cat3399.feature.player.engine
 import android.content.Context
 import android.os.Build
 import blbl.cat3399.core.net.BiliClient
+import blbl.cat3399.core.util.DeviceAbi
 import blbl.cat3399.core.net.await
 import blbl.cat3399.core.net.ipv4OnlyDns
 import kotlinx.coroutines.Dispatchers
@@ -80,7 +81,7 @@ internal object IjkPlayerPlugin {
     }
 
     fun deviceAbi(): String? {
-        return Build.SUPPORTED_ABIS.firstOrNull { supportedAbis.contains(it) }
+        return DeviceAbi.getSupportedAbis().firstOrNull { supportedAbis.contains(it) }
     }
 
     fun status(context: Context, abi: String = deviceAbi().orEmpty()): InstallStatus {
@@ -125,7 +126,7 @@ internal object IjkPlayerPlugin {
         onProgress: (Progress) -> Unit,
     ): File {
         val appContext = context.applicationContext
-        val abi = deviceAbi() ?: throw IOException("不支持的 ABI：${Build.SUPPORTED_ABIS.joinToString()}")
+        val abi = deviceAbi() ?: throw IOException("不支持的 ABI：${DeviceAbi.getSupportedAbis().joinToString()}")
         if (isInstalled(appContext, abi)) return soFile(appContext, abi)
 
         return withContext(Dispatchers.IO) {
@@ -152,7 +153,10 @@ internal object IjkPlayerPlugin {
 
     private val okHttp: OkHttpClient by lazy {
         OkHttpClient.Builder()
-            .cookieJar(CookieJar.NO_COOKIES)
+            .cookieJar(object : CookieJar {
+                override fun saveFromResponse(url: okhttp3.HttpUrl, cookies: List<okhttp3.Cookie>) {}
+                override fun loadForRequest(url: okhttp3.HttpUrl): List<okhttp3.Cookie> = emptyList()
+            })
             .dns(ipv4OnlyDns { BiliClient.prefs.ipv4OnlyEnabled })
             .connectTimeout(12, TimeUnit.SECONDS)
             .readTimeout(120, TimeUnit.SECONDS)

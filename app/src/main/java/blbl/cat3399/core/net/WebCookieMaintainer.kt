@@ -8,8 +8,9 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okhttp3.Cookie
+import okhttp3.MediaType
 import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.RequestBody
 import org.json.JSONObject
 import java.nio.charset.StandardCharsets
 import java.security.KeyFactory
@@ -82,10 +83,12 @@ object WebCookieMaintainer {
                     .toString()
 
             val body =
-                JSONObject()
-                    .put("payload", jsonData)
-                    .toString()
-                    .toRequestBody("application/json; charset=utf-8".toMediaType())
+                RequestBody.create(
+                    "application/json; charset=utf-8".toMediaType(),
+                    JSONObject()
+                        .put("payload", jsonData)
+                        .toString(),
+                )
 
             val cookie =
                 buildList {
@@ -210,7 +213,7 @@ object WebCookieMaintainer {
                 BiliClient.requestString(
                     url,
                     method = "POST",
-                    body = ByteArray(0).toRequestBody(null),
+                    body = RequestBody.create(null, ByteArray(0)),
                 ).let { raw -> withContext(Dispatchers.Default) { JSONObject(raw) } }
             val data = json.optJSONObject("data") ?: JSONObject()
             val ticket = data.optString("ticket", "").trim()

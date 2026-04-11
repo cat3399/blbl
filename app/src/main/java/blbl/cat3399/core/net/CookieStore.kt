@@ -6,7 +6,7 @@ import blbl.cat3399.core.log.AppLog
 import okhttp3.Cookie
 import okhttp3.CookieJar
 import okhttp3.HttpUrl
-import okhttp3.HttpUrl.Companion.toHttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.ConcurrentHashMap
@@ -44,7 +44,7 @@ class CookieStore(
     }
 
     fun cookieHeaderFor(url: String): String? {
-        val httpUrl = runCatching { url.toHttpUrl() }.getOrNull() ?: return null
+        val httpUrl = runCatching { url.toHttpUrlOrNull() }.getOrNull() ?: return null
         return cookieHeaderFor(httpUrl)
     }
 

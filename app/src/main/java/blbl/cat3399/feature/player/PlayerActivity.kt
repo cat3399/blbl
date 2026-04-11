@@ -7,6 +7,7 @@ import android.net.Uri
 import android.app.Activity
 import android.app.Application
 import android.graphics.SurfaceTexture
+import android.os.Build
 import android.os.Bundle
 import android.os.Looper
 import android.os.SystemClock
@@ -836,21 +837,35 @@ class PlayerActivity : BaseActivity() {
 
         val desiredEngineKind = session.engineKind
         val engineKind =
-            if (desiredEngineKind == PlayerEngineKind.IjkPlayer && !IjkPlayerPlugin.isInstalled(this)) {
-                val status = IjkPlayerPlugin.status(this)
-                val text =
-                    if (status == IjkPlayerPlugin.InstallStatus.NeedsUpdate) {
-                        "IjkPlayer 插件需要更新，已临时使用 ExoPlayer"
-                    } else {
-                        "IjkPlayer 插件未安装，已临时使用 ExoPlayer"
-                    }
-                AppToast.showLong(this, text)
-                IjkPlayerPluginUi.ensureInstalled(this) {
-                    if (!isFinishing && !isDestroyed) recreate()
+            when {
+                Build.VERSION.SDK_INT < 21 && desiredEngineKind == PlayerEngineKind.ExoPlayer -> {
+                    AppLog.i("PlayerActivity", "ExoPlayer requires API 21+, falling back to IjkPlayer")
+                    PlayerEngineKind.IjkPlayer
                 }
-                PlayerEngineKind.ExoPlayer
-            } else {
-                desiredEngineKind
+                Build.VERSION.SDK_INT < 21 &&
+                    desiredEngineKind == PlayerEngineKind.IjkPlayer &&
+                    !IjkPlayerPlugin.isInstalled(this) -> {
+                    AppToast.showLong(this, "IjkPlayer 插件未安装，无法在 Android 4.4 播放")
+                    IjkPlayerPluginUi.ensureInstalled(this) {
+                        if (!isFinishing && !isDestroyed) recreate()
+                    }
+                    PlayerEngineKind.IjkPlayer
+                }
+                desiredEngineKind == PlayerEngineKind.IjkPlayer && !IjkPlayerPlugin.isInstalled(this) -> {
+                    val status = IjkPlayerPlugin.status(this)
+                    val text =
+                        if (status == IjkPlayerPlugin.InstallStatus.NeedsUpdate) {
+                            "IjkPlayer 插件需要更新，已临时使用 ExoPlayer"
+                        } else {
+                            "IjkPlayer 插件未安装，已临时使用 ExoPlayer"
+                        }
+                    AppToast.showLong(this, text)
+                    IjkPlayerPluginUi.ensureInstalled(this) {
+                        if (!isFinishing && !isDestroyed) recreate()
+                    }
+                    PlayerEngineKind.ExoPlayer
+                }
+                else -> desiredEngineKind
             }
         if (session.engineKind != engineKind) {
             session = session.copy(engineKind = engineKind)

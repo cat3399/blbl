@@ -10,6 +10,7 @@ import blbl.cat3399.core.net.BiliClient
 import blbl.cat3399.core.ui.FocusTreeUtils
 import blbl.cat3399.core.ui.requestFocusAdapterPositionReliable
 import blbl.cat3399.databinding.ActivitySettingsBinding
+import blbl.cat3399.core.util.DeviceAbi
 import blbl.cat3399.feature.player.AudioBalanceLevel
 import blbl.cat3399.feature.player.engine.IjkPlayerPlugin
 
@@ -516,7 +517,7 @@ class SettingsRenderer(
 
             "设备信息" ->
                 listOf(
-                    SettingEntry(SettingId.DeviceCpu, "CPU", Build.SUPPORTED_ABIS.firstOrNull().orEmpty(), null),
+                    SettingEntry(SettingId.DeviceCpu, "CPU", DeviceAbi.getFirstAbi(), null),
                     SettingEntry(SettingId.DeviceModel, "设备", "${Build.MANUFACTURER} ${Build.MODEL}", null),
                     SettingEntry(SettingId.DeviceSystem, "系统", "Android ${Build.VERSION.RELEASE} API${Build.VERSION.SDK_INT}", null),
                     SettingEntry(SettingId.DeviceScreen, "屏幕", SettingsText.screenText(activity.resources), null),

@@ -8,12 +8,13 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.CookieJar
 import okhttp3.FormBody
+import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Protocol
 import okhttp3.Request
 import okhttp3.RequestBody
-import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import org.json.JSONObject
 import java.io.IOException
@@ -89,7 +90,10 @@ object BiliClient {
             }
             .build()
 
-        apiOkHttpNoCookies = apiOkHttp.newBuilder().cookieJar(CookieJar.NO_COOKIES).build()
+        apiOkHttpNoCookies = apiOkHttp.newBuilder().cookieJar(object : CookieJar {
+            override fun saveFromResponse(url: HttpUrl, cookies: List<okhttp3.Cookie>) {}
+            override fun loadForRequest(url: HttpUrl): List<okhttp3.Cookie> = emptyList()
+        }).build()
 
         cdnOkHttp = baseClient.newBuilder()
             .addInterceptor { chain ->
@@ -148,7 +152,7 @@ object BiliClient {
     }
 
     private fun clientFor(url: String, noCookies: Boolean = false): OkHttpClient {
-        val host = runCatching { url.toHttpUrl().host }.getOrNull().orEmpty()
+        val host = runCatching { url.toHttpUrlOrNull()?.host }.getOrNull().orEmpty()
         return if (
             host.endsWith("hdslb.com") ||
             host.contains("bilivideo.com") ||
@@ -181,7 +185,7 @@ object BiliClient {
         for ((k, v) in headers) reqBuilder.header(k, v)
         when (method.uppercase()) {
             "GET" -> reqBuilder.get()
-            "POST" -> reqBuilder.post(body ?: ByteArray(0).toRequestBody(null))
+            "POST" -> reqBuilder.post(body ?: RequestBody.create(null, ByteArray(0)))
             else -> error("Unsupported method: $method")
         }
         val res = clientFor(url, noCookies = noCookies).newCall(reqBuilder.build()).await()
@@ -245,11 +249,10 @@ object BiliClient {
     }
 
     fun withQuery(url: String, params: Map<String, String>): String {
-        val httpUrl = url.toHttpUrl().newBuilder()
+        val httpUrl = url.toHttpUrlOrNull()?.newBuilder() ?: return url
         for ((k, v) in params) httpUrl.addQueryParameter(k, v)
         return httpUrl.build().toString()
     }
-
     fun signedWbiUrl(path: String, params: Map<String, String>, keys: WbiSigner.Keys, nowEpochSec: Long = System.currentTimeMillis() / 1000): String {
         val base = "$BASE$path"
         val signed = WbiSigner.signQuery(params, keys, nowEpochSec)

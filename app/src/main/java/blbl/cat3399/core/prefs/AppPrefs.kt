@@ -1,9 +1,11 @@
 package blbl.cat3399.core.prefs
 
 import android.content.Context
+import android.os.Build
 import android.provider.Settings
 import blbl.cat3399.core.api.SponsorBlockCategories
 import blbl.cat3399.core.tv.isTvDevice
+import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import org.json.JSONArray
 import org.json.JSONObject
@@ -365,13 +367,14 @@ class AppPrefs(context: Context) {
 
     var playerEngineKind: String
         get() {
-            val raw = prefs.getString(KEY_PLAYER_ENGINE_KIND, PLAYER_ENGINE_EXO) ?: PLAYER_ENGINE_EXO
+            val defaultEngine = if (Build.VERSION.SDK_INT < 21) PLAYER_ENGINE_IJK else PLAYER_ENGINE_EXO
+            val raw = prefs.getString(KEY_PLAYER_ENGINE_KIND, defaultEngine) ?: defaultEngine
             val v = raw.trim()
             return when (v) {
                 PLAYER_ENGINE_EXO,
                 PLAYER_ENGINE_IJK,
                 -> v
-                else -> PLAYER_ENGINE_EXO
+                else -> defaultEngine
             }
         }
         set(value) {

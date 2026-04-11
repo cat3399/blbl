@@ -7,6 +7,7 @@ import blbl.cat3399.core.ui.BaseActivity
 import blbl.cat3399.core.ui.popup.AppPopup
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import blbl.cat3399.core.util.DeviceAbi
 import kotlinx.coroutines.launch
 
 internal object IjkPlayerPluginUi {
@@ -22,7 +23,7 @@ internal object IjkPlayerPluginUi {
 
         val abi = IjkPlayerPlugin.deviceAbi()
         if (abi.isNullOrBlank()) {
-            AppToast.showLong(activity, "当前设备不支持 IjkPlayer（ABI=${android.os.Build.SUPPORTED_ABIS.joinToString()}）")
+            AppToast.showLong(activity, "当前设备不支持 IjkPlayer（ABI=${DeviceAbi.getSupportedAbis().joinToString()}）")
             return
         }
 
