@@ -135,6 +135,12 @@ internal object IjkPlayerPlugin {
         return withContext(Dispatchers.IO) {
             if (isInstalled(appContext, abi)) return@withContext soFile(appContext, abi)
 
+            // Try to copy from APK's bundled native libs first
+            val bundledSo = tryExtractBundledSo(appContext, abi)
+            if (bundledSo != null) {
+                return@withContext bundledSo
+            }
+
             onProgress(Progress.Connecting)
 
             val zip = downloadZipToCache(appContext, abi = abi, onProgress = onProgress)
@@ -146,6 +152,24 @@ internal object IjkPlayerPlugin {
             } finally {
                 runCatching { zip.delete() }
             }
+        }
+    }
+
+    private fun tryExtractBundledSo(context: Context, abi: String): File? {
+        return try {
+            val nativeLibDir = context.applicationInfo.nativeLibraryDir
+            val bundledSo = File(nativeLibDir, SO_FILE_NAME)
+            if (!bundledSo.exists() || !bundledSo.isFile) return null
+            if (bundledSo.length() < MIN_SO_BYTES) return null
+            if (!looksLikeElf(bundledSo)) return null
+
+            val targetSo = soFile(context, abi)
+            targetSo.parentFile?.mkdirs()
+            bundledSo.copyTo(targetSo, overwrite = true)
+
+            if (isInstalled(context, abi)) targetSo else null
+        } catch (e: Exception) {
+            null
         }
     }
 

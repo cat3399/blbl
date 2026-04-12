@@ -78,8 +78,8 @@ android {
             )
         }
         jniLibs {
-            // IjkPlayer native libs are shipped as an on-demand plugin (downloaded when needed).
-            excludes += setOf("**/libijkplayer.so")
+            // IjkPlayer native libs are bundled for API 19 compatibility.
+            // excludes += setOf("**/libijkplayer.so")
         }
     }
 }
