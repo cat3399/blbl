@@ -1939,7 +1939,13 @@ class LivePlayerActivity : BaseActivity() {
 
     private fun updateDanmakuButton() {
         ImageViewCompat.setImageTintList(binding.btnDanmaku, null)
-        binding.btnDanmaku.isSelected = session.danmaku.enabled
+        if (Build.VERSION.SDK_INT < 21) {
+            // API 19: selector with vector items not supported; swap icon manually
+            val res = if (session.danmaku.enabled) R.drawable.ic_player_danmaku_on else R.drawable.ic_player_danmaku_off
+            binding.btnDanmaku.setImageDrawable(androidx.appcompat.content.res.AppCompatResources.getDrawable(this, res))
+        } else {
+            binding.btnDanmaku.isSelected = session.danmaku.enabled
+        }
     }
 
     private fun updateDebugOverlay() {

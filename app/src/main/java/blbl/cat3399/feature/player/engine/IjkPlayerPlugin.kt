@@ -135,10 +135,12 @@ internal object IjkPlayerPlugin {
         return withContext(Dispatchers.IO) {
             if (isInstalled(appContext, abi)) return@withContext soFile(appContext, abi)
 
-            // Try to copy from APK's bundled native libs first
-            val bundledSo = tryExtractBundledSo(appContext, abi)
-            if (bundledSo != null) {
-                return@withContext bundledSo
+            // Try to copy from APK's bundled native libs first (API 19 only)
+            if (Build.VERSION.SDK_INT < 21) {
+                val bundledSo = tryExtractBundledSo(appContext, abi)
+                if (bundledSo != null) {
+                    return@withContext bundledSo
+                }
             }
 
             onProgress(Progress.Connecting)
@@ -183,10 +185,7 @@ internal object IjkPlayerPlugin {
 
     private val okHttp: OkHttpClient by lazy {
         OkHttpClient.Builder()
-            .cookieJar(object : CookieJar {
-                override fun saveFromResponse(url: okhttp3.HttpUrl, cookies: List<okhttp3.Cookie>) {}
-                override fun loadForRequest(url: okhttp3.HttpUrl): List<okhttp3.Cookie> = emptyList()
-            })
+            .cookieJar(CookieJar.NO_COOKIES)
             .dns(ipv4OnlyDns { BiliClient.prefs.ipv4OnlyEnabled })
             .connectTimeout(12, TimeUnit.SECONDS)
             .readTimeout(120, TimeUnit.SECONDS)

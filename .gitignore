@@ -18,3 +18,4 @@ local.properties
 keystore/
 docs/
 libs/
+.claude

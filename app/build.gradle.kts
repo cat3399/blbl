@@ -78,8 +78,8 @@ android {
             )
         }
         jniLibs {
-            // IjkPlayer native libs are bundled for API 19 compatibility.
-            // excludes += setOf("**/libijkplayer.so")
+            // libijkplayer.so is bundled in jniLibs/armeabi-v7a for API 19 devices that
+            // cannot download it at runtime. On API 21+ the plugin is still downloaded on demand.
         }
     }
 }

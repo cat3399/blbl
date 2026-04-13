@@ -15,7 +15,6 @@ import okhttp3.Protocol
 import okhttp3.Request
 import okhttp3.RequestBody
 import okhttp3.Response
-import org.conscrypt.Conscrypt
 import org.json.JSONObject
 import java.io.IOException
 import java.security.KeyStore
@@ -30,6 +29,11 @@ object BiliClient {
     private const val HDR_SKIP_ORIGIN = "X-Blbl-Skip-Origin"
     private const val LOG_HTTP_REQUESTS = false
     internal const val APP_CDN_USER_AGENT = "Bilibili Freedoooooom/MarkII"
+
+    private val NO_COOKIES = object : CookieJar {
+        override fun saveFromResponse(url: HttpUrl, cookies: List<okhttp3.Cookie>) {}
+        override fun loadForRequest(url: HttpUrl): List<okhttp3.Cookie> = emptyList()
+    }
 
     lateinit var prefs: AppPrefs
         private set
@@ -71,20 +75,8 @@ object BiliClient {
             .connectTimeout(12, TimeUnit.SECONDS)
             .readTimeout(20, TimeUnit.SECONDS)
             .writeTimeout(20, TimeUnit.SECONDS)
-        // API 19–20 的系统 SSL 不支持 TLS 1.2/1.3，借助 Conscrypt 补齐。
         if (Build.VERSION.SDK_INT < 21) {
-            try {
-                val provider = Conscrypt.newProvider()
-                val sslContext = SSLContext.getInstance("TLSv1.2", provider)
-                sslContext.init(null, null, null)
-                val tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm())
-                tmf.init(null as KeyStore?)
-                val trustManager = tmf.trustManagers.first { it is X509TrustManager } as X509TrustManager
-                baseBuilder.sslSocketFactory(sslContext.socketFactory, trustManager)
-                AppLog.i(TAG, "Conscrypt TLS socket factory installed for API ${Build.VERSION.SDK_INT}")
-            } catch (e: Exception) {
-                AppLog.w(TAG, "Failed to install Conscrypt TLS socket factory", e)
-            }
+            installConscryptTls(baseBuilder)
         }
         val baseClient = baseBuilder.build()
 
@@ -109,10 +101,7 @@ object BiliClient {
             }
             .build()
 
-        apiOkHttpNoCookies = apiOkHttp.newBuilder().cookieJar(object : CookieJar {
-            override fun saveFromResponse(url: HttpUrl, cookies: List<okhttp3.Cookie>) {}
-            override fun loadForRequest(url: HttpUrl): List<okhttp3.Cookie> = emptyList()
-        }).build()
+        apiOkHttpNoCookies = apiOkHttp.newBuilder().cookieJar(NO_COOKIES).build()
 
         cdnOkHttp = baseClient.newBuilder()
             .addInterceptor { chain ->
@@ -172,13 +161,15 @@ object BiliClient {
 
     private fun clientFor(url: String, noCookies: Boolean = false): OkHttpClient {
         val host = runCatching { HttpUrl.parse(url)?.host() }.getOrNull().orEmpty()
-        return if (
-            host.endsWith("hdslb.com") ||
+        val isCdn = host.endsWith("hdslb.com") ||
             host.contains("bilivideo.com") ||
             host.contains("bilivideo.cn") ||
             host.contains("mcdn.bilivideo")
-        ) cdnOkHttp else apiOkHttp
-            .let { if (noCookies) apiOkHttpNoCookies else apiOkHttp }
+        return when {
+            isCdn -> cdnOkHttp
+            noCookies -> apiOkHttpNoCookies
+            else -> apiOkHttp
+        }
     }
 
     suspend fun requestString(
@@ -278,5 +269,21 @@ object BiliClient {
     fun signedWbiUrlAbsolute(url: String, params: Map<String, String>, keys: WbiSigner.Keys, nowEpochSec: Long = System.currentTimeMillis() / 1000): String {
         val signed = WbiSigner.signQuery(params, keys, nowEpochSec)
         return withQuery(url, signed)
+    }
+
+    // API 19–20 的系统 SSL 不支持 TLS 1.2/1.3，借助 Conscrypt 补齐。
+    // BlblApp.onCreate() 已将 Conscrypt 注册为全局 Security provider，此处直接使用默认 provider。
+    private fun installConscryptTls(builder: OkHttpClient.Builder) {
+        try {
+            val sslContext = SSLContext.getInstance("TLSv1.2")
+            sslContext.init(null, null, null)
+            val tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm())
+            tmf.init(null as KeyStore?)
+            val trustManager = tmf.trustManagers.first { it is X509TrustManager } as X509TrustManager
+            builder.sslSocketFactory(sslContext.socketFactory, trustManager)
+            AppLog.i(TAG, "Conscrypt TLS socket factory installed for API ${Build.VERSION.SDK_INT}")
+        } catch (e: Exception) {
+            AppLog.w(TAG, "Failed to install Conscrypt TLS socket factory", e)
+        }
     }
 }
