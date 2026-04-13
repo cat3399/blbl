@@ -12,8 +12,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
-import org.conscrypt.Conscrypt
-import java.security.Security
 
 class BlblApp : MultiDexApplication() {
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -29,7 +27,7 @@ class BlblApp : MultiDexApplication() {
         )
         AppLog.i("BlblApp", "onCreate")
         if (Build.VERSION.SDK_INT < 21) {
-            Security.insertProviderAt(Conscrypt.newProvider(), 1)
+            installConscrypt()
         }
         BiliClient.init(this)
         appScope.launch {
@@ -49,6 +47,16 @@ class BlblApp : MultiDexApplication() {
 
         fun launchIo(block: suspend CoroutineScope.() -> Unit) {
             instance.appScope.launch(block = block)
+        }
+
+        private fun installConscrypt() {
+            try {
+                val providerClass = Class.forName("org.conscrypt.Conscrypt")
+                val provider = providerClass.getMethod("newProvider").invoke(null) as java.security.Provider
+                java.security.Security.insertProviderAt(provider, 1)
+            } catch (e: Exception) {
+                // Conscrypt not available in this build variant
+            }
         }
     }
 }

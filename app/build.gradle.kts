@@ -57,12 +57,6 @@ android {
             matchingFallbacks += listOf("release")
             applicationIdSuffix = ".kitkat"
             versionNameSuffix = "-kitkat"
-            // Don't exclude libijkplayer.so for kitkat build (API 19 needs it bundled)
-            packaging {
-                jniLibs {
-                    excludes.clear()
-                }
-            }
         }
     }
 
@@ -90,9 +84,23 @@ android {
             )
         }
         jniLibs {
-            // libijkplayer.so is bundled only for kitkat build (API 19 devices).
-            // For release/debug builds, the plugin is downloaded on demand.
+            // libijkplayer.so is excluded by default (downloaded on demand).
+            // The kitkat buildType will override this via androidComponents.onVariants.
             excludes += setOf("**/libijkplayer.so")
+        }
+    }
+
+    // Configure per-variant packaging for kitkat build
+    androidComponents {
+        onVariants { variant ->
+            if (variant.buildType == "kitkat") {
+                // API 19 devices are 32-bit ARM only; include libijkplayer.so but strip other ABIs
+                variant.packaging.jniLibs.excludes.set(setOf(
+                    "**/arm64-v8a/**",
+                    "**/x86/**",
+                    "**/x86_64/**",
+                ))
+            }
         }
     }
 }
@@ -139,7 +147,7 @@ dependencies {
 
     implementation("com.squareup.okhttp3:okhttp:3.12.13")
     implementation("org.brotli:dec:0.1.2")
-    implementation("org.conscrypt:conscrypt-android:2.5.2")
+    "kitkatImplementation"("org.conscrypt:conscrypt-android:2.5.2")
 
     implementation("androidx.media3:media3-exoplayer:1.8.0")
     implementation("androidx.media3:media3-exoplayer-dash:1.8.0")

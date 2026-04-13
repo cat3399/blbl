@@ -2575,7 +2575,7 @@ class PlayerActivity : BaseActivity() {
     private fun shouldAttemptHighSpecFallback(error: PlaybackException): Boolean {
         return when (error.errorCode) {
             PlaybackException.ERROR_CODE_FAILED_RUNTIME_CHECK,
-            4004, // PlaybackException.ERROR_CODE_NOT_SUPPORTED (added in media3 1.4.0)
+            PlaybackException.ERROR_CODE_NOT_SUPPORTED,
             PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED,
             PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED,
             PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
