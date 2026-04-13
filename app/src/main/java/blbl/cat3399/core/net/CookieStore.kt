@@ -25,25 +25,25 @@ class CookieStore(
     override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) {
         if (cookies.isEmpty()) return
         for (cookie in cookies) {
-            val key = cookie.domain()
+            val key = cookie.cookieDomain()
             val list = (store[key] ?: mutableListOf()).toMutableList()
-            list.removeAll { it.name() == cookie.name() && it.domain() == cookie.domain() && it.path() == cookie.path() }
+            list.removeAll { it.cookieName() == cookie.cookieName() && it.cookieDomain() == cookie.cookieDomain() && it.cookiePath() == cookie.cookiePath() }
             list.add(cookie)
             store[key] = list
         }
         persistToDisk()
-        AppLog.d("CookieStore", "saveFromResponse host=${url.host()} +${cookies.size}")
+        AppLog.d("CookieStore", "saveFromResponse host=${url.urlHost()} +${cookies.size}")
     }
 
     override fun loadForRequest(url: HttpUrl): List<Cookie> {
         val now = System.currentTimeMillis()
-        val list = store.values.flatten().filter { it.expiresAt() >= now && it.matches(url) }
-        if (list.isNotEmpty()) AppLog.v("CookieStore", "loadForRequest host=${url.host()} cookies=${list.size}")
+        val list = store.values.flatten().filter { it.cookieExpiresAt() >= now && it.matches(url) }
+        if (list.isNotEmpty()) AppLog.v("CookieStore", "loadForRequest host=${url.urlHost()} cookies=${list.size}")
         return list
     }
 
     fun cookieHeaderFor(url: String): String? {
-        val httpUrl = runCatching { HttpUrl.parse(url) }.getOrNull() ?: return null
+        val httpUrl = runCatching { url.parseHttpUrl() }.getOrNull() ?: return null
         return cookieHeaderFor(httpUrl)
     }
 
@@ -51,31 +51,31 @@ class CookieStore(
         val cookies = loadForRequest(url).toMutableList()
         if (cookies.isEmpty()) return null
         cookies.sortWith(
-            compareByDescending<Cookie> { it.path().length }
-                .thenBy { it.name() },
+            compareByDescending<Cookie> { it.cookiePath().length }
+                .thenBy { it.cookieName() },
         )
-        return cookies.joinToString("; ") { "${it.name()}=${it.value()}" }
+        return cookies.joinToString("; ") { "${it.cookieName()}=${it.cookieValue()}" }
     }
 
     fun hasSessData(): Boolean {
         val now = System.currentTimeMillis()
-        return store.values.flatten().any { it.name() == "SESSDATA" && it.expiresAt() >= now }
+        return store.values.flatten().any { it.cookieName() == "SESSDATA" && it.cookieExpiresAt() >= now }
     }
 
     fun getCookieValue(name: String): String? {
         val now = System.currentTimeMillis()
-        return store.values.flatten().firstOrNull { it.name() == name && it.expiresAt() >= now }?.value()
+        return store.values.flatten().firstOrNull { it.cookieName() == name && it.cookieExpiresAt() >= now }?.cookieValue()
     }
 
     fun getCookie(name: String): Cookie? {
         val now = System.currentTimeMillis()
-        return store.values.flatten().firstOrNull { it.name() == name && it.expiresAt() >= now }
+        return store.values.flatten().firstOrNull { it.cookieName() == name && it.cookieExpiresAt() >= now }
     }
 
     fun upsert(cookie: Cookie) {
-        val key = cookie.domain()
+        val key = cookie.cookieDomain()
         val list = (store[key] ?: mutableListOf()).toMutableList()
-        list.removeAll { it.name() == cookie.name() && it.domain() == cookie.domain() && it.path() == cookie.path() }
+        list.removeAll { it.cookieName() == cookie.cookieName() && it.cookieDomain() == cookie.cookieDomain() && it.cookiePath() == cookie.cookiePath() }
         list.add(cookie)
         store[key] = list
         persistToDisk()
@@ -84,9 +84,9 @@ class CookieStore(
     fun upsertAll(cookies: List<Cookie>) {
         if (cookies.isEmpty()) return
         for (cookie in cookies) {
-            val key = cookie.domain()
+            val key = cookie.cookieDomain()
             val list = (store[key] ?: mutableListOf()).toMutableList()
-            list.removeAll { it.name() == cookie.name() && it.domain() == cookie.domain() && it.path() == cookie.path() }
+            list.removeAll { it.cookieName() == cookie.cookieName() && it.cookieDomain() == cookie.cookieDomain() && it.cookiePath() == cookie.cookiePath() }
             list.add(cookie)
             store[key] = list
         }
@@ -141,17 +141,17 @@ class CookieStore(
         for ((host, cookies) in store.entries) {
             val arr = JSONArray()
             cookies.forEach { cookie ->
-                if (!includeExpired && cookie.expiresAt() < now) return@forEach
+                if (!includeExpired && cookie.cookieExpiresAt() < now) return@forEach
                 val obj = JSONObject()
-                obj.put("name", cookie.name())
-                obj.put("value", cookie.value())
-                obj.put("domain", cookie.domain())
-                obj.put("path", cookie.path())
-                obj.put("expiresAt", cookie.expiresAt())
-                obj.put("secure", cookie.secure())
-                obj.put("httpOnly", cookie.httpOnly())
-                obj.put("hostOnly", cookie.hostOnly())
-                obj.put("persistent", cookie.persistent())
+                obj.put("name", cookie.cookieName())
+                obj.put("value", cookie.cookieValue())
+                obj.put("domain", cookie.cookieDomain())
+                obj.put("path", cookie.cookiePath())
+                obj.put("expiresAt", cookie.cookieExpiresAt())
+                obj.put("secure", cookie.cookieSecure())
+                obj.put("httpOnly", cookie.cookieHttpOnly())
+                obj.put("hostOnly", cookie.cookieHostOnly())
+                obj.put("persistent", cookie.cookiePersistent())
                 arr.put(obj)
             }
             if (arr.length() > 0) root.put(host, arr)

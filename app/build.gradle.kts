@@ -153,15 +153,23 @@ dependencies {
 
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
 
-    implementation("com.squareup.okhttp3:okhttp:3.12.13")
     implementation("org.brotli:dec:0.1.2")
     "kitkatImplementation"("org.conscrypt:conscrypt-android:2.5.2")
 
-    implementation("androidx.media3:media3-exoplayer:1.8.0")
-    implementation("androidx.media3:media3-exoplayer-dash:1.8.0")
-    implementation("androidx.media3:media3-exoplayer-hls:1.8.0")
-    implementation("androidx.media3:media3-ui:1.8.0")
-    implementation("androidx.media3:media3-datasource:1.8.0")
+    "kitkatImplementation"("com.squareup.okhttp3:okhttp:3.12.13")
+    "lollipopplusImplementation"("com.squareup.okhttp3:okhttp:4.12.0")
+
+    "kitkatImplementation"("androidx.media3:media3-exoplayer:1.4.1")
+    "kitkatImplementation"("androidx.media3:media3-exoplayer-dash:1.4.1")
+    "kitkatImplementation"("androidx.media3:media3-exoplayer-hls:1.4.1")
+    "kitkatImplementation"("androidx.media3:media3-ui:1.4.1")
+    "kitkatImplementation"("androidx.media3:media3-datasource:1.4.1")
+
+    "lollipopplusImplementation"("androidx.media3:media3-exoplayer:1.8.0")
+    "lollipopplusImplementation"("androidx.media3:media3-exoplayer-dash:1.8.0")
+    "lollipopplusImplementation"("androidx.media3:media3-exoplayer-hls:1.8.0")
+    "lollipopplusImplementation"("androidx.media3:media3-ui:1.8.0")
+    "lollipopplusImplementation"("androidx.media3:media3-datasource:1.8.0")
 
     implementation("com.google.protobuf:protobuf-javalite:3.25.5")
     implementation("io.grpc:grpc-okhttp:1.72.0")

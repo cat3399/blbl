@@ -12,7 +12,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import okhttp3.HttpUrl
+import blbl.cat3399.core.net.parseHttpUrl
+import blbl.cat3399.core.net.urlHost
 
 object EmoteBitmapLoader {
     private const val TAG = "EmoteBitmapLoader"
@@ -106,7 +107,7 @@ object EmoteBitmapLoader {
         if (raw.startsWith("//")) return "https:$raw"
         if (!raw.startsWith("http://")) return raw
 
-        val host = HttpUrl.parse(raw)?.host()?.lowercase().orEmpty()
+        val host = raw.parseHttpUrl()?.urlHost()?.lowercase().orEmpty()
         val isBiliCdn =
             host == "hdslb.com" ||
                 host.endsWith(".hdslb.com") ||

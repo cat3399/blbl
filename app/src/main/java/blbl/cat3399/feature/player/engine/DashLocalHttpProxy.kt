@@ -2,6 +2,9 @@ package blbl.cat3399.feature.player.engine
 
 import blbl.cat3399.BuildConfig
 import blbl.cat3399.core.log.AppLog
+import blbl.cat3399.core.net.bodyOrNull
+import blbl.cat3399.core.net.statusCode
+import blbl.cat3399.core.net.statusMessage
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -152,8 +155,8 @@ internal class DashLocalHttpProxy(
                 }
                 .onSuccess { upstreamRes ->
                     upstreamRes.use { res ->
-                        if (BuildConfig.DEBUG && range != null && res.code() != 206) {
-                            AppLog.w("DashProxy", "range request got http=${res.code()} key=$key range=$range")
+                        if (BuildConfig.DEBUG && range != null && res.statusCode() != 206) {
+                            AppLog.w("DashProxy", "range request got http=${res.statusCode()} key=$key range=$range")
                         }
                         val out = BufferedOutputStream(s.getOutputStream())
                         writeStatusLine(out, res)
@@ -170,7 +173,7 @@ internal class DashLocalHttpProxy(
                         acceptRanges?.let { writeHeader(out, "Accept-Ranges", it) }
                         contentRange?.let { writeHeader(out, "Content-Range", it) }
 
-                        val body = res.body()
+                        val body = res.bodyOrNull()
                         val bodyLen = body?.contentLength() ?: -1L
                         val resolvedLen =
                             upstreamContentLength
@@ -182,7 +185,7 @@ internal class DashLocalHttpProxy(
                             val teShort = upstreamTransferEncoding ?: "null"
                             AppLog.i(
                                 "DashProxy",
-                                "res http=${res.code()} key=$key range=$range len=${resolvedLen ?: -1L} te=$teShort cr=$crShort",
+                                "res http=${res.statusCode()} key=$key range=$range len=${resolvedLen ?: -1L} te=$teShort cr=$crShort",
                             )
                         }
                         if (method == "HEAD") {
@@ -218,11 +221,11 @@ internal class DashLocalHttpProxy(
                             return
                         }
 
-                        if (range != null || res.code() == 206) {
+                        if (range != null || res.statusCode() == 206) {
                             // Range response without a reliable length is not seekable for some ijk/ffmpeg paths.
                             AppLog.w(
                                 "DashProxy",
-                                "range response missing Content-Length/Content-Range; http=${res.code()} key=$key range=$range",
+                                "range response missing Content-Length/Content-Range; http=${res.statusCode()} key=$key range=$range",
                             )
                             finishHeaders(out)
                             out.flush()
@@ -276,8 +279,8 @@ internal class DashLocalHttpProxy(
     }
 
     private fun writeStatusLine(out: BufferedOutputStream, res: Response) {
-        val msg = res.message().takeIf { it.isNotBlank() } ?: "OK"
-        out.write("HTTP/1.1 ${res.code()} $msg\r\n".toByteArray(StandardCharsets.ISO_8859_1))
+        val msg = res.statusMessage().takeIf { it.isNotBlank() } ?: "OK"
+        out.write("HTTP/1.1 ${res.statusCode()} $msg\r\n".toByteArray(StandardCharsets.ISO_8859_1))
     }
 
     private fun writeHeader(out: BufferedOutputStream, name: String, value: String) {

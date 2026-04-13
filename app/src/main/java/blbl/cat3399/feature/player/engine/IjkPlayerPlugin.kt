@@ -3,6 +3,9 @@ package blbl.cat3399.feature.player.engine
 import android.content.Context
 import android.os.Build
 import blbl.cat3399.core.net.BiliClient
+import blbl.cat3399.core.net.bodyOrNull
+import blbl.cat3399.core.net.statusCode
+import blbl.cat3399.core.net.statusMessage
 import blbl.cat3399.core.util.DeviceAbi
 import blbl.cat3399.core.net.await
 import blbl.cat3399.core.net.ipv4OnlyDns
@@ -210,8 +213,8 @@ internal object IjkPlayerPlugin {
         val res = call.await()
 
         res.use { r ->
-            check(r.isSuccessful) { "HTTP ${r.code()} ${r.message()}" }
-            val body = r.body() ?: error("empty body")
+            check(r.isSuccessful) { "HTTP ${r.statusCode()} ${r.statusMessage()}" }
+            val body = r.bodyOrNull() ?: error("empty body")
             val total = body.contentLength().takeIf { it > 0 }
             body.byteStream().use { input ->
                 FileOutputStream(part).use { output ->

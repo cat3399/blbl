@@ -10,7 +10,11 @@ import androidx.core.content.FileProvider
 import blbl.cat3399.BuildConfig
 import blbl.cat3399.core.net.BiliClient
 import blbl.cat3399.core.net.await
+import blbl.cat3399.core.net.bodyOrNull
+import blbl.cat3399.core.net.evictConnectionPool
 import blbl.cat3399.core.net.ipv4OnlyDns
+import blbl.cat3399.core.net.statusCode
+import blbl.cat3399.core.net.statusMessage
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -53,7 +57,7 @@ object ApkUpdater {
         get() = okHttpLazy.value
 
     fun evictConnections() {
-        if (okHttpLazy.isInitialized()) okHttp.connectionPool().evictAll()
+        if (okHttpLazy.isInitialized()) okHttp.evictConnectionPool()
     }
 
     sealed class Progress {
@@ -134,8 +138,8 @@ object ApkUpdater {
         val call = okHttp.newCall(req)
         val res = call.execute()
         res.use { r ->
-            check(r.isSuccessful) { "HTTP ${r.code()} ${r.message()}" }
-            val body = r.body() ?: error("empty body")
+            check(r.isSuccessful) { "HTTP ${r.statusCode()} ${r.statusMessage()}" }
+            val body = r.bodyOrNull() ?: error("empty body")
             return parseChangelog(body.string())
         }
     }
@@ -220,8 +224,8 @@ object ApkUpdater {
         val call = okHttp.newCall(req)
         val res = call.await()
         res.use { r ->
-            check(r.isSuccessful) { "HTTP ${r.code()} ${r.message()}" }
-            val body = r.body() ?: error("empty body")
+            check(r.isSuccessful) { "HTTP ${r.statusCode()} ${r.statusMessage()}" }
+            val body = r.bodyOrNull() ?: error("empty body")
             val total = body.contentLength().takeIf { it > 0 }
             withContext(Dispatchers.IO) {
                 body.byteStream().use { input ->
