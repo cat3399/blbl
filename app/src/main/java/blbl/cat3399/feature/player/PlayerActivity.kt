@@ -39,7 +39,6 @@ import androidx.media3.ui.SubtitleView
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
-import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.datasource.TransferListener
 import androidx.media3.datasource.HttpDataSource
 import androidx.media3.exoplayer.DecoderReuseEvaluation
@@ -91,6 +90,7 @@ import blbl.cat3399.feature.player.engine.IjkPlayerEngine
 import blbl.cat3399.feature.player.engine.IjkPlayerPlugin
 import blbl.cat3399.feature.player.engine.IjkPlayerPluginUi
 import blbl.cat3399.feature.player.engine.PlayerEngineKind
+import blbl.cat3399.feature.player.engine.createHttpDataSourceFactory
 import blbl.cat3399.feature.player.engine.PlaybackSource
 import blbl.cat3399.feature.settings.SettingsActivity
 import blbl.cat3399.feature.video.VideoDetailActivity
@@ -3068,10 +3068,7 @@ class PlayerActivity : BaseActivity() {
                 override fun onTransferEnd(source: DataSource, dataSpec: DataSpec, isNetwork: Boolean) {}
             }
 
-        val upstream = DefaultHttpDataSource.Factory()
-            .setUserAgent(BiliClient.prefs.userAgent)
-            .setDefaultRequestProperties(mapOf("Referer" to "https://www.bilibili.com/"))
-            .setTransferListener(listener)
+        val upstream = createHttpDataSourceFactory(transferListener = listener)
         val uris =
             urlCandidates
                 .orEmpty()

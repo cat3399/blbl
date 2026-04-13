@@ -18,7 +18,6 @@ import androidx.media3.common.VideoSize
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.DefaultDataSource
-import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.datasource.TransferListener
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
@@ -426,10 +425,7 @@ internal class ExoPlayerEngine(
                 override fun onTransferEnd(source: DataSource, dataSpec: DataSpec, isNetwork: Boolean) {}
             }
 
-        val upstream = DefaultHttpDataSource.Factory()
-            .setUserAgent(BiliClient.prefs.userAgent)
-            .setDefaultRequestProperties(mapOf("Referer" to "https://www.bilibili.com/"))
-            .setTransferListener(listener)
+        val upstream = createHttpDataSourceFactory(transferListener = listener)
         val uris =
             urlCandidates
                 .orEmpty()
