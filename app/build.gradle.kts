@@ -52,6 +52,18 @@ android {
                 "proguard-rules.pro",
             )
         }
+        create("kitkat") {
+            initWith(getByName("release"))
+            matchingFallbacks += listOf("release")
+            applicationIdSuffix = ".kitkat"
+            versionNameSuffix = "-kitkat"
+            // Don't exclude libijkplayer.so for kitkat build (API 19 needs it bundled)
+            packaging {
+                jniLibs {
+                    excludes.clear()
+                }
+            }
+        }
     }
 
     buildFeatures {
@@ -78,8 +90,9 @@ android {
             )
         }
         jniLibs {
-            // libijkplayer.so is bundled in jniLibs/armeabi-v7a for API 19 devices that
-            // cannot download it at runtime. On API 21+ the plugin is still downloaded on demand.
+            // libijkplayer.so is bundled only for kitkat build (API 19 devices).
+            // For release/debug builds, the plugin is downloaded on demand.
+            excludes += setOf("**/libijkplayer.so")
         }
     }
 }
