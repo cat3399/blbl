@@ -52,11 +52,19 @@ android {
                 "proguard-rules.pro",
             )
         }
+    }
+
+    flavorDimensions += "api"
+    productFlavors {
         create("kitkat") {
-            initWith(getByName("release"))
-            matchingFallbacks += listOf("release")
+            dimension = "api"
+            minSdk = 19
             applicationIdSuffix = ".kitkat"
             versionNameSuffix = "-kitkat"
+        }
+        create("lollipopplus") {
+            dimension = "api"
+            minSdk = 21
         }
     }
 
@@ -85,15 +93,15 @@ android {
         }
         jniLibs {
             // libijkplayer.so is excluded by default (downloaded on demand).
-            // The kitkat buildType will override this via androidComponents.onVariants.
+            // The kitkat flavor will override this via androidComponents.onVariants.
             excludes += setOf("**/libijkplayer.so")
         }
     }
 
-    // Configure per-variant packaging for kitkat build
+    // Configure per-variant packaging for kitkat flavor
     androidComponents {
         onVariants { variant ->
-            if (variant.buildType == "kitkat") {
+            if (variant.flavorName == "kitkat") {
                 // API 19 devices are 32-bit ARM only; include libijkplayer.so but strip other ABIs
                 variant.packaging.jniLibs.excludes.set(setOf(
                     "**/arm64-v8a/**",
