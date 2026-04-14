@@ -2,7 +2,6 @@ package blbl.cat3399.feature.player.engine
 
 import androidx.annotation.OptIn
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.datasource.HttpDataSource
 import androidx.media3.datasource.TransferListener
 import blbl.cat3399.core.net.BiliClient
@@ -11,7 +10,7 @@ import blbl.cat3399.core.net.BiliClient
 internal fun createHttpDataSourceFactory(
     transferListener: TransferListener? = null,
 ): HttpDataSource.Factory =
-    DefaultHttpDataSource.Factory()
+    OkHttp3DataSource.Factory(BiliClient.cdnOkHttp)
         .setUserAgent(BiliClient.prefs.userAgent)
-        .setDefaultRequestProperties(mapOf("Referer" to "https://www.bilibili.com/"))
         .apply { if (transferListener != null) setTransferListener(transferListener) }
+        .setDefaultRequestProperties(mapOf("Referer" to "https://www.bilibili.com/"))
