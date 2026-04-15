@@ -9,6 +9,7 @@ import androidx.lifecycle.lifecycleScope
 import blbl.cat3399.R
 import blbl.cat3399.core.log.AppLog
 import blbl.cat3399.core.net.BiliClient
+import blbl.cat3399.core.ui.Immersive
 import blbl.cat3399.core.prefs.AppPrefs
 import blbl.cat3399.feature.player.engine.BlblPlayerEngine
 import blbl.cat3399.feature.player.engine.PlayerEngineKind
@@ -87,6 +88,7 @@ internal fun PlayerActivity.setControlsVisible(visible: Boolean) {
     updatePersistentBottomProgressBarVisibility()
     onTouchOverlayStateChanged()
     if (show) noteUserInteraction() else autoHideJob?.cancel()
+    if (!show) Immersive.apply(this, BiliClient.prefs.fullscreenEnabled, playerScreen = true)
 }
 
 internal fun PlayerActivity.isTopBarContentVisible(): Boolean = osdMode != PlayerActivity.OsdMode.Hidden

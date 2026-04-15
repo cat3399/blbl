@@ -222,6 +222,7 @@ class LivePlayerActivity : BaseActivity() {
             )
         setContentView(binding.root)
         Immersive.apply(this, prefs.fullscreenEnabled, playerScreen = true)
+        Immersive.setupKeepHidden(this) { BiliClient.prefs.fullscreenEnabled }
         PlayerUiMode.applyLive(this, binding)
         resetBufferingOverlayState()
 

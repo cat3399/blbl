@@ -700,6 +700,7 @@ class PlayerActivity : BaseActivity() {
             )
         setContentView(binding.root)
         Immersive.apply(this, prefs.fullscreenEnabled, playerScreen = true)
+        Immersive.setupKeepHidden(this) { BiliClient.prefs.fullscreenEnabled }
         PlayerUiMode.applyVideo(this, binding)
         ensureBottomBarConstraintSets()
 

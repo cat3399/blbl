@@ -3,6 +3,7 @@ package blbl.cat3399.core.ui
 import android.app.Activity
 import android.os.Build
 import android.view.View
+import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -40,5 +41,29 @@ object Immersive {
             }
         }
         WindowDisplayPolicy.requestApplyInsets(activity)
+    }
+
+    /**
+     * Sets up a listener on the decor view that immediately re-hides system bars whenever they
+     * become visible (e.g. triggered by volume keys). Call once in onCreate for player screens.
+     * [isFullscreenEnabled] is evaluated at each insets change to respect dynamic pref changes.
+     */
+    @Suppress("DEPRECATION")
+    fun setupKeepHidden(activity: Activity, isFullscreenEnabled: () -> Boolean) {
+        val window = activity.window ?: return
+        if (Build.VERSION.SDK_INT < 21) {
+            window.decorView.setOnSystemUiVisibilityChangeListener { visibility ->
+                if (isFullscreenEnabled() && visibility and View.SYSTEM_UI_FLAG_HIDE_NAVIGATION == 0) {
+                    apply(activity, enabled = true, playerScreen = true)
+                }
+            }
+        } else {
+            ViewCompat.setOnApplyWindowInsetsListener(window.decorView) { view, insets ->
+                if (isFullscreenEnabled() && insets.isVisible(WindowInsetsCompat.Type.systemBars())) {
+                    apply(activity, enabled = true, playerScreen = true)
+                }
+                ViewCompat.onApplyWindowInsets(view, insets)
+            }
+        }
     }
 }
