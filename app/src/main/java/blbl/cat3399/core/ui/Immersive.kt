@@ -9,6 +9,15 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 
 object Immersive {
+    @Suppress("DEPRECATION")
+    private const val LEGACY_PLAYER_IMMERSIVE_FLAGS =
+        View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
+            View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
+            View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or
+            View.SYSTEM_UI_FLAG_FULLSCREEN or
+            View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
+            View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+
     /**
      * @param playerScreen Pass true only for full-screen player activities.
      *   On API 19, non-player screens always show system bars regardless of [enabled],
@@ -19,16 +28,10 @@ object Immersive {
         if (Build.VERSION.SDK_INT < 21) {
             // On API 19, only player screens go immersive. All other screens keep system bars
             // visible so UI elements are not obscured.
+            val targetFlags = if (enabled && playerScreen) LEGACY_PLAYER_IMMERSIVE_FLAGS else View.SYSTEM_UI_FLAG_VISIBLE
             @Suppress("DEPRECATION")
-            window.decorView.systemUiVisibility = if (enabled && playerScreen) {
-                View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
-                    View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
-                    View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or
-                    View.SYSTEM_UI_FLAG_FULLSCREEN or
-                    View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
-                    View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-            } else {
-                View.SYSTEM_UI_FLAG_VISIBLE
+            if (window.decorView.systemUiVisibility != targetFlags) {
+                window.decorView.systemUiVisibility = targetFlags
             }
         } else {
             WindowDisplayPolicy.applyWindow(activity, fullscreen = enabled)
@@ -53,14 +56,27 @@ object Immersive {
         val window = activity.window ?: return
         if (Build.VERSION.SDK_INT < 21) {
             window.decorView.setOnSystemUiVisibilityChangeListener { visibility ->
-                if (isFullscreenEnabled() && visibility and View.SYSTEM_UI_FLAG_HIDE_NAVIGATION == 0) {
+                if (
+                    isFullscreenEnabled() &&
+                    visibility and View.SYSTEM_UI_FLAG_HIDE_NAVIGATION == 0 &&
+                    window.decorView.systemUiVisibility != LEGACY_PLAYER_IMMERSIVE_FLAGS
+                ) {
                     apply(activity, enabled = true, playerScreen = true)
                 }
             }
         } else {
             ViewCompat.setOnApplyWindowInsetsListener(window.decorView) { view, insets ->
                 if (isFullscreenEnabled() && insets.isVisible(WindowInsetsCompat.Type.systemBars())) {
-                    apply(activity, enabled = true, playerScreen = true)
+                    // Let child views consume this visible-bars insets pass first so edge-to-edge
+                    // content can temporarily dodge the revealed system bars before we hide them again.
+                    view.post {
+                        if (!ViewCompat.isAttachedToWindow(view)) return@post
+                        if (!isFullscreenEnabled()) return@post
+                        val rootInsets = ViewCompat.getRootWindowInsets(view)
+                        if (rootInsets?.isVisible(WindowInsetsCompat.Type.systemBars()) == true) {
+                            apply(activity, enabled = true, playerScreen = true)
+                        }
+                    }
                 }
                 ViewCompat.onApplyWindowInsets(view, insets)
             }

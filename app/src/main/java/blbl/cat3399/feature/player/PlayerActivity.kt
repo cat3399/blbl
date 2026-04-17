@@ -11,6 +11,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Looper
 import android.os.SystemClock
+import android.util.DisplayMetrics
 import android.util.TypedValue
 import android.view.FocusFinder
 import android.view.KeyEvent
@@ -25,6 +26,8 @@ import android.widget.SeekBar
 import androidx.constraintlayout.widget.ConstraintSet
 import androidx.appcompat.content.res.AppCompatResources
 import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.core.widget.ImageViewCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.media3.common.C
@@ -116,6 +119,20 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 
 class PlayerActivity : BaseActivity() {
+    private data class ViewPaddingState(
+        val left: Int,
+        val top: Int,
+        val right: Int,
+        val bottom: Int,
+    )
+
+    private data class ViewMarginState(
+        val start: Int,
+        val top: Int,
+        val end: Int,
+        val bottom: Int,
+    )
+
     override fun shouldRecreateOnUiScaleChange(): Boolean = true
 
     internal lateinit var binding: ActivityPlayerBinding
@@ -194,6 +211,19 @@ class PlayerActivity : BaseActivity() {
     internal var likeButtonHoldController: HoldToTriggerController? = null
     internal var touchController: PlayerTouchController? = null
     internal val osdFocusReturn = FocusReturn()
+    private var topBarBasePadding = ViewPaddingState(0, 0, 0, 0)
+    private var topBarBaseMargins = ViewMarginState(0, 0, 0, 0)
+    private var cardUpQuickBaseMargins = ViewMarginState(0, 0, 0, 0)
+    private var bottomBarBasePadding = ViewPaddingState(0, 0, 0, 0)
+    private var bottomBarBaseMargins = ViewMarginState(0, 0, 0, 0)
+    private var seekOsdBasePadding = ViewPaddingState(0, 0, 0, 0)
+    private var seekOsdBaseMargins = ViewMarginState(0, 0, 0, 0)
+    private var progressPersistentBottomBaseMargins = ViewMarginState(0, 0, 0, 0)
+    private var videoShotPreviewBaseMargins = ViewMarginState(0, 0, 0, 0)
+    private var seekHintBaseMargins = ViewMarginState(0, 0, 0, 0)
+    private var recommendPanelBaseMargins = ViewMarginState(0, 0, 0, 0)
+    private var settingsPanelBaseMargins = ViewMarginState(0, 0, 0, 0)
+    private var commentsPanelBaseMargins = ViewMarginState(0, 0, 0, 0)
 
     private val doubleBackToExit by lazy {
         DoubleBackToExitHandler(context = this, windowMs = BACK_DOUBLE_PRESS_WINDOW_MS) {
@@ -702,6 +732,9 @@ class PlayerActivity : BaseActivity() {
         Immersive.apply(this, prefs.fullscreenEnabled, playerScreen = true)
         Immersive.setupKeepHidden(this) { BiliClient.prefs.fullscreenEnabled }
         PlayerUiMode.applyVideo(this, binding)
+        captureSystemBarAvoidanceBaseState()
+        installSystemBarAvoidance()
+        binding.topBar.setBackgroundResource(R.drawable.bg_player_top_scrim_strong)
         ensureBottomBarConstraintSets()
 
         binding.bottomBar.visibility = View.GONE
@@ -1434,6 +1467,12 @@ class PlayerActivity : BaseActivity() {
         super.onResume()
         PlayerOsdSizing.applyTheme(this)
         PlayerUiMode.applyVideo(this, binding)
+        captureSystemBarAvoidanceBaseState()
+        if (Build.VERSION.SDK_INT < 21) {
+            applyLegacySystemBarAvoidance()
+        } else {
+            ViewCompat.requestApplyInsets(binding.root)
+        }
         applyOsdButtonsVisibility()
         // Defensive: ensure back stays non-focusable after any theme/UI refresh.
         binding.btnBack.isFocusable = false
@@ -1441,6 +1480,294 @@ class PlayerActivity : BaseActivity() {
         updatePersistentBottomProgressBarVisibility()
         (binding.recyclerSettings.adapter as? PlayerSettingsAdapter)?.let { refreshSettings(it) }
         consumeTransientPlaybackResumeIfNeeded()
+    }
+
+    private fun captureSystemBarAvoidanceBaseState() {
+        topBarBasePadding = binding.topBar.capturePaddingState()
+        topBarBaseMargins = binding.topBar.captureMarginState()
+        cardUpQuickBaseMargins = binding.cardUpQuick.captureMarginState()
+        bottomBarBasePadding = binding.bottomBar.capturePaddingState()
+        bottomBarBaseMargins = binding.bottomBar.captureMarginState()
+        seekOsdBasePadding = binding.seekOsdContainer.capturePaddingState()
+        seekOsdBaseMargins = binding.seekOsdContainer.captureMarginState()
+        progressPersistentBottomBaseMargins = binding.progressPersistentBottom.captureMarginState()
+        videoShotPreviewBaseMargins = binding.videoShotPreview.captureMarginState()
+        seekHintBaseMargins = binding.tvSeekHint.captureMarginState()
+        recommendPanelBaseMargins = binding.recommendPanel.captureMarginState()
+        settingsPanelBaseMargins = binding.settingsPanel.captureMarginState()
+        commentsPanelBaseMargins = binding.commentsPanel.captureMarginState()
+    }
+    private fun installSystemBarAvoidance() {
+        if (Build.VERSION.SDK_INT < 21) {
+            applyLegacySystemBarAvoidance()
+            return
+        }
+        ViewCompat.setOnApplyWindowInsetsListener(binding.root) { _, insets ->
+            val navInsets = insets.getInsetsIgnoringVisibility(WindowInsetsCompat.Type.navigationBars())
+            val topInsets = insets.getInsetsIgnoringVisibility(WindowInsetsCompat.Type.statusBars() or WindowInsetsCompat.Type.displayCutout())
+
+            binding.topBar.applyPaddingState(
+                topBarBasePadding,
+                extraTop = topInsets.top,
+            )
+            binding.topBar.applyMarginState(
+                topBarBaseMargins,
+                extraStart = navInsets.left,
+                extraEnd = navInsets.right,
+            )
+            binding.cardUpQuick.applyMarginState(
+                cardUpQuickBaseMargins,
+                extraStart = navInsets.left,
+                extraEnd = navInsets.right,
+            )
+            binding.bottomBar.applyPaddingState(
+                bottomBarBasePadding,
+                extraBottom = navInsets.bottom,
+            )
+            binding.bottomBar.applyMarginState(
+                bottomBarBaseMargins,
+                extraStart = navInsets.left,
+                extraEnd = navInsets.right,
+            )
+            binding.seekOsdContainer.applyPaddingState(
+                seekOsdBasePadding,
+                extraBottom = navInsets.bottom,
+            )
+            binding.seekOsdContainer.applyMarginState(
+                seekOsdBaseMargins,
+                extraStart = navInsets.left,
+                extraEnd = navInsets.right,
+            )
+            binding.progressPersistentBottom.applyMarginState(
+                progressPersistentBottomBaseMargins,
+                extraStart = navInsets.left,
+                extraEnd = navInsets.right,
+                extraBottom = navInsets.bottom,
+            )
+            binding.videoShotPreview.applyMarginState(
+                videoShotPreviewBaseMargins,
+                extraStart = navInsets.left,
+                extraEnd = navInsets.right,
+                extraBottom = navInsets.bottom,
+            )
+            binding.tvSeekHint.applyMarginState(
+                seekHintBaseMargins,
+                extraStart = navInsets.left,
+                extraEnd = navInsets.right,
+                extraBottom = navInsets.bottom,
+            )
+            binding.recommendPanel.applyMarginState(
+                recommendPanelBaseMargins,
+                extraStart = navInsets.left,
+                extraEnd = navInsets.right,
+                extraBottom = navInsets.bottom,
+            )
+            binding.settingsPanel.applyMarginState(
+                settingsPanelBaseMargins,
+                extraTop = topInsets.top,
+                extraEnd = navInsets.right,
+                extraBottom = navInsets.bottom,
+            )
+            binding.commentsPanel.applyMarginState(
+                commentsPanelBaseMargins,
+                extraTop = topInsets.top,
+                extraEnd = navInsets.right,
+                extraBottom = navInsets.bottom,
+            )
+            insets
+        }
+        ViewCompat.requestApplyInsets(binding.root)
+    }
+
+    private fun applyLegacySystemBarAvoidance() {
+        val topInset = getSystemBarDimension("status_bar_height")
+        val (navRightInset, navBottomInset) = getLegacyNavigationBarInsets()
+
+        binding.topBar.applyPaddingState(
+            topBarBasePadding,
+            extraTop = topInset,
+        )
+        binding.topBar.applyMarginState(
+            topBarBaseMargins,
+            extraEnd = navRightInset,
+        )
+        binding.cardUpQuick.applyMarginState(
+            cardUpQuickBaseMargins,
+            extraEnd = navRightInset,
+        )
+        binding.bottomBar.applyPaddingState(
+            bottomBarBasePadding,
+            extraBottom = navBottomInset,
+        )
+        binding.bottomBar.applyMarginState(
+            bottomBarBaseMargins,
+            extraEnd = navRightInset,
+        )
+        binding.seekOsdContainer.applyPaddingState(
+            seekOsdBasePadding,
+            extraBottom = navBottomInset,
+        )
+        binding.seekOsdContainer.applyMarginState(
+            seekOsdBaseMargins,
+            extraEnd = navRightInset,
+        )
+        binding.progressPersistentBottom.applyMarginState(
+            progressPersistentBottomBaseMargins,
+            extraEnd = navRightInset,
+            extraBottom = navBottomInset,
+        )
+        binding.videoShotPreview.applyMarginState(
+            videoShotPreviewBaseMargins,
+            extraEnd = navRightInset,
+            extraBottom = navBottomInset,
+        )
+        binding.tvSeekHint.applyMarginState(
+            seekHintBaseMargins,
+            extraEnd = navRightInset,
+            extraBottom = navBottomInset,
+        )
+        binding.recommendPanel.applyMarginState(
+            recommendPanelBaseMargins,
+            extraEnd = navRightInset,
+            extraBottom = navBottomInset,
+        )
+        binding.settingsPanel.applyMarginState(
+            settingsPanelBaseMargins,
+            extraTop = topInset,
+            extraEnd = navRightInset,
+            extraBottom = navBottomInset,
+        )
+        binding.commentsPanel.applyMarginState(
+            commentsPanelBaseMargins,
+            extraTop = topInset,
+            extraEnd = navRightInset,
+            extraBottom = navBottomInset,
+        )
+    }
+
+    private fun getLegacyNavigationBarInsets(): Pair<Int, Int> {
+        if (!hasLegacyNavigationBar()) return 0 to 0
+        val (widthDiff, heightDiff) = getLegacyNavigationBarMetricDiff()
+        val isLandscape = resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+        val navWidth = getSystemBarDimension("navigation_bar_width")
+        val navHeightPortrait = getSystemBarDimension("navigation_bar_height")
+        val navHeightLandscape = getSystemBarDimension("navigation_bar_height_landscape")
+        val result =
+            if (widthDiff > 0 || heightDiff > 0) {
+                when {
+                    widthDiff > 0 && heightDiff <= 0 -> widthDiff to 0
+                    heightDiff > 0 -> 0 to heightDiff
+                    else -> 0 to 0
+                }
+            } else if (isLandscape) {
+                when {
+                    navWidth > 0 -> navWidth to 0
+                    navHeightLandscape > 0 -> 0 to navHeightLandscape
+                    navHeightPortrait > 0 -> 0 to navHeightPortrait
+                    else -> 0 to 0
+                }
+            } else {
+                0 to navHeightPortrait
+            }
+        return result
+    }
+
+    private fun getLegacyNavigationBarMetricDiff(): Pair<Int, Int> {
+        val realMetrics = DisplayMetrics()
+        val displayMetrics = DisplayMetrics()
+        @Suppress("DEPRECATION")
+        windowManager.defaultDisplay?.let { display ->
+            @Suppress("DEPRECATION")
+            display.getRealMetrics(realMetrics)
+            @Suppress("DEPRECATION")
+            display.getMetrics(displayMetrics)
+        }
+        return (realMetrics.widthPixels - displayMetrics.widthPixels).coerceAtLeast(0) to
+            (realMetrics.heightPixels - displayMetrics.heightPixels).coerceAtLeast(0)
+    }
+
+    private fun hasLegacyNavigationBar(): Boolean {
+        val configId = resources.getIdentifier("config_showNavigationBar", "bool", "android")
+        if (configId != 0 && !resources.getBoolean(configId)) return false
+        val realMetrics = DisplayMetrics()
+        val displayMetrics = DisplayMetrics()
+        @Suppress("DEPRECATION")
+        windowManager.defaultDisplay?.let { display ->
+            @Suppress("DEPRECATION")
+            display.getRealMetrics(realMetrics)
+            @Suppress("DEPRECATION")
+            display.getMetrics(displayMetrics)
+        }
+        val hasNav =
+            realMetrics.widthPixels > displayMetrics.widthPixels ||
+                realMetrics.heightPixels > displayMetrics.heightPixels ||
+                configId != 0
+        return hasNav
+    }
+
+    private fun getSystemBarDimension(name: String): Int {
+        val resId = resources.getIdentifier(name, "dimen", "android")
+        return if (resId != 0) resources.getDimensionPixelSize(resId) else 0
+    }
+
+    private fun View.capturePaddingState(): ViewPaddingState =
+        ViewPaddingState(
+            left = paddingLeft,
+            top = paddingTop,
+            right = paddingRight,
+            bottom = paddingBottom,
+        )
+
+    private fun View.captureMarginState(): ViewMarginState {
+        val lp = layoutParams as? MarginLayoutParams
+        return ViewMarginState(
+            start = lp?.marginStart ?: 0,
+            top = lp?.topMargin ?: 0,
+            end = lp?.marginEnd ?: 0,
+            bottom = lp?.bottomMargin ?: 0,
+        )
+    }
+
+    private fun View.applyPaddingState(
+        base: ViewPaddingState,
+        extraLeft: Int = 0,
+        extraTop: Int = 0,
+        extraRight: Int = 0,
+        extraBottom: Int = 0,
+    ) {
+        setPadding(
+            base.left + extraLeft,
+            base.top + extraTop,
+            base.right + extraRight,
+            base.bottom + extraBottom,
+        )
+    }
+
+    private fun View.applyMarginState(
+        base: ViewMarginState,
+        extraStart: Int = 0,
+        extraTop: Int = 0,
+        extraEnd: Int = 0,
+        extraBottom: Int = 0,
+    ) {
+        val lp = layoutParams as? MarginLayoutParams ?: return
+        val nextStart = base.start + extraStart
+        val nextTop = base.top + extraTop
+        val nextEnd = base.end + extraEnd
+        val nextBottom = base.bottom + extraBottom
+        if (
+            lp.marginStart == nextStart &&
+            lp.topMargin == nextTop &&
+            lp.marginEnd == nextEnd &&
+            lp.bottomMargin == nextBottom
+        ) {
+            return
+        }
+        lp.marginStart = nextStart
+        lp.topMargin = nextTop
+        lp.marginEnd = nextEnd
+        lp.bottomMargin = nextBottom
+        layoutParams = lp
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
