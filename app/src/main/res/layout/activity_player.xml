@@ -3,8 +3,7 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#000000"
-    android:defaultFocusHighlightEnabled="false">
+    android:background="#000000">
 
     <androidx.media3.ui.PlayerView
         android:id="@+id/player_view"
@@ -75,8 +74,10 @@
         android:gravity="center_horizontal"
         android:importantForAccessibility="no"
         android:orientation="vertical"
-        android:paddingHorizontal="@dimen/player_buffering_padding_h"
-        android:paddingVertical="@dimen/player_buffering_padding_v"
+        android:paddingLeft="@dimen/player_buffering_padding_h"
+        android:paddingTop="@dimen/player_buffering_padding_v"
+        android:paddingRight="@dimen/player_buffering_padding_h"
+        android:paddingBottom="@dimen/player_buffering_padding_v"
         android:visibility="gone"
         app:layout_constraintBottom_toBottomOf="@id/player_view"
         app:layout_constraintEnd_toEndOf="@id/player_view"
@@ -88,9 +89,7 @@
             style="?android:attr/progressBarStyleLarge"
             android:layout_width="@dimen/player_buffering_indicator_size"
             android:layout_height="@dimen/player_buffering_indicator_size"
-            android:indeterminate="true"
-            android:indeterminateTint="?attr/colorOnSurface"
-            android:indeterminateTintMode="src_in" />
+            android:indeterminate="true" />
 
         <TextView
             android:id="@+id/tv_buffering"
@@ -300,8 +299,7 @@
             android:nextFocusDown="@id/seek_progress"
             android:orientation="horizontal"
             android:paddingStart="@dimen/player_up_quick_profile_padding_start"
-            android:paddingEnd="@dimen/player_up_quick_profile_padding_end"
-            android:stateListAnimator="@animator/blbl_focus_scale">
+            android:paddingEnd="@dimen/player_up_quick_profile_padding_end">
 
             <com.google.android.material.imageview.ShapeableImageView
                 android:id="@+id/iv_up_quick_avatar"
@@ -341,8 +339,7 @@
             android:nextFocusUp="@id/btn_up_quick_follow"
             android:nextFocusDown="@id/seek_progress"
             android:paddingStart="@dimen/player_up_quick_follow_padding_start"
-            android:paddingEnd="@dimen/player_up_quick_follow_padding_end"
-            android:stateListAnimator="@animator/blbl_focus_scale"
+            android:paddingEnd="@dimen/player_up_quick_follow_padding_end">
             android:text="@string/player_up_quick_follow"
             android:textColor="?attr/colorOnSurface"
             android:textSize="@dimen/player_up_quick_follow_text_size" />
@@ -689,8 +686,6 @@
         android:layout_height="wrap_content"
         android:layout_marginBottom="@dimen/player_videoshot_preview_margin_bottom"
         android:background="@drawable/bg_rounded_preview"
-        android:clipToOutline="true"
-        android:elevation="@dimen/player_videoshot_preview_elevation"
         android:visibility="gone"
         app:layout_constraintBottom_toTopOf="@id/barrier_player_bottom_overlay_top"
         app:layout_constraintStart_toStartOf="parent" />
@@ -797,7 +792,6 @@
                 android:nextFocusRight="@id/tab_parts_list"
                 android:paddingHorizontal="12dp"
                 android:paddingVertical="6dp"
-                android:stateListAnimator="@animator/blbl_focus_scale"
                 android:text="@string/player_list_tab_page"
                 android:textColor="@color/player_list_tab_text"
                 android:textSize="14sp" />
@@ -814,7 +808,6 @@
                 android:nextFocusRight="@id/tab_recommend_list"
                 android:paddingHorizontal="12dp"
                 android:paddingVertical="6dp"
-                android:stateListAnimator="@animator/blbl_focus_scale"
                 android:text="@string/player_list_tab_parts"
                 android:textColor="@color/player_list_tab_text"
                 android:textSize="14sp" />
@@ -831,7 +824,6 @@
                 android:nextFocusRight="@id/tab_recommend_list"
                 android:paddingHorizontal="12dp"
                 android:paddingVertical="6dp"
-                android:stateListAnimator="@animator/blbl_focus_scale"
                 android:text="@string/player_list_tab_recommend"
                 android:textColor="@color/player_list_tab_text"
                 android:textSize="14sp" />
@@ -1433,8 +1425,6 @@
         android:layout_height="0dp"
         android:background="@color/player_overlay_bg"
         android:clickable="true"
-        android:defaultFocusHighlightEnabled="false"
-        android:elevation="20dp"
         android:focusable="true"
         android:visibility="gone"
         app:layout_constraintBottom_toBottomOf="parent"

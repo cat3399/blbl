@@ -6,7 +6,6 @@
     android:layout_marginBottom="@dimen/player_info_recommend_row_gap"
     android:clickable="true"
     android:focusable="true"
-    android:stateListAnimator="@animator/blbl_focus_scale"
     app:cardBackgroundColor="#1AFFFFFF"
     app:cardCornerRadius="12dp"
     app:cardElevation="0dp"

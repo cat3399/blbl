@@ -6,7 +6,6 @@
     android:layout_margin="@dimen/video_card_margin"
     android:clickable="true"
     android:focusable="true"
-    android:stateListAnimator="@animator/blbl_focus_scale"
     app:cardBackgroundColor="@android:color/transparent"
     app:cardCornerRadius="10dp"
     app:cardElevation="0dp"
@@ -72,7 +71,8 @@
                 android:id="@+id/ll_actions"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:layout_marginHorizontal="@dimen/video_card_action_group_margin_h"
+                android:layout_marginStart="@dimen/video_card_action_group_margin_h"
+                android:layout_marginEnd="@dimen/video_card_action_group_margin_h"
                 android:gravity="center_vertical"
                 android:orientation="horizontal"
                 android:visibility="gone"
@@ -88,8 +88,7 @@
                     android:layout_weight="1"
                     android:background="@drawable/bg_video_card_action_button"
                     android:clickable="true"
-                    android:focusable="false"
-                    android:foreground="?attr/selectableItemBackgroundBorderless">
+                    android:focusable="false">
 
                     <ImageView
                         android:id="@+id/iv_action_watch_later"
@@ -98,7 +97,7 @@
                         android:layout_gravity="center"
                         android:contentDescription="@string/video_card_action_watch_later"
                         app:srcCompat="@drawable/ic_video_card_watch_later"
-                        android:tint="@android:color/white" />
+                        app:tint="@android:color/white" />
                 </FrameLayout>
 
                 <FrameLayout
@@ -109,8 +108,7 @@
                     android:layout_weight="1"
                     android:background="@drawable/bg_video_card_action_button"
                     android:clickable="true"
-                    android:focusable="false"
-                    android:foreground="?attr/selectableItemBackgroundBorderless">
+                    android:focusable="false">
 
                     <ImageView
                         android:id="@+id/iv_action_detail"
@@ -119,7 +117,7 @@
                         android:layout_gravity="center"
                         android:contentDescription="@string/video_card_action_open_detail"
                         app:srcCompat="@drawable/ic_player_detail"
-                        android:tint="@android:color/white" />
+                        app:tint="@android:color/white" />
                 </FrameLayout>
 
                 <FrameLayout
@@ -130,8 +128,7 @@
                     android:layout_weight="1"
                     android:background="@drawable/bg_video_card_action_button"
                     android:clickable="true"
-                    android:focusable="false"
-                    android:foreground="?attr/selectableItemBackgroundBorderless">
+                    android:focusable="false">
 
                     <ImageView
                         android:id="@+id/iv_action_up"
@@ -140,7 +137,7 @@
                         android:layout_gravity="center"
                         android:contentDescription="@string/video_card_action_open_up"
                         app:srcCompat="@drawable/ic_player_up"
-                        android:tint="@android:color/white" />
+                        app:tint="@android:color/white" />
                 </FrameLayout>
 
                 <FrameLayout
@@ -151,8 +148,7 @@
                     android:layout_weight="1"
                     android:background="@drawable/bg_video_card_action_button"
                     android:clickable="true"
-                    android:focusable="false"
-                    android:foreground="?attr/selectableItemBackgroundBorderless">
+                    android:focusable="false">
 
                     <ImageView
                         android:id="@+id/iv_action_dismiss"
@@ -161,7 +157,7 @@
                         android:layout_gravity="center"
                         android:contentDescription="@string/video_card_action_not_interested"
                         app:srcCompat="@drawable/ic_video_card_delete"
-                        android:tint="@android:color/white" />
+                        app:tint="@android:color/white" />
                 </FrameLayout>
             </LinearLayout>
 
@@ -199,8 +195,10 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_margin="@dimen/video_card_text_margin"
-                android:paddingHorizontal="@dimen/video_card_duration_padding_h"
-                android:paddingVertical="@dimen/video_card_duration_padding_v"
+                android:paddingLeft="@dimen/video_card_duration_padding_h"
+                android:paddingTop="@dimen/video_card_duration_padding_v"
+                android:paddingRight="@dimen/video_card_duration_padding_h"
+                android:paddingBottom="@dimen/video_card_duration_padding_v"
                 android:shadowColor="#CC000000"
                 android:shadowDx="0"
                 android:shadowDy="1"
@@ -219,8 +217,10 @@
                 android:layout_margin="@dimen/video_card_text_margin"
                 android:background="@drawable/bg_pgc_access_badge"
                 android:gravity="center"
-                android:paddingHorizontal="@dimen/video_card_duration_padding_h"
-                android:paddingVertical="@dimen/video_card_duration_padding_v"
+                android:paddingLeft="@dimen/video_card_duration_padding_h"
+                android:paddingTop="@dimen/video_card_duration_padding_v"
+                android:paddingRight="@dimen/video_card_duration_padding_h"
+                android:paddingBottom="@dimen/video_card_duration_padding_v"
                 android:text="@string/badge_charging"
                 android:textColor="@android:color/white"
                 android:textSize="@dimen/video_card_duration_text_size"
@@ -234,8 +234,10 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_margin="@dimen/video_card_text_margin"
-                android:paddingHorizontal="@dimen/video_card_duration_padding_h"
-                android:paddingVertical="@dimen/video_card_duration_padding_v"
+                android:paddingLeft="@dimen/video_card_duration_padding_h"
+                android:paddingTop="@dimen/video_card_duration_padding_v"
+                android:paddingRight="@dimen/video_card_duration_padding_h"
+                android:paddingBottom="@dimen/video_card_duration_padding_v"
                 android:shadowColor="#CC000000"
                 android:shadowDx="0"
                 android:shadowDy="1"
@@ -250,8 +252,10 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_margin="@dimen/video_card_text_margin"
-                android:paddingHorizontal="@dimen/video_card_duration_padding_h"
-                android:paddingVertical="@dimen/video_card_duration_padding_v"
+                android:paddingLeft="@dimen/video_card_duration_padding_h"
+                android:paddingTop="@dimen/video_card_duration_padding_v"
+                android:paddingRight="@dimen/video_card_duration_padding_h"
+                android:paddingBottom="@dimen/video_card_duration_padding_v"
                 android:shadowColor="#CC000000"
                 android:shadowDx="0"
                 android:shadowDy="1"
@@ -268,8 +272,10 @@
                 android:layout_height="wrap_content"
                 android:layout_margin="@dimen/video_card_text_margin"
                 android:orientation="horizontal"
-                android:paddingHorizontal="@dimen/video_card_duration_padding_h"
-                android:paddingVertical="@dimen/video_card_duration_padding_v"
+                android:paddingLeft="@dimen/video_card_duration_padding_h"
+                android:paddingTop="@dimen/video_card_duration_padding_v"
+                android:paddingRight="@dimen/video_card_duration_padding_h"
+                android:paddingBottom="@dimen/video_card_duration_padding_v"
                 app:layout_constraintBottom_toBottomOf="parent"
                 app:layout_constraintStart_toStartOf="parent">
 
@@ -338,7 +344,8 @@
             android:id="@+id/ll_subtitle"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_marginHorizontal="@dimen/video_card_text_margin"
+            android:layout_marginStart="@dimen/video_card_text_margin"
+            android:layout_marginEnd="@dimen/video_card_text_margin"
             android:layout_marginBottom="@dimen/video_card_text_margin"
             android:orientation="horizontal"
             app:layout_constraintBottom_toBottomOf="parent"

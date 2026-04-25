@@ -2,6 +2,7 @@ package blbl.cat3399.feature.player
 
 import android.view.View
 import androidx.core.content.ContextCompat
+import androidx.core.widget.ImageViewCompat
 import androidx.recyclerview.widget.LinearLayoutManager
 import blbl.cat3399.R
 import blbl.cat3399.core.api.video.VideoDetail
@@ -131,7 +132,7 @@ internal fun PlayerActivity.refreshPlayerInfoPanelContent() {
 internal fun PlayerActivity.updatePlayerInfoActionUi() {
     fun applyAction(iconView: android.widget.ImageView, textView: android.widget.TextView, active: Boolean, count: Long?, fallback: String) {
         val tint = if (active) R.color.blbl_blue else R.color.player_button_tint
-        iconView.imageTintList = ContextCompat.getColorStateList(this, tint)
+        ImageViewCompat.setImageTintList(iconView, ContextCompat.getColorStateList(this, tint))
         textView.text = count?.let { Format.count(it) } ?: fallback
         textView.setTextColor(
             ContextCompat.getColor(

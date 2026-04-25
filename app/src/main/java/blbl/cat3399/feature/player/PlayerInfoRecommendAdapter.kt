@@ -1,5 +1,7 @@
 package blbl.cat3399.feature.player
 
+import android.animation.AnimatorInflater
+import android.os.Build
 import android.view.LayoutInflater
 import android.view.ViewGroup
 import androidx.core.view.isVisible
@@ -47,6 +49,13 @@ internal class PlayerInfoRecommendAdapter(
     internal class Vh(
         private val binding: ItemPlayerInfoRecommendBinding,
     ) : RecyclerView.ViewHolder(binding.root) {
+        init {
+            if (Build.VERSION.SDK_INT >= 21) {
+                binding.root.stateListAnimator =
+                    AnimatorInflater.loadStateListAnimator(binding.root.context, blbl.cat3399.R.animator.blbl_focus_scale)
+            }
+        }
+
         fun bind(
             item: VideoCard,
             position: Int,

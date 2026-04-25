@@ -729,6 +729,7 @@ class PlayerActivity : BaseActivity() {
                 },
             )
         setContentView(binding.root)
+        applyPostInflateCompatUi()
         Immersive.apply(this, prefs.fullscreenEnabled, playerScreen = true)
         Immersive.setupKeepHidden(this) { BiliClient.prefs.fullscreenEnabled }
         PlayerUiMode.applyVideo(this, binding)
@@ -4218,6 +4219,28 @@ class PlayerActivity : BaseActivity() {
                     setSurface(renderView.surfaceTexture)
                 }
             }
+        }
+    }
+
+    private fun applyPostInflateCompatUi() {
+        if (Build.VERSION.SDK_INT >= 21) {
+            val tint = ContextCompat.getColorStateList(this, R.color.blbl_text)
+            binding.progressBuffering.indeterminateTintList = tint
+            binding.progressBuffering.indeterminateTintMode = android.graphics.PorterDuff.Mode.SRC_IN
+            binding.videoShotPreview.clipToOutline = true
+            binding.videoShotPreview.elevation = resources.getDimension(R.dimen.player_videoshot_preview_elevation)
+            binding.commentImageViewer.elevation = 20f * resources.displayMetrics.density
+            binding.btnUpQuickProfile.stateListAnimator = android.animation.AnimatorInflater.loadStateListAnimator(this, R.animator.blbl_focus_scale)
+            binding.btnUpQuickFollow.stateListAnimator = android.animation.AnimatorInflater.loadStateListAnimator(this, R.animator.blbl_focus_scale)
+            binding.tabPageList.stateListAnimator = android.animation.AnimatorInflater.loadStateListAnimator(this, R.animator.blbl_focus_scale)
+            binding.tabPartsList.stateListAnimator = android.animation.AnimatorInflater.loadStateListAnimator(this, R.animator.blbl_focus_scale)
+            binding.tabRecommendList.stateListAnimator = android.animation.AnimatorInflater.loadStateListAnimator(this, R.animator.blbl_focus_scale)
+            binding.chipCommentSortHot.stateListAnimator = android.animation.AnimatorInflater.loadStateListAnimator(this, R.animator.blbl_focus_scale)
+            binding.chipCommentSortNew.stateListAnimator = android.animation.AnimatorInflater.loadStateListAnimator(this, R.animator.blbl_focus_scale)
+        }
+        if (Build.VERSION.SDK_INT >= 26) {
+            binding.root.defaultFocusHighlightEnabled = false
+            binding.commentImageViewer.defaultFocusHighlightEnabled = false
         }
     }
 }
