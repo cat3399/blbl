@@ -185,12 +185,10 @@ class VideoDetailActivity : BaseActivity() {
     private fun showLoadingUi() {
         val root =
             FrameLayout(this).apply {
-                setBackgroundColor(
-                    ThemeColor.resolve(
-                        context = this@VideoDetailActivity,
-                        attr = android.R.attr.colorBackground,
-                        fallbackRes = R.color.blbl_bg,
-                    ),
+                ThemeColor.applyBackground(
+                    view = this,
+                    attr = R.attr.blblPageBackdrop,
+                    fallbackRes = R.color.blbl_bg,
                 )
                 addView(
                     ProgressBar(this@VideoDetailActivity),

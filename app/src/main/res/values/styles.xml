@@ -24,6 +24,13 @@
         <item name="blblAccentPressed">@color/blbl_accent_tv_pink_pressed</item>
     </style>
 
+    <style name="ThemeOverlay.Blbl.Accent.Classic" parent="ThemeOverlay.MaterialComponents">
+        <item name="blblAccent">@color/blbl_accent_classic</item>
+        <item name="blblAccentContainer">@color/blbl_accent_classic_container</item>
+        <item name="blblAccentWeak">@color/blbl_accent_classic_weak</item>
+        <item name="blblAccentPressed">@color/blbl_accent_classic_pressed</item>
+    </style>
+
     <style name="ThemeOverlay.Blbl.TransparentDialog" parent="ThemeOverlay.MaterialComponents.Dialog">
         <item name="android:windowIsTranslucent">true</item>
         <item name="android:windowBackground">@android:color/transparent</item>
@@ -32,6 +39,7 @@
 
     <style name="ThemeOverlay.Blbl.MaterialAlertDialog" parent="ThemeOverlay.MaterialComponents.MaterialAlertDialog">
         <item name="colorPrimary">?attr/blblAccent</item>
+        <item name="colorSurface">?attr/blblDialogSurface</item>
         <item name="colorOnPrimary">?attr/colorOnSurface</item>
         <item name="materialAlertDialogTitleTextStyle">@style/Widget.Blbl.MaterialAlertDialog.Title.Text</item>
         <item name="materialAlertDialogBodyTextStyle">@style/Widget.Blbl.MaterialAlertDialog.Body.Text</item>
@@ -72,7 +80,11 @@
     <style name="Widget.Blbl.TabLayout" parent="Widget.MaterialComponents.TabLayout">
         <item name="tabTextAppearance">@style/TextAppearance.Blbl.Tab</item>
         <item name="tabIndicator">@drawable/blbl_tab_indicator</item>
+        <item name="tabIndicatorColor">?attr/blblAccent</item>
         <item name="tabIndicatorFullWidth">false</item>
+        <item name="tabBackground">?attr/blblFocusBgRound</item>
+        <item name="tabSelectedTextColor">?attr/blblOnPageBackdrop</item>
+        <item name="tabTextColor">?attr/blblOnPageBackdropSecondary</item>
         <item name="tabPaddingTop">4dp</item>
         <item name="tabPaddingBottom">2dp</item>
     </style>

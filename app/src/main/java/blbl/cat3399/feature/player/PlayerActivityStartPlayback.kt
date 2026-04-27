@@ -33,6 +33,41 @@ import java.util.concurrent.atomic.AtomicBoolean
 private const val RISK_CONTROL_USER_HINT = "当前账号可能被风控,请尽量联系开发者!"
 private val riskControlUserHintShown = AtomicBoolean(false)
 
+internal data class VodPageDuration(
+    val cid: Long,
+    val durationSec: Long,
+)
+
+internal fun resolveCurrentVodDurationMs(
+    viewDurationSec: Long?,
+    pageDurations: List<VodPageDuration>,
+    cid: Long,
+): Long? {
+    val pageDuration =
+        cid.takeIf { it > 0L }?.let { safeCid ->
+            pageDurations.firstOrNull { it.cid == safeCid }?.durationSec
+        }?.takeIf { it > 0L }
+    if (pageDuration != null) return pageDuration * 1000L
+
+    val onlyPageDuration = pageDurations.singleOrNull()?.durationSec?.takeIf { it > 0L }
+    if (onlyPageDuration != null) return onlyPageDuration * 1000L
+
+    if (pageDurations.size > 1) return null
+    return viewDurationSec?.takeIf { it > 0L }?.times(1000L)
+}
+
+internal fun resolvePlayUrlDurationMs(
+    dashDurationSec: Long?,
+    timeLengthMs: Long?,
+    durlSegmentLengthsMs: List<Long>,
+): Long? {
+    dashDurationSec?.takeIf { it > 0L }?.let { return it * 1000L }
+    timeLengthMs?.takeIf { it > 0L }?.let { return it }
+
+    val durlTotal = durlSegmentLengthsMs.filter { it > 0L }.sum()
+    return durlTotal.takeIf { it > 0L }
+}
+
 private suspend fun <T> runSuspendCatchingNonCancellation(block: suspend () -> T): Result<T> =
     try {
         Result.success(block())
@@ -55,6 +90,49 @@ private fun PlayerActivity.finishAfterStartPlaybackFailure(throwable: Throwable)
         AppToast.showLong(this, startPlaybackFailureMessage(throwable))
     }
     if (!isFinishing) finish()
+}
+
+private fun resolveCurrentVodDurationMsFromView(viewData: JSONObject, cid: Long): Long? {
+    val pages = viewData.optJSONArray("pages")
+    val pageDurations =
+        buildList {
+            if (pages != null) {
+                for (i in 0 until pages.length()) {
+                    val page = pages.optJSONObject(i) ?: continue
+                    val pageCid = page.optLong("cid").takeIf { it > 0L } ?: continue
+                    val durationSec = page.optLong("duration").takeIf { it > 0L } ?: continue
+                    add(VodPageDuration(cid = pageCid, durationSec = durationSec))
+                }
+            }
+        }
+    val viewDurationSec = viewData.optLong("duration", -1L).takeIf { it > 0L }
+    return resolveCurrentVodDurationMs(
+        viewDurationSec = viewDurationSec,
+        pageDurations = pageDurations,
+        cid = cid,
+    )
+}
+
+internal fun resolvePlayUrlDurationMs(playJson: JSONObject): Long? {
+    val data = playJson.optJSONObject("data") ?: playJson.optJSONObject("result") ?: return null
+    val dashDurationSec = data.optJSONObject("dash")?.optLong("duration", -1L)?.takeIf { it > 0L }
+    val timeLengthMs = data.optLong("timelength", -1L).takeIf { it > 0L }
+    val durl = data.optJSONArray("durl")
+    val durlSegmentLengthsMs =
+        buildList {
+            if (durl != null) {
+                for (i in 0 until durl.length()) {
+                    val segment = durl.optJSONObject(i) ?: continue
+                    val lengthMs = segment.optLong("length", -1L).takeIf { it > 0L } ?: continue
+                    add(lengthMs)
+                }
+            }
+        }
+    return resolvePlayUrlDurationMs(
+        dashDurationSec = dashDurationSec,
+        timeLengthMs = timeLengthMs,
+        durlSegmentLengthsMs = durlSegmentLengthsMs,
+    )
 }
 
 internal fun PlayerActivity.resetPlaybackStateForNewMedia(
@@ -324,7 +402,6 @@ internal fun PlayerActivity.startPlayback(
                 val title = viewData.optString("title", "").trim()
                 if (title.isNotBlank()) currentMainTitle = title
                 updateTopTitleUi(placeholder = initialTitle)
-                currentViewDurationMs = viewData.optLong("duration", -1L).takeIf { it > 0 }?.times(1000L)
                 applyUpInfo(viewData)
                 applyTitleMeta(viewData)
                 applyPlayerInfoViewData(viewData)
@@ -338,10 +415,11 @@ internal fun PlayerActivity.startPlayback(
                 val aid = viewData.optLong("aid").takeIf { it > 0 }
                 currentAid = currentAid ?: aid ?: safeAid
                 currentCid = cid
+                currentViewDurationMs = resolveCurrentVodDurationMsFromView(viewData = viewData, cid = cid)
                 refreshActionButtonStatesFromServer(bvid = resolvedBvid, aid = currentAid)
                 if (isCommentsPanelVisible() && !isCommentThreadVisible()) ensureCommentsLoaded()
                 AppLog.i("Player", "start bvid=$resolvedBvid cid=$cid")
-                trace?.log("cid:resolved", "cid=$cid aid=${aid ?: -1}")
+                trace?.log("cid:resolved", "cid=$cid aid=${aid ?: -1} duration=${currentViewDurationMs ?: -1}ms")
 
                 if (startFromList != PlayerVideoListKind.PARTS || partsListItems.isEmpty() || partsListIndex !in partsListItems.indices) {
                     refreshPartsListFromView(viewData, bvid = resolvedBvid)
@@ -423,6 +501,10 @@ internal fun PlayerActivity.startPlayback(
                 trace?.log("playurl:await")
                 val (playJson, playable) = playJob.await().getOrThrow()
                 trace?.log("playurl:awaitDone")
+                resolvePlayUrlDurationMs(playJson)?.let { durationMs ->
+                    currentViewDurationMs = durationMs
+                    trace?.log("duration:playurl", "duration=${durationMs}ms")
+                }
                 showRiskControlBypassHintIfNeeded(playJson)
                 lastAvailableQns = parseDashVideoQnList(playJson)
                 lastAvailableAudioIds = parseDashAudioIdList(playJson, constraints = playbackConstraints)

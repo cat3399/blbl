@@ -239,6 +239,7 @@ object AppPopup {
         items: List<String>,
         checked: BooleanArray,
         cancelable: Boolean = true,
+        minCheckedCount: Int = 0,
         onChanged: (checked: BooleanArray) -> Unit,
         onDismiss: (() -> Unit)? = null,
     ): PopupHandle? {
@@ -283,6 +284,7 @@ object AppPopup {
                 MultiChoiceAdapter(
                     items = items,
                     checked = state,
+                    minCheckedCount = minCheckedCount.coerceAtLeast(0),
                     onChanged = { onChanged(state.copyOf()) },
                 )
             recycler.adapter = adapter
@@ -597,6 +599,7 @@ object AppPopup {
     private class MultiChoiceAdapter(
         private val items: List<String>,
         private val checked: BooleanArray,
+        private val minCheckedCount: Int,
         private val onChanged: (() -> Unit)?,
     ) : RecyclerView.Adapter<MultiChoiceAdapter.Vh>() {
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): Vh {
@@ -613,6 +616,7 @@ object AppPopup {
                 itemCount = items.size,
                 onToggle = {
                     if (position !in checked.indices) return@bind
+                    if (checked[position] && checked.count { it } <= minCheckedCount) return@bind
                     checked[position] = !checked[position]
                     notifyItemChanged(position)
                     onChanged?.invoke()

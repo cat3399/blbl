@@ -2,7 +2,7 @@
 <selector xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:state_focused="true" android:state_selected="true">
         <shape android:shape="rectangle">
-            <solid android:color="#3300A1D6" />
+            <solid android:color="#FF000000" />
             <corners android:radius="14dp" />
             <stroke
                 android:width="2dp"
@@ -11,7 +11,7 @@
     </item>
     <item android:state_focused="true">
         <shape android:shape="rectangle">
-            <solid android:color="#00000000" />
+            <solid android:color="#FF000000" />
             <corners android:radius="14dp" />
             <stroke
                 android:width="2dp"
@@ -20,38 +20,26 @@
     </item>
     <item android:state_pressed="true" android:state_selected="true">
         <shape android:shape="rectangle">
-            <solid android:color="#3300A1D6" />
+            <solid android:color="#FF000000" />
             <corners android:radius="14dp" />
-            <stroke
-                android:width="2dp"
-                android:color="@color/blbl_blue" />
         </shape>
     </item>
     <item android:state_pressed="true">
         <shape android:shape="rectangle">
-            <solid android:color="#00000000" />
+            <solid android:color="#FF000000" />
             <corners android:radius="14dp" />
-            <stroke
-                android:width="2dp"
-                android:color="@color/blbl_blue" />
         </shape>
     </item>
     <item android:state_selected="true">
         <shape android:shape="rectangle">
-            <solid android:color="#3300A1D6" />
+            <solid android:color="#FF000000" />
             <corners android:radius="14dp" />
-            <stroke
-                android:width="1dp"
-                android:color="#6600A1D6" />
         </shape>
     </item>
     <item>
         <shape android:shape="rectangle">
-            <solid android:color="#00000000" />
+            <solid android:color="#FF000000" />
             <corners android:radius="14dp" />
-            <stroke
-                android:width="1dp"
-                android:color="#66FFFFFF" />
         </shape>
     </item>
 </selector>

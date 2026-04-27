@@ -14,7 +14,7 @@
         android:layout_height="wrap_content"
         android:layout_gravity="center"
         android:layout_margin="20dp"
-        app:cardBackgroundColor="?attr/colorSurface"
+        app:cardBackgroundColor="?attr/blblDialogSurface"
         app:cardCornerRadius="16dp"
         app:cardUseCompatPadding="true">
 
@@ -86,7 +86,8 @@
                     android:focusable="true"
                     android:gravity="center_horizontal"
                     android:orientation="vertical"
-                    android:paddingVertical="8dp"
+                    android:paddingTop="8dp"
+                    android:paddingBottom="8dp"
                     android:stateListAnimator="@animator/blbl_focus_scale">
 
                     <TextView
@@ -119,7 +120,8 @@
                     android:focusable="true"
                     android:gravity="center_horizontal"
                     android:orientation="vertical"
-                    android:paddingVertical="8dp"
+                    android:paddingTop="8dp"
+                    android:paddingBottom="8dp"
                     android:stateListAnimator="@animator/blbl_focus_scale">
 
                     <TextView
@@ -207,7 +209,8 @@
                 android:clickable="true"
                 android:focusable="true"
                 android:gravity="center"
-                android:paddingVertical="10dp"
+                android:paddingTop="10dp"
+                android:paddingBottom="10dp"
                 android:stateListAnimator="@animator/blbl_focus_scale"
                 android:text="@string/action_logout"
                 android:textColor="@color/blbl_red"

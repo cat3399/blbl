@@ -14,6 +14,16 @@
     <color name="blbl_text_tv_pink">#121212</color>
     <color name="blbl_text_secondary_tv_pink">#5A5A5A</color>
 
+    <!-- Base palette: Classic illustration preset. -->
+    <color name="blbl_bg_classic">#5A1C43</color>
+    <color name="blbl_content_bg_classic">#00000000</color>
+    <color name="blbl_surface_classic">#22FFFFFF</color>
+    <color name="blbl_dialog_surface_classic">#5A2D49</color>
+    <color name="blbl_text_classic">#FFF5FA</color>
+    <color name="blbl_text_secondary_classic">#D9BAC9</color>
+    <color name="blbl_on_page_backdrop_classic">#FFF5FA</color>
+    <color name="blbl_on_page_backdrop_secondary_classic">#DFC4D2</color>
+
     <!-- Focus highlight: white frame + subtle shadow/overlay. -->
     <color name="blbl_focus_white">#FFFFFF</color>
     <color name="blbl_focus_shadow">#66000000</color>
@@ -28,6 +38,11 @@
     <color name="blbl_accent_tv_pink_container">#33FB7299</color>
     <color name="blbl_accent_tv_pink_weak">#66FB7299</color>
     <color name="blbl_accent_tv_pink_pressed">#80FB7299</color>
+
+    <color name="blbl_accent_classic">#FF8AB3</color>
+    <color name="blbl_accent_classic_container">#45FF8AB3</color>
+    <color name="blbl_accent_classic_weak">#80FF8AB3</color>
+    <color name="blbl_accent_classic_pressed">#99FF8AB3</color>
 
     <color name="blbl_accent_blue_container">#3300A1D6</color>
     <color name="blbl_accent_blue_weak">#6600A1D6</color>

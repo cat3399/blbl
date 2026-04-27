@@ -232,7 +232,8 @@ val checkThemeTokens =
                         appendLine("Theme token check failed: layouts must use theme attributes, not fixed palette colors.")
                         appendLine(
                             "Use ?attr/colorOnSurface, ?android:attr/textColorSecondary, ?attr/colorBackground, " +
-                                "?attr/colorSurface, ?attr/blblFocusBgRound, ?attr/blblFocusStrokeColor, etc.",
+                                "?attr/colorSurface, ?attr/blblOnPageBackdrop, ?attr/blblFocusBgRound, " +
+                                "?attr/blblFocusStrokeColor, etc.",
                         )
                         appendLine("Violations:")
                         violations.forEach { appendLine("  $it") }

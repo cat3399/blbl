@@ -3,7 +3,7 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="?attr/colorBackground">
+    android:background="?attr/blblPageBackdrop">
 
     <ImageButton
         android:id="@+id/btn_back"
@@ -15,7 +15,7 @@
         android:padding="@dimen/sidebar_settings_padding"
         android:scaleType="fitCenter"
         app:srcCompat="@drawable/ic_back"
-        app:tint="?attr/colorOnSurface"
+        app:tint="?attr/blblOnPageBackdrop"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
@@ -25,7 +25,7 @@
         android:layout_height="wrap_content"
         android:layout_marginStart="12dp"
         android:text="设置"
-        android:textColor="?attr/colorOnSurface"
+        android:textColor="?attr/blblOnPageBackdrop"
         android:textSize="22sp"
         android:textStyle="bold"
         app:layout_constraintBottom_toBottomOf="@id/btn_back"

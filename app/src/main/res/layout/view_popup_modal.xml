@@ -13,7 +13,7 @@
         android:layout_height="wrap_content"
         android:layout_gravity="center"
         android:layout_margin="20dp"
-        app:cardBackgroundColor="?attr/colorSurface"
+        app:cardBackgroundColor="?attr/blblDialogSurface"
         app:cardCornerRadius="16dp">
 
         <blbl.cat3399.core.ui.popup.PopupModalLayout

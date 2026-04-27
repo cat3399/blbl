@@ -82,6 +82,7 @@ import blbl.cat3399.feature.player.engine.BlblPlayerEngine
 import blbl.cat3399.feature.player.engine.ExoPlayerEngine
 import blbl.cat3399.feature.player.engine.IjkPlayerEngine
 import blbl.cat3399.feature.player.engine.IjkPlayerPlugin
+import blbl.cat3399.feature.player.engine.IjkPlayerPluginUi
 import blbl.cat3399.feature.player.engine.PlayerEngineKind
 import blbl.cat3399.feature.player.engine.createHttpDataSourceFactory
 import blbl.cat3399.feature.player.engine.PlaybackSource
@@ -165,8 +166,14 @@ class PlayerActivity : BaseActivity() {
     internal var holdPrevPlayWhenReady: Boolean = false
     internal var holdScrubPreviewPosMs: Long? = null
     internal var keySeekPreviewPosMs: Long? = null
-    internal var keySeekBufferingOverlaySuppressedUntilMs: Long = 0L
-    internal var keySeekBufferingOverlayEligibleAtMs: Long = 0L
+    internal val bufferingOverlayController: PlayerBufferingOverlayController by lazy {
+        PlayerBufferingOverlayController(
+            context = this,
+            bindingProvider = { if (::binding.isInitialized) binding else null },
+            scope = lifecycleScope,
+            playbackStateProvider = { player?.playbackState },
+        )
+    }
     internal var loadJob: kotlinx.coroutines.Job? = null
     internal var lastEndedActionAtMs: Long = 0L
     internal var playbackUncaughtHandler: CoroutineExceptionHandler? = null
@@ -565,10 +572,6 @@ class PlayerActivity : BaseActivity() {
 
     internal var trace: PlaybackTrace? = null
     internal var traceFirstFrameLogged: Boolean = false
-    internal val bufferingSpeedMeter: BufferingSpeedMeter = BufferingSpeedMeter()
-    @Volatile internal var bufferingSpeedTrackingEnabled: Boolean = false
-    internal var bufferingStateStartedAtMs: Long = 0L
-
     private fun requestDecoderReleaseOnStop(reason: String) {
         if (reason.isBlank()) return
         val engine = player as? ExoPlayerEngine ?: return
@@ -861,11 +864,21 @@ class PlayerActivity : BaseActivity() {
 
         val desiredEngineKind = session.engineKind
         val engineKind =
-            when {
-                desiredEngineKind == PlayerEngineKind.IjkPlayer && !IjkPlayerPlugin.isInstalled(this) -> {
-                    PlayerEngineKind.ExoPlayer
+            if (desiredEngineKind == PlayerEngineKind.IjkPlayer && !IjkPlayerPlugin.isInstalled(this)) {
+                val status = IjkPlayerPlugin.status(this)
+                val text =
+                    if (status == IjkPlayerPlugin.InstallStatus.NeedsUpdate) {
+                        "IjkPlayer 插件需要更新，已临时使用 ExoPlayer"
+                    } else {
+                        "IjkPlayer 插件未安装，已临时使用 ExoPlayer"
+                    }
+                AppToast.showLong(this, text)
+                IjkPlayerPluginUi.ensureInstalled(this) {
+                    if (!isFinishing && !isDestroyed) recreate()
                 }
-                else -> desiredEngineKind
+                PlayerEngineKind.ExoPlayer
+            } else {
+                desiredEngineKind
             }
         if (session.engineKind != engineKind) {
             session = session.copy(engineKind = engineKind)
@@ -982,11 +995,9 @@ class PlayerActivity : BaseActivity() {
                         debug.rebufferCount++
                     }
                     if (playbackState == Player.STATE_BUFFERING) {
-                        if (debug.lastPlaybackState != Player.STATE_BUFFERING) {
-                            bufferingStateStartedAtMs = SystemClock.elapsedRealtime()
-                            bufferingSpeedMeter.reset()
-                        }
-                        bufferingSpeedTrackingEnabled = true
+                        bufferingOverlayController.onBufferingStarted(
+                            resetSpeedSample = debug.lastPlaybackState != Player.STATE_BUFFERING,
+                        )
                     } else {
                         resetBufferingOverlayState()
                     }
@@ -3426,6 +3437,7 @@ class PlayerActivity : BaseActivity() {
                         fnval = fnval,
                         constraints = playbackConstraints,
                     )
+                resolvePlayUrlDurationMs(playJson)?.let { currentViewDurationMs = it }
                 showRiskControlBypassHintIfNeeded(playJson)
                 lastAvailableQns = parseDashVideoQnList(playJson)
                 lastAvailableAudioIds = parseDashAudioIdList(playJson, constraints = playbackConstraints)
@@ -4025,10 +4037,6 @@ class PlayerActivity : BaseActivity() {
         private const val TAP_SEEK_ACTIVE_MS = 1_200L
         internal const val SMART_SEEK_WINDOW_MS = 900L
         internal const val HOLD_SCRUB_TICK_MS = 120L
-        internal const val HOLD_SCRUB_FIXED_TIME_STEP_MS = 10_000L
-        internal const val HOLD_SCRUB_TRAVERSE_MS = 10_000L
-        internal const val HOLD_SCRUB_SHORT_VIDEO_THRESHOLD_MS = 40_000L
-        internal const val HOLD_SCRUB_SHORT_SPEED_MS_PER_S = 4_000L
         private const val BACK_DOUBLE_PRESS_WINDOW_MS = 2_500L
         internal const val TOUCH_LOCK_UI_HIDE_DELAY_MS = 2_500L
         internal const val TOUCH_GESTURE_EXCLUDED_EDGE_RATIO = 0.03f

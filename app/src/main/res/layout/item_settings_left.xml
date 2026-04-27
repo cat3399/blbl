@@ -21,6 +21,6 @@
         android:gravity="center"
         android:padding="18dp"
         android:textAlignment="center"
-        android:textColor="?attr/colorOnSurface"
+        android:textColor="?attr/blblOnPageBackdrop"
         android:textSize="18sp" />
 </com.google.android.material.card.MaterialCardView>

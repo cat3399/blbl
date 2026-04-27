@@ -10,19 +10,22 @@ import blbl.cat3399.core.prefs.AppPrefs
 object LauncherAliasManager {
     private const val DARK_ALIAS = "blbl.cat3399.ui.MainLauncherDarkAlias"
     private const val TV_PINK_ALIAS = "blbl.cat3399.ui.MainLauncherTvPinkAlias"
+    private const val TV_PINK_ILLUSTRATION_ALIAS = "blbl.cat3399.ui.MainLauncherTvPinkIllustrationAlias"
 
     fun sync(context: Context) {
-        val preset =
-            runCatching { BiliClient.prefs.themePreset }
-                .getOrElse { AppPrefs.THEME_PRESET_DEFAULT }
+        val preset = AppPrefs.normalizeThemePreset(runCatching { BiliClient.prefs.themePreset }.getOrNull())
         sync(context, preset)
     }
 
     fun sync(context: Context, preset: String) {
         val targetAlias =
-            if (preset == AppPrefs.THEME_PRESET_TV_PINK) TV_PINK_ALIAS else DARK_ALIAS
+            when (AppPrefs.normalizeThemePreset(preset)) {
+                AppPrefs.THEME_PRESET_TV_PINK -> TV_PINK_ALIAS
+                AppPrefs.THEME_PRESET_TV_PINK_ILLUSTRATION -> TV_PINK_ILLUSTRATION_ALIAS
+                else -> DARK_ALIAS
+            }
         val packageManager = context.packageManager
-        val aliases = listOf(DARK_ALIAS, TV_PINK_ALIAS)
+        val aliases = listOf(DARK_ALIAS, TV_PINK_ALIAS, TV_PINK_ILLUSTRATION_ALIAS)
         aliases.forEach { alias ->
             val desiredState =
                 if (alias == targetAlias) {

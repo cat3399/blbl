@@ -21,4 +21,26 @@
     <!-- Icon padding: small buttons (like/coin/fav/advanced) -->
     <dimen name="player_osd_pad_small">7.24dp</dimen>
 
+    <!-- Top UP quick card -->
+    <dimen name="player_up_quick_margin_start">12dp</dimen>
+    <dimen name="player_up_quick_margin_top">12dp</dimen>
+    <dimen name="player_up_quick_card_padding_h">3dp</dimen>
+    <dimen name="player_up_quick_card_padding_v">4dp</dimen>
+    <dimen name="player_up_quick_card_gap">3dp</dimen>
+    <dimen name="player_up_quick_card_radius">24dp</dimen>
+    <dimen name="player_up_quick_chip_height">40dp</dimen>
+    <dimen name="player_up_quick_chip_radius">20dp</dimen>
+    <dimen name="player_up_quick_profile_padding_start">3dp</dimen>
+    <dimen name="player_up_quick_profile_padding_end">4dp</dimen>
+    <dimen name="player_up_quick_follow_height">36dp</dimen>
+    <dimen name="player_up_quick_follow_radius">9dp</dimen>
+    <dimen name="player_up_quick_follow_padding_start">3dp</dimen>
+    <dimen name="player_up_quick_follow_padding_end">5dp</dimen>
+    <dimen name="player_up_quick_follow_min_width">0dp</dimen>
+    <dimen name="player_up_quick_avatar_size">36dp</dimen>
+    <dimen name="player_up_quick_name_margin_start">8dp</dimen>
+    <dimen name="player_up_quick_name_max_width">190dp</dimen>
+    <dimen name="player_up_quick_name_text_size">18sp</dimen>
+    <dimen name="player_up_quick_follow_text_size">15sp</dimen>
+
 </resources>

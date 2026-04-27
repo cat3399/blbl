@@ -3,10 +3,17 @@ package blbl.cat3399.feature.settings
 import android.app.ActivityManager
 import android.content.Context
 import android.content.res.Resources
+import android.media.MediaCodecInfo
+import android.media.MediaCodecList
+import android.os.Build
 import blbl.cat3399.core.prefs.AppPrefs
 import blbl.cat3399.core.prefs.CustomPageConfig
 import blbl.cat3399.core.prefs.PlayerPlaybackModes
+import blbl.cat3399.feature.category.CategoryZones
 import blbl.cat3399.feature.custom.CustomPageTabRegistry
+import blbl.cat3399.feature.home.HomeTabs
+import blbl.cat3399.feature.live.LiveFragment
+import blbl.cat3399.feature.my.MyTabs
 import blbl.cat3399.ui.MainRootNavRegistry
 import java.util.Locale
 import kotlin.math.roundToInt
@@ -83,6 +90,47 @@ object SettingsText {
         return labels.take(2).joinToString(separator = " / ") + " 等${labels.size}项"
     }
 
+    fun mainHomeVisibleTabsText(context: Context, selectedKeys: List<String>): String {
+        return visibleTabsText(
+            options = HomeTabs.all.map { it.key to context.getString(it.titleRes) },
+            selectedKeys = selectedKeys,
+        )
+    }
+
+    fun mainCategoryVisibleTabsText(selectedKeys: List<String>): String {
+        return visibleTabsText(
+            options = CategoryZones.defaultZones.map { CategoryZones.stableKeyFor(it) to it.title },
+            selectedKeys = selectedKeys,
+        )
+    }
+
+    fun mainLiveVisibleTabsText(selectedKeys: List<String>): String {
+        return visibleTabsText(
+            options = LiveFragment.LiveTabs.all.map { it.key to it.title },
+            selectedKeys = selectedKeys,
+        )
+    }
+
+    fun mainMyVisibleTabsText(context: Context, selectedKeys: List<String>): String {
+        return visibleTabsText(
+            options = MyTabs.all.map { it.key to context.getString(it.titleRes) },
+            selectedKeys = selectedKeys,
+        )
+    }
+
+    private fun visibleTabsText(options: List<Pair<String, String>>, selectedKeys: List<String>): String {
+        val selected = selectedKeys.takeIf { it.isNotEmpty() }?.toSet()
+        val labels =
+            if (selected == null) {
+                options.map { it.second }
+            } else {
+                options.filter { it.first in selected }.map { it.second }
+            }
+        if (labels.isEmpty()) return "全部"
+        if (labels.size <= 4) return labels.joinToString(separator = " / ")
+        return labels.take(3).joinToString(separator = " / ") + " 等${labels.size}项"
+    }
+
     fun mainBackFocusSchemeText(prefValue: String): String =
         when (prefValue) {
             blbl.cat3399.core.prefs.AppPrefs.MAIN_BACK_FOCUS_SCHEME_B -> "回到Tab0内容区"
@@ -102,6 +150,7 @@ object SettingsText {
     fun themePresetText(prefValue: String): String =
         when (prefValue) {
             blbl.cat3399.core.prefs.AppPrefs.THEME_PRESET_TV_PINK -> "小电视粉"
+            blbl.cat3399.core.prefs.AppPrefs.THEME_PRESET_TV_PINK_ILLUSTRATION -> "经典"
             else -> "默认"
         }
 
@@ -228,6 +277,12 @@ object SettingsText {
         return "总${formatBytes(total)} 可用${formatBytes(avail)}"
     }
 
+    fun hardDecoderSupportText(): String {
+        val support = runCatching { queryHardDecoderSupport() }.getOrNull() ?: return "-"
+        return "H264 ${markSupport(support.h264)} / H265 ${markSupport(support.h265)} / AV1 ${markSupport(support.av1)} / " +
+            "DV ${markSupport(support.dolbyVision)} / Atmos ${markSupport(support.dolbyAtmos)}"
+    }
+
     fun formatBytes(bytes: Long): String {
         val b = bytes.coerceAtLeast(0)
         if (b < 1024) return "${b}B"
@@ -238,6 +293,70 @@ object SettingsText {
         val gb = mb / 1024.0
         return String.format(Locale.US, "%.2fGB", gb)
     }
+
+    private fun markSupport(supported: Boolean): String = if (supported) "✓" else "✗"
+
+    private fun queryHardDecoderSupport(): HardDecoderSupport {
+        var h264 = false
+        var h265 = false
+        var av1 = false
+        var dolbyVision = false
+        var dolbyAtmos = false
+        for (codecInfo in MediaCodecList(MediaCodecList.ALL_CODECS).codecInfos) {
+            if (codecInfo.isEncoder) continue
+            if (!isHardwareDecoder(codecInfo)) continue
+            for (mime in codecInfo.supportedTypes) {
+                when (mime.lowercase(Locale.US)) {
+                    "video/avc" -> h264 = true
+                    "video/hevc" -> h265 = true
+                    "video/av01", "video/av1" -> av1 = true
+                    MIME_VIDEO_DOLBY_VISION -> dolbyVision = true
+                    in DOLBY_ATMOS_MIME_TYPES -> dolbyAtmos = true
+                }
+            }
+            if (h264 && h265 && av1 && dolbyVision && dolbyAtmos) break
+        }
+        return HardDecoderSupport(
+            h264 = h264,
+            h265 = h265,
+            av1 = av1,
+            dolbyVision = dolbyVision,
+            dolbyAtmos = dolbyAtmos,
+        )
+    }
+
+    private fun isHardwareDecoder(codecInfo: MediaCodecInfo): Boolean {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            if (codecInfo.isAlias) return false
+            return codecInfo.isHardwareAccelerated
+        }
+        val name = codecInfo.name.lowercase(Locale.US)
+        if (name.startsWith("omx.google.")) return false
+        if (name.startsWith("c2.android.")) return false
+        if (name.startsWith("c2.google.")) return false
+        if (name.contains(".sw.")) return false
+        if (name.contains("software")) return false
+        if (name.contains("ffmpeg")) return false
+        return true
+    }
+
+    private data class HardDecoderSupport(
+        val h264: Boolean,
+        val h265: Boolean,
+        val av1: Boolean,
+        val dolbyVision: Boolean,
+        val dolbyAtmos: Boolean,
+    )
+
+    private const val MIME_VIDEO_DOLBY_VISION = "video/dolby-vision"
+
+    private val DOLBY_ATMOS_MIME_TYPES =
+        setOf(
+            "audio/eac3-joc",
+            "audio/ac4",
+            "audio/vnd.dolby.mlp",
+            "audio/vnd.dolby.mat",
+        )
 
     fun playbackModeText(code: String): String = PlayerPlaybackModes.label(code)
 

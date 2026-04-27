@@ -1,8 +1,12 @@
 package blbl.cat3399.feature.category
 
 import blbl.cat3399.core.model.Zone
+import blbl.cat3399.core.prefs.AppPrefs
 
 object CategoryZones {
+    const val KEY_ALL = "all"
+    private const val KEY_ZONE_PREFIX = "zone:"
+
     val defaultZones: List<Zone> =
         listOf(
             Zone("全站", null),
@@ -25,4 +29,13 @@ object CategoryZones {
     fun findByTid(tid: Int): Zone? = defaultZones.firstOrNull { it.tid == tid }
 
     fun findAll(): Zone? = defaultZones.firstOrNull { it.tid == null }
+
+    fun stableKeyFor(zone: Zone): String = zone.tid?.let { KEY_ZONE_PREFIX + it } ?: KEY_ALL
+
+    fun visibleZones(prefs: AppPrefs): List<Zone> {
+        val selectedKeys = prefs.mainCategoryVisibleTabs
+        if (selectedKeys.isEmpty()) return defaultZones
+        val selected = selectedKeys.toSet()
+        return defaultZones.filter { stableKeyFor(it) in selected }.ifEmpty { defaultZones }
+    }
 }

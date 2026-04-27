@@ -1,0 +1,111 @@
+name: Android API19 Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_name:
+        description: "Version name (e.g. 0.1.1)"
+        required: true
+      changelog:
+        description: "Release notes/changelog (optional; supports multiline)"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  build-api19-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: blbl-api19
+      - uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
+          cache: "gradle"
+      - name: Grant execute permission for gradlew
+        run: chmod +x ./gradlew
+      - name: Mark API19 app label
+        run: |
+          set -euo pipefail
+          sed -i 's|<string name="app_name">.*</string>|<string name="app_name">Blbl-api19</string>|' app/src/main/res/values/strings.xml
+      - name: Decode keystore
+        run: |
+          mkdir -p keystore
+          echo "${{ secrets.RELEASE_KEYSTORE_BASE64 }}" | base64 -d > keystore/release.keystore
+      - name: Build API19 release APK
+        env:
+          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: ./gradlew :app:assembleKitkatRelease -PversionName=${{ inputs.version_name }} -PversionCode=${{ github.run_number }}
+      - name: Upload API19 release APK to R2 (optional)
+        env:
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID || vars.R2_ACCOUNT_ID }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET || vars.R2_BUCKET }}
+          R2_PREFIX: ${{ vars.R2_PREFIX || secrets.R2_PREFIX }}
+          VERSION_NAME: ${{ inputs.version_name }}
+        run: |
+          set -euo pipefail
+          if [ -z "${R2_ACCESS_KEY_ID:-}" ] || [ -z "${R2_SECRET_ACCESS_KEY:-}" ] || [ -z "${R2_ACCOUNT_ID:-}" ] || [ -z "${R2_BUCKET:-}" ]; then
+            echo "R2 variables not set, skipping upload."
+            exit 0
+          fi
+          if ! command -v aws >/dev/null 2>&1; then
+            echo "aws cli not found, installing..."
+            sudo apt-get update
+            sudo apt-get install -y awscli
+          fi
+
+          export AWS_ACCESS_KEY_ID="${R2_ACCESS_KEY_ID}"
+          export AWS_SECRET_ACCESS_KEY="${R2_SECRET_ACCESS_KEY}"
+          export AWS_REGION="auto"
+          export AWS_EC2_METADATA_DISABLED=true
+          ENDPOINT="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+
+          CLEAN_VERSION="${VERSION_NAME#v}"
+          KEY_PREFIX="${R2_PREFIX:-blbl}"
+          KEY_PREFIX="${KEY_PREFIX%/}"
+          if [ -n "${KEY_PREFIX}" ]; then
+            KEY_PREFIX="${KEY_PREFIX}/"
+          fi
+
+          APK_PATH="app/build/outputs/apk/kitkat/release/app-kitkat-release.apk"
+          printf '%s' "${CLEAN_VERSION}" > version-api19
+          aws s3 cp "version-api19" "s3://${R2_BUCKET}/${KEY_PREFIX}version-api19" --endpoint-url "${ENDPOINT}" --content-type "text/plain" --cache-control "no-cache"
+          aws s3 cp "${APK_PATH}" "s3://${R2_BUCKET}/${KEY_PREFIX}blbl-${CLEAN_VERSION}-api19-release.apk" --endpoint-url "${ENDPOINT}" --content-type "application/vnd.android.package-archive"
+          aws s3 cp "${APK_PATH}" "s3://${R2_BUCKET}/${KEY_PREFIX}blbl-latest-api19-release.apk" --endpoint-url "${ENDPOINT}" --content-type "application/vnd.android.package-archive" --cache-control "no-cache"
+      - name: Upload API19 release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-api19-release-apk
+          path: app/build/outputs/apk/kitkat/release/app-kitkat-release.apk
+      - name: Publish API19 release APK to GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION_NAME: ${{ inputs.version_name }}
+          RELEASE_TAG: ${{ startsWith(inputs.version_name, 'v') && inputs.version_name || format('v{0}', inputs.version_name) }}
+          CHANGELOG: ${{ inputs.changelog }}
+        run: |
+          set -euo pipefail
+          BUILD_SHA="$(git rev-parse HEAD)"
+          APK_PATH="app/build/outputs/apk/kitkat/release/app-kitkat-release.apk"
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            if [ -n "${CHANGELOG:-}" ]; then
+              printf '%s' "$CHANGELOG" > changelog.md
+              gh release edit "$RELEASE_TAG" --notes-file changelog.md
+            fi
+          else
+            if [ -n "${CHANGELOG:-}" ]; then
+              printf '%s' "$CHANGELOG" > changelog.md
+              gh release create "$RELEASE_TAG" --title "$RELEASE_TAG" --notes-file changelog.md --target "$BUILD_SHA"
+            else
+              gh release create "$RELEASE_TAG" --title "$RELEASE_TAG" --generate-notes --target "$BUILD_SHA"
+            fi
+          fi
+          gh release upload "$RELEASE_TAG" "${APK_PATH}#blbl-android-${VERSION_NAME}-api19-release.apk" --clobber

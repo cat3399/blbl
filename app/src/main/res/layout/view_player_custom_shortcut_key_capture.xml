@@ -9,8 +9,10 @@
     android:focusableInTouchMode="true"
     android:gravity="center"
     android:lineSpacingExtra="2dp"
-    android:paddingHorizontal="16dp"
-    android:paddingVertical="14dp"
+    android:paddingStart="16dp"
+    android:paddingEnd="16dp"
+    android:paddingTop="14dp"
+    android:paddingBottom="14dp"
     android:textColor="?attr/colorOnSurface"
     android:textSize="18sp" />
 

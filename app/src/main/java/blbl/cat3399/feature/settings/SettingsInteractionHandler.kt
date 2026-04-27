@@ -46,12 +46,17 @@ import blbl.cat3399.core.ui.popup.AppPopup
 import blbl.cat3399.core.ui.popup.PopupAction
 import blbl.cat3399.core.ui.popup.PopupActionRole
 import blbl.cat3399.core.update.ApkUpdater
+import blbl.cat3399.feature.player.engine.IjkPlayerPlugin
 import blbl.cat3399.feature.player.engine.IjkPlayerPluginUi
 import blbl.cat3399.feature.player.AudioBalanceLevel
 import blbl.cat3399.feature.player.PlaybackSettingChoices
 import blbl.cat3399.feature.player.PlayerCustomShortcutCatalog
 import blbl.cat3399.feature.risk.GaiaVgateActivity
+import blbl.cat3399.feature.category.CategoryZones
 import blbl.cat3399.feature.custom.CustomPageTabRegistry
+import blbl.cat3399.feature.home.HomeTabs
+import blbl.cat3399.feature.live.LiveFragment
+import blbl.cat3399.feature.my.MyTabs
 import blbl.cat3399.ui.MainRootNavRegistry
 import blbl.cat3399.ui.MainActivity
 import kotlinx.coroutines.CancellationException
@@ -69,7 +74,6 @@ import java.util.ArrayDeque
 import java.util.Date
 import java.util.Locale
 import org.json.JSONObject
-import org.json.JSONArray
 
 class SettingsInteractionHandler(
     private val activity: SettingsActivity,
@@ -361,6 +365,7 @@ class SettingsInteractionHandler(
             title = "上传日志",
             message =
                 "将日志上传给开发者便于排查问题。\n\n" +
+                    "会随日志附带设备、版本、屏幕和非登录配置元数据，不包含登录 Cookie。\n\n" +
                     "反馈问题时请带上上传成功后显示的文件名。",
             positiveText = "上传",
             negativeText = "取消",
@@ -522,7 +527,9 @@ class SettingsInteractionHandler(
                         .put("model", Build.MODEL)
                         .put("sdk_int", Build.VERSION.SDK_INT)
                         .put("release", Build.VERSION.RELEASE)
-                        .put("abi", DeviceAbi.getFirstAbi()),
+                        .put("abi", DeviceAbi.getFirstAbi())
+                        .put("ram", SettingsText.ramText(activity))
+                        .put("hardware_decoder", SettingsText.hardDecoderSupportText()),
                 )
                 .put(
                     "account",
@@ -530,7 +537,7 @@ class SettingsInteractionHandler(
                         .put("is_logged_in", BiliClient.cookies.hasSessData()),
                 )
                 .put("screen", buildUploadScreenJson())
-                .put("prefs", buildUploadPrefsJson(prefs))
+                .put("prefs_snapshot", prefs.exportDiagnosticsSnapshotJson())
 
         return json.toString(2)
     }
@@ -577,87 +584,6 @@ class SettingsInteractionHandler(
                     .put("density", sysDm.density)
                     .put("scaled_density", systemScaledDensity)
                     .put("density_dpi", sysDm.densityDpi),
-            )
-    }
-
-    private fun buildUploadPrefsJson(prefs: AppPrefs): JSONObject {
-        val osdButtons = JSONArray()
-        for (b in prefs.playerOsdButtons) osdButtons.put(b)
-
-        return JSONObject()
-            .put(
-                "ui",
-                JSONObject()
-                    .put("theme_preset", prefs.themePreset)
-                    .put("ui_scale_factor", prefs.uiScaleFactor)
-                    .put("sidebar_size", prefs.sidebarSize)
-                    .put("startup_page", prefs.startupPage)
-                    .put("following_list_order", prefs.followingListOrder)
-                    .put("dynamic_following_recent_update_dot_enabled", prefs.dynamicFollowingRecentUpdateDotEnabled)
-                    .put("image_quality", prefs.imageQuality)
-                    .put("fullscreen_enabled", prefs.fullscreenEnabled)
-                    .put("tab_switch_follows_focus", prefs.tabSwitchFollowsFocus)
-                    .put("main_back_focus_scheme", prefs.mainBackFocusScheme)
-                    .put("grid_span", prefs.gridSpanCount)
-                    .put("dynamic_grid_span", prefs.dynamicGridSpanCount)
-                    .put("pgc_grid_span", prefs.pgcGridSpanCount)
-                    .put("pgc_episode_order_reversed", prefs.pgcEpisodeOrderReversed),
-            )
-            .put(
-                "network",
-                JSONObject()
-                    .put("ipv4_only_enabled", prefs.ipv4OnlyEnabled)
-                    .put("user_agent", prefs.userAgent)
-                    .put("auto_skip_server_base_url", prefs.playerAutoSkipServerBaseUrl)
-                    .put("player_cdn_preference", prefs.playerCdnPreference),
-            )
-            .put(
-                "danmaku",
-                JSONObject()
-                    .put("enabled", prefs.danmakuEnabled)
-                    .put("allow_top", prefs.danmakuAllowTop)
-                    .put("allow_bottom", prefs.danmakuAllowBottom)
-                    .put("allow_scroll", prefs.danmakuAllowScroll)
-                    .put("allow_color", prefs.danmakuAllowColor)
-                    .put("allow_special", prefs.danmakuAllowSpecial)
-                    .put("follow_bili_shield", prefs.danmakuFollowBiliShield)
-                    .put("ai_shield_enabled", prefs.danmakuAiShieldEnabled)
-                    .put("ai_shield_level", prefs.danmakuAiShieldLevel)
-                    .put("opacity", prefs.danmakuOpacity)
-                    .put("text_size_sp", prefs.danmakuTextSizeSp)
-                    .put("speed", prefs.danmakuSpeed)
-                    .put("area", prefs.danmakuArea),
-            )
-            .put(
-                "player",
-                JSONObject()
-                    .put("preferred_qn", prefs.playerPreferredQn)
-                    .put("preferred_qn_portrait", prefs.playerPreferredQnPortrait)
-                    .put("preferred_codec", prefs.playerPreferredCodec)
-                    .put("render_view_type", prefs.playerRenderViewType)
-                    .put("engine_kind", prefs.playerEngineKind)
-                    .put("preferred_audio_id", prefs.playerPreferredAudioId)
-                    .put("subtitle_lang", prefs.subtitlePreferredLang)
-                    .put("subtitle_enabled_default", prefs.subtitleEnabledDefault)
-                    .put("subtitle_text_size_sp", prefs.subtitleTextSizeSp)
-                    .put("subtitle_bottom_padding_fraction", prefs.subtitleBottomPaddingFraction)
-                    .put("subtitle_background_opacity", prefs.subtitleBackgroundOpacity)
-                    .put("speed", prefs.playerSpeed)
-                    .put("short_seek_step_seconds", prefs.playerShortSeekStepSeconds)
-                    .put("hold_seek_speed", prefs.playerHoldSeekSpeed)
-                    .put("hold_seek_mode", prefs.playerHoldSeekMode)
-                    .put("auto_resume_enabled", prefs.playerAutoResumeEnabled)
-                    .put("auto_skip_segments_enabled", prefs.playerAutoSkipSegmentsEnabled)
-                    .put("open_detail_before_play", prefs.playerOpenDetailBeforePlay)
-                    .put("debug_enabled", prefs.playerDebugEnabled)
-                    .put("double_back_to_exit", prefs.playerDoubleBackToExit)
-                    .put("down_key_osd_focus_target", prefs.playerDownKeyOsdFocusTarget)
-                    .put("toggle_play_state_show_osd", prefs.playerTogglePlayStateShowOsd)
-                    .put("persistent_bottom_progress_enabled", prefs.playerPersistentBottomProgressEnabled)
-                    .put("persistent_clock_enabled", prefs.playerPersistentClockEnabled)
-                    .put("touch_gestures_enabled", prefs.playerTouchGesturesEnabled)
-                    .put("playback_mode", prefs.playerPlaybackMode)
-                    .put("osd_buttons", osdButtons),
             )
     }
 
@@ -752,6 +678,7 @@ class SettingsInteractionHandler(
                     listOf(
                         blbl.cat3399.core.prefs.AppPrefs.THEME_PRESET_DEFAULT to "默认",
                         blbl.cat3399.core.prefs.AppPrefs.THEME_PRESET_TV_PINK to "小电视粉",
+                        blbl.cat3399.core.prefs.AppPrefs.THEME_PRESET_TV_PINK_ILLUSTRATION to "经典",
                     )
                 showChoiceDialog(
                     title = "主题",
@@ -903,6 +830,46 @@ class SettingsInteractionHandler(
                     AppToast.show(activity, "关注列表排序：$selected")
                     renderer.refreshSection(entry.id)
                 }
+            }
+
+            SettingId.MainHomeVisibleTabs -> {
+                showVisibleTabsDialog(
+                    sectionIndex = state.currentSectionIndex,
+                    focusId = entry.id,
+                    title = "主页显示页面",
+                    options = HomeTabs.all.map { it.key to activity.getString(it.titleRes) },
+                    selectedKeys = prefs.mainHomeVisibleTabs,
+                ) { prefs.mainHomeVisibleTabs = it }
+            }
+
+            SettingId.MainCategoryVisibleTabs -> {
+                showVisibleTabsDialog(
+                    sectionIndex = state.currentSectionIndex,
+                    focusId = entry.id,
+                    title = "分类页显示页面",
+                    options = CategoryZones.defaultZones.map { CategoryZones.stableKeyFor(it) to it.title },
+                    selectedKeys = prefs.mainCategoryVisibleTabs,
+                ) { prefs.mainCategoryVisibleTabs = it }
+            }
+
+            SettingId.MainLiveVisibleTabs -> {
+                showVisibleTabsDialog(
+                    sectionIndex = state.currentSectionIndex,
+                    focusId = entry.id,
+                    title = "直播页显示页面",
+                    options = LiveFragment.LiveTabs.all.map { it.key to it.title },
+                    selectedKeys = prefs.mainLiveVisibleTabs,
+                ) { prefs.mainLiveVisibleTabs = it }
+            }
+
+            SettingId.MainMyVisibleTabs -> {
+                showVisibleTabsDialog(
+                    sectionIndex = state.currentSectionIndex,
+                    focusId = entry.id,
+                    title = "我的页显示页面",
+                    options = MyTabs.all.map { it.key to activity.getString(it.titleRes) },
+                    selectedKeys = prefs.mainMyVisibleTabs,
+                ) { prefs.mainMyVisibleTabs = it }
             }
 
             SettingId.UiScaleFactor -> {
@@ -1277,6 +1244,14 @@ class SettingsInteractionHandler(
                 }
             }
 
+            SettingId.PlayerHoldScrubTraverseSeconds -> {
+                showPlayerHoldScrubTraverseSecondsDialog(sectionIndex = state.currentSectionIndex, focusId = entry.id)
+            }
+
+            SettingId.PlayerHoldScrubFixedStepSeconds -> {
+                showPlayerHoldScrubFixedStepSecondsDialog(sectionIndex = state.currentSectionIndex, focusId = entry.id)
+            }
+
             SettingId.PlayerAutoResumeEnabled -> {
                 prefs.playerAutoResumeEnabled = !prefs.playerAutoResumeEnabled
                 renderer.refreshSection(entry.id)
@@ -1312,6 +1287,11 @@ class SettingsInteractionHandler(
 
             SettingId.PlayerSettingsApplyToGlobal -> {
                 prefs.playerSettingsApplyToGlobal = !prefs.playerSettingsApplyToGlobal
+                renderer.refreshSection(entry.id)
+            }
+
+            SettingId.PlayerUpQuickCardEnabled -> {
+                prefs.playerUpQuickCardEnabled = !prefs.playerUpQuickCardEnabled
                 renderer.refreshSection(entry.id)
             }
 
@@ -1532,6 +1512,8 @@ class SettingsInteractionHandler(
                 copyToClipboard(label = "QQ交流群", text = SettingsConstants.QQ_GROUP, toastText = "已复制群号：${SettingsConstants.QQ_GROUP}")
             }
 
+            SettingId.PlayerKernelCheck -> handlePlayerKernelCheck()
+
             SettingId.CheckUpdate -> {
                 when (val checkState = state.testUpdateCheckState) {
                     TestUpdateCheckState.Checking -> {
@@ -1547,6 +1529,26 @@ class SettingsInteractionHandler(
             }
 
             else -> AppLog.i("Settings", "click id=${entry.id.key} title=${entry.title}")
+        }
+    }
+
+    private fun handlePlayerKernelCheck() {
+        when (IjkPlayerPlugin.status(activity)) {
+            IjkPlayerPlugin.InstallStatus.Unsupported -> {
+                AppToast.showLong(activity, "当前设备不支持 IjkPlayer（ABI=${DeviceAbi.getSupportedAbis().joinToString()}）")
+            }
+
+            IjkPlayerPlugin.InstallStatus.Installed -> {
+                AppToast.show(activity, "播放器内核已是最新")
+            }
+
+            IjkPlayerPlugin.InstallStatus.NotInstalled,
+            IjkPlayerPlugin.InstallStatus.NeedsUpdate,
+            -> {
+                IjkPlayerPluginUi.ensureInstalled(activity) {
+                    renderer.refreshAboutSectionKeepPosition()
+                }
+            }
         }
     }
 
@@ -1583,6 +1585,45 @@ class SettingsInteractionHandler(
         ) { _, label ->
             onPicked(label)
         }
+    }
+
+    private fun showVisibleTabsDialog(
+        sectionIndex: Int,
+        focusId: SettingId,
+        title: String,
+        options: List<Pair<String, String>>,
+        selectedKeys: List<String>,
+        save: (List<String>) -> Unit,
+    ) {
+        val keys = options.map { it.first }
+        val labels = options.map { it.second }
+        val selected =
+            selectedKeys
+                .takeIf { it.isNotEmpty() }
+                ?.toSet()
+                ?: keys.toSet()
+        val checked = BooleanArray(keys.size) { idx -> keys.getOrNull(idx) in selected }
+        if (checked.none { it } && checked.isNotEmpty()) {
+            for (idx in checked.indices) checked[idx] = true
+        }
+
+        AppPopup.multiChoice(
+            context = activity,
+            title = title,
+            items = labels,
+            checked = checked,
+            minCheckedCount = 1,
+            onChanged = { finalChecked ->
+                save(
+                    keys.filterIndexed { idx, _ ->
+                        idx in finalChecked.indices && finalChecked[idx]
+                    },
+                )
+            },
+            onDismiss = {
+                renderer.showSection(sectionIndex, focusId = focusId)
+            },
+        )
     }
 
     private fun showPlayerOsdButtonsDialog(sectionIndex: Int, focusId: SettingId) {
@@ -2362,6 +2403,51 @@ class SettingsInteractionHandler(
                 options.firstOrNull { SettingsText.seekStepSecondsText(it) == selected }
                     ?: AppPrefs.PLAYER_SHORT_SEEK_STEP_SECONDS_DEFAULT
             prefs.playerShortSeekStepSeconds = value
+            renderer.showSection(sectionIndex, focusId = focusId)
+        }
+    }
+
+    private fun showPlayerHoldScrubTraverseSecondsDialog(sectionIndex: Int, focusId: SettingId) {
+        val prefs = BiliClient.prefs
+        showPlayerHoldScrubSecondsDialog(
+            title = "拖完整个视频所需时间",
+            currentSeconds = prefs.playerHoldScrubTraverseSeconds,
+            sectionIndex = sectionIndex,
+            focusId = focusId,
+        ) { value ->
+            prefs.playerHoldScrubTraverseSeconds = value
+        }
+    }
+
+    private fun showPlayerHoldScrubFixedStepSecondsDialog(sectionIndex: Int, focusId: SettingId) {
+        val prefs = BiliClient.prefs
+        showPlayerHoldScrubSecondsDialog(
+            title = "固定时间拖动进度条间隔",
+            currentSeconds = prefs.playerHoldScrubFixedStepSeconds,
+            sectionIndex = sectionIndex,
+            focusId = focusId,
+        ) { value ->
+            prefs.playerHoldScrubFixedStepSeconds = value
+        }
+    }
+
+    private fun showPlayerHoldScrubSecondsDialog(
+        title: String,
+        currentSeconds: Int,
+        sectionIndex: Int,
+        focusId: SettingId,
+        onSelected: (Int) -> Unit,
+    ) {
+        val options = AppPrefs.PLAYER_HOLD_SCRUB_SECONDS_OPTIONS.toList()
+        showChoiceDialog(
+            title = title,
+            items = options.map(SettingsText::seekStepSecondsText),
+            current = SettingsText.seekStepSecondsText(currentSeconds),
+        ) { selected ->
+            val value =
+                options.firstOrNull { SettingsText.seekStepSecondsText(it) == selected }
+                    ?: AppPrefs.PLAYER_HOLD_SCRUB_SECONDS_DEFAULT
+            onSelected(value)
             renderer.showSection(sectionIndex, focusId = focusId)
         }
     }

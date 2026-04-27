@@ -488,7 +488,7 @@ internal fun PlayerActivity.startHoldSeek(direction: Int, showControls: Boolean)
     if (holdMode == AppPrefs.PLAYER_HOLD_SEEK_MODE_SCRUB || holdMode == AppPrefs.PLAYER_HOLD_SEEK_MODE_SCRUB_FIXED_TIME) {
         val fixedStepMs =
             if (holdMode == AppPrefs.PLAYER_HOLD_SEEK_MODE_SCRUB_FIXED_TIME) {
-                PlayerActivity.HOLD_SCRUB_FIXED_TIME_STEP_MS
+                holdScrubFixedStepMs()
             } else {
                 null
             }
@@ -518,7 +518,7 @@ internal fun PlayerActivity.startHoldScrub(direction: Int, showControls: Boolean
     holdScrubPreviewPosMs = null
     val fixedStepMs =
         if (holdMode == AppPrefs.PLAYER_HOLD_SEEK_MODE_SCRUB_FIXED_TIME) {
-            PlayerActivity.HOLD_SCRUB_FIXED_TIME_STEP_MS
+            holdScrubFixedStepMs()
         } else {
             null
         }
@@ -613,18 +613,16 @@ internal fun PlayerActivity.holdSeekSpeedText(speed: Float): String {
     return fixed.trimEnd('0').trimEnd('.')
 }
 
+internal fun PlayerActivity.holdScrubFixedStepMs(): Long {
+    return BiliClient.prefs.playerHoldScrubFixedStepSeconds * 1_000L
+}
+
 internal fun PlayerActivity.holdScrubStepMs(durationMs: Long, tickMs: Long): Long {
     val duration = durationMs.coerceAtLeast(0L)
     if (duration <= 0L) return 0L
     val tick = tickMs.coerceAtLeast(1L)
-    val step =
-        if (duration < PlayerActivity.HOLD_SCRUB_SHORT_VIDEO_THRESHOLD_MS) {
-            // Short videos: fixed speed (independent of hold seek speed).
-            (PlayerActivity.HOLD_SCRUB_SHORT_SPEED_MS_PER_S.toDouble() * tick.toDouble() / 1000.0).roundToInt().toLong()
-        } else {
-            // Long videos: traverse from 0% -> 100% in about PlayerActivity.HOLD_SCRUB_TRAVERSE_MS.
-            (duration.toDouble() * tick.toDouble() / PlayerActivity.HOLD_SCRUB_TRAVERSE_MS.toDouble()).roundToInt().toLong()
-        }
+    val traverseMs = (BiliClient.prefs.playerHoldScrubTraverseSeconds * 1_000L).coerceAtLeast(tick)
+    val step = (duration.toDouble() * tick.toDouble() / traverseMs.toDouble()).roundToInt().toLong()
     return step.coerceAtLeast(1L)
 }
 

@@ -1,5 +1,6 @@
 package blbl.cat3399.feature.player
 
+import android.app.Activity
 import android.content.Context
 import android.media.AudioManager
 import android.os.Build
@@ -9,10 +10,13 @@ import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
+import androidx.lifecycle.LifecycleCoroutineScope
 import androidx.lifecycle.lifecycleScope
 import blbl.cat3399.R
 import blbl.cat3399.core.net.BiliClient
+import blbl.cat3399.databinding.ActivityPlayerBinding
 import blbl.cat3399.databinding.ViewPlayerTouchOverlayBinding
+import blbl.cat3399.feature.player.engine.BlblPlayerEngine
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -26,7 +30,7 @@ internal fun PlayerActivity.initTouchGestures() {
     }
     if (touchController != null) return
     touchController =
-        PlayerTouchController(this, requireTouchOverlayBinding()).also { controller ->
+        PlayerTouchController(VodPlayerTouchHost(this), requirePlayerTouchOverlayBinding(binding)).also { controller ->
             controller.install()
         }
 }
@@ -42,6 +46,166 @@ internal fun PlayerActivity.releaseTouchGestures() {
     touchController = null
     tapSeekActiveDirection = 0
     tapSeekActiveUntilMs = 0L
+}
+
+internal data class PlayerTouchSeekSnapshot(
+    val startPositionMs: Long,
+    val durationMs: Long,
+    val bufferedPositionMs: Long,
+)
+
+internal interface PlayerTouchGestureHost {
+    val activity: Activity
+    val binding: ActivityPlayerBinding
+    val lifecycleScope: LifecycleCoroutineScope
+    val player: BlblPlayerEngine?
+    val controlsVisibleForTouch: Boolean
+    val isSidePanelVisible: Boolean
+    val isBottomCardPanelVisible: Boolean
+    val isCommentImageViewerVisible: Boolean
+    val seekDelegate: PlayerTouchSeekDelegate?
+        get() = null
+    val boostDelegate: PlayerTouchBoostDelegate?
+        get() = null
+
+    fun setControlsVisibleFromTouch(visible: Boolean)
+    fun closeSidePanelFromTouch(): Boolean
+    fun togglePlayPauseFromTouch()
+    fun noteUserInteractionFromTouch()
+    fun showTouchHint(text: String, hold: Boolean)
+    fun scheduleHideTouchHint()
+}
+
+internal interface PlayerTouchSeekDelegate {
+    var tapSeekActiveDirection: Int
+    var tapSeekActiveUntilMs: Long
+
+    fun smartSeekFromTouch(direction: Int)
+    fun beginTouchSeek(): PlayerTouchSeekSnapshot?
+    fun setTouchSeekPreviewPosition(positionMs: Long?)
+    fun showTouchSeekPreview(posMs: Long, durationMs: Long, bufferedPositionMs: Long)
+    fun finishTouchSeek(targetMs: Long, durationMs: Long, commit: Boolean)
+}
+
+internal interface PlayerTouchBoostDelegate {
+    fun touchBoostSpeed(): Float
+    fun touchBoostSpeedText(speed: Float): String
+}
+
+private class VodPlayerTouchHost(
+    private val playerActivity: PlayerActivity,
+) : PlayerTouchGestureHost, PlayerTouchSeekDelegate, PlayerTouchBoostDelegate {
+    override val activity: Activity
+        get() = playerActivity
+    override val binding: ActivityPlayerBinding
+        get() = playerActivity.binding
+    override val lifecycleScope: LifecycleCoroutineScope
+        get() = playerActivity.lifecycleScope
+    override val player: BlblPlayerEngine?
+        get() = playerActivity.player
+    override val controlsVisibleForTouch: Boolean
+        get() = playerActivity.osdMode == PlayerActivity.OsdMode.Full
+    override val isSidePanelVisible: Boolean
+        get() = playerActivity.isSidePanelVisible()
+    override val isBottomCardPanelVisible: Boolean
+        get() = playerActivity.isBottomCardPanelVisible()
+    override val isCommentImageViewerVisible: Boolean
+        get() = binding.commentImageViewer.visibility == View.VISIBLE
+    override val seekDelegate: PlayerTouchSeekDelegate
+        get() = this
+    override val boostDelegate: PlayerTouchBoostDelegate
+        get() = this
+
+    override var tapSeekActiveDirection: Int
+        get() = playerActivity.tapSeekActiveDirection
+        set(value) {
+            playerActivity.tapSeekActiveDirection = value
+        }
+    override var tapSeekActiveUntilMs: Long
+        get() = playerActivity.tapSeekActiveUntilMs
+        set(value) {
+            playerActivity.tapSeekActiveUntilMs = value
+        }
+
+    override fun setControlsVisibleFromTouch(visible: Boolean) {
+        playerActivity.setControlsVisible(visible)
+    }
+
+    override fun closeSidePanelFromTouch(): Boolean = playerActivity.onSidePanelBackPressed()
+
+    override fun togglePlayPauseFromTouch() {
+        binding.btnPlayPause.performClick()
+    }
+
+    override fun smartSeekFromTouch(direction: Int) {
+        playerActivity.smartSeek(direction = direction, showControls = false, hintKind = SeekHintKind.Step)
+    }
+
+    override fun noteUserInteractionFromTouch() {
+        playerActivity.noteUserInteraction()
+    }
+
+    override fun beginTouchSeek(): PlayerTouchSeekSnapshot? {
+        val engine = playerActivity.player ?: return null
+        val duration = engine.duration.takeIf { it > 0 } ?: playerActivity.currentViewDurationMs ?: return null
+        playerActivity.cancelPendingAutoResume(reason = "user_seek")
+        playerActivity.cancelPendingAutoSkip(reason = "user_seek", markIgnored = true)
+        playerActivity.cancelPendingAutoNext(reason = "user_seek", markCancelledByUser = false)
+        playerActivity.cancelDeferredKeySeekPreview(resetScrubbing = false)
+        playerActivity.scrubbing = true
+        playerActivity.keyScrubPendingSeekToMs = null
+        playerActivity.keyScrubEndJob?.cancel()
+        val startPos = engine.currentPosition.coerceIn(0L, duration)
+        playerActivity.holdScrubPreviewPosMs = startPos
+        return PlayerTouchSeekSnapshot(
+            startPositionMs = startPos,
+            durationMs = duration,
+            bufferedPositionMs = engine.bufferedPosition.coerceAtLeast(0L),
+        )
+    }
+
+    override fun setTouchSeekPreviewPosition(positionMs: Long?) {
+        playerActivity.holdScrubPreviewPosMs = positionMs
+    }
+
+    override fun showTouchSeekPreview(posMs: Long, durationMs: Long, bufferedPositionMs: Long) {
+        playerActivity.showSeekOsd(
+            posMs = posMs,
+            durationMs = durationMs,
+            bufferedPosMs = bufferedPositionMs,
+        )
+    }
+
+    override fun finishTouchSeek(targetMs: Long, durationMs: Long, commit: Boolean) {
+        val engine = playerActivity.player
+        playerActivity.holdScrubPreviewPosMs = null
+        playerActivity.scrubbing = false
+        if (commit && engine != null) {
+            engine.seekTo(targetMs)
+            playerActivity.requestDanmakuSegmentsForPosition(targetMs, immediate = true)
+            playerActivity.requestReportProgressOnce(reason = "user_seek_end")
+            playerActivity.showSeekOsd(
+                posMs = targetMs,
+                durationMs = durationMs,
+                bufferedPosMs = engine.bufferedPosition.coerceAtLeast(0L),
+            )
+        } else if (!commit) {
+            playerActivity.showSeekOsd()
+        }
+        playerActivity.restartAutoHideTimer()
+    }
+
+    override fun showTouchHint(text: String, hold: Boolean) {
+        playerActivity.showSeekHint(text, hold)
+    }
+
+    override fun scheduleHideTouchHint() {
+        playerActivity.scheduleHideSeekHint()
+    }
+
+    override fun touchBoostSpeed(): Float = playerActivity.holdSeekSpeed()
+
+    override fun touchBoostSpeedText(speed: Float): String = playerActivity.holdSeekSpeedText(speed)
 }
 
 internal fun isSwipeGestureStartExcludedByEdge(
@@ -61,8 +225,8 @@ internal fun isSwipeGestureStartExcludedByEdge(
         y >= height - excludedHeight
 }
 
-private fun PlayerActivity.requireTouchOverlayBinding(): ViewPlayerTouchOverlayBinding {
-    val existing = findViewById<View>(R.id.player_touch_overlay_root)
+internal fun requirePlayerTouchOverlayBinding(binding: ActivityPlayerBinding): ViewPlayerTouchOverlayBinding {
+    val existing = binding.root.findViewById<View>(R.id.player_touch_overlay_root)
     val overlayBinding =
         if (existing != null) {
             ViewPlayerTouchOverlayBinding.bind(existing)
@@ -77,7 +241,7 @@ private fun PlayerActivity.requireTouchOverlayBinding(): ViewPlayerTouchOverlayB
 }
 
 internal class PlayerTouchController(
-    private val activity: PlayerActivity,
+    private val host: PlayerTouchGestureHost,
     private val overlayBinding: ViewPlayerTouchOverlayBinding,
 ) {
     private enum class TouchGestureMode {
@@ -88,8 +252,11 @@ internal class PlayerTouchController(
         Blocked,
     }
 
-    private val binding: blbl.cat3399.databinding.ActivityPlayerBinding
-        get() = activity.binding
+    private val activity: Activity
+        get() = host.activity
+
+    private val binding: ActivityPlayerBinding
+        get() = host.binding
 
     private val touchSlopPx = ViewConfiguration.get(activity).scaledTouchSlop.toFloat()
     private val displayDensity = activity.resources.displayMetrics.density
@@ -113,22 +280,23 @@ internal class PlayerTouchController(
 
                 override fun onDoubleTap(e: MotionEvent): Boolean {
                     if (tapSuppressed || boostActive || gestureMode != TouchGestureMode.None) return true
-                    if (activity.isSidePanelVisible()) return true
+                    if (host.isSidePanelVisible) return true
                     val width = gestureLayerWidth()
                     if (width <= 0f) return true
-                    val dir = activity.edgeDirection(e.x, width)
+                    val dir = edgeDirection(e.x, width)
                     if (dir == 0) {
-                        binding.btnPlayPause.performClick()
+                        host.togglePlayPauseFromTouch()
                         return true
                     }
-                    if (activity.osdMode != PlayerActivity.OsdMode.Hidden) {
-                        activity.setControlsVisible(false)
+                    val seekDelegate = host.seekDelegate ?: return true
+                    if (host.controlsVisibleForTouch) {
+                        host.setControlsVisibleFromTouch(false)
                         return true
                     }
 
-                    activity.smartSeek(direction = dir, showControls = false, hintKind = SeekHintKind.Step)
-                    activity.tapSeekActiveDirection = dir
-                    activity.tapSeekActiveUntilMs = android.os.SystemClock.uptimeMillis() + touchTapSeekActiveMs
+                    seekDelegate.smartSeekFromTouch(dir)
+                    seekDelegate.tapSeekActiveDirection = dir
+                    seekDelegate.tapSeekActiveUntilMs = android.os.SystemClock.uptimeMillis() + touchTapSeekActiveMs
                     return true
                 }
 
@@ -138,24 +306,25 @@ internal class PlayerTouchController(
                         toggleLockedButtonVisibility()
                         return true
                     }
-                    if (activity.isSidePanelVisible()) return activity.onSidePanelBackPressed()
-                    if (activity.osdMode != PlayerActivity.OsdMode.Hidden) {
-                        activity.setControlsVisible(false)
+                    if (host.isSidePanelVisible) return host.closeSidePanelFromTouch()
+                    if (host.controlsVisibleForTouch) {
+                        host.setControlsVisibleFromTouch(false)
                         return true
                     }
 
                     val now = android.os.SystemClock.uptimeMillis()
                     val width = gestureLayerWidth()
-                    if (width > 0f && now <= activity.tapSeekActiveUntilMs) {
-                        val dir = activity.edgeDirection(e.x, width)
-                        if (dir != 0 && dir == activity.tapSeekActiveDirection) {
-                            activity.smartSeek(direction = dir, showControls = false, hintKind = SeekHintKind.Step)
-                            activity.tapSeekActiveUntilMs = now + touchTapSeekActiveMs
+                    val seekDelegate = host.seekDelegate
+                    if (seekDelegate != null && width > 0f && now <= seekDelegate.tapSeekActiveUntilMs) {
+                        val dir = edgeDirection(e.x, width)
+                        if (dir != 0 && dir == seekDelegate.tapSeekActiveDirection) {
+                            seekDelegate.smartSeekFromTouch(dir)
+                            seekDelegate.tapSeekActiveUntilMs = now + touchTapSeekActiveMs
                             return true
                         }
                     }
 
-                    activity.setControlsVisible(true)
+                    host.setControlsVisibleFromTouch(true)
                     return true
                 }
             },
@@ -173,6 +342,7 @@ internal class PlayerTouchController(
     private var boostPrevSpeed = 1.0f
     private var boostPrevPlayWhenReady = false
     private var touchSeekStartPosMs = 0L
+    private var touchSeekPreviewPosMs: Long? = null
     private var touchSeekDurationMs = 0L
     private var touchSeekBufferedPosMs = 0L
     private var swipeGestureStartAllowed = true
@@ -241,7 +411,7 @@ internal class PlayerTouchController(
         val detectorHandled = tapDetector.onTouchEvent(event)
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
-                if (!activity.isSidePanelVisible()) scheduleRightEdgeBoostIfNeeded()
+                if (!host.isSidePanelVisible) scheduleRightEdgeBoostIfNeeded()
             }
 
             MotionEvent.ACTION_POINTER_DOWN -> {
@@ -320,7 +490,7 @@ internal class PlayerTouchController(
 
         if (boostActive) return
 
-        if (activity.isSidePanelVisible()) {
+        if (host.isSidePanelVisible) {
             if (!tapSuppressed && hasExceededTouchSlop(event.x, event.y)) {
                 tapSuppressed = true
             }
@@ -402,7 +572,7 @@ internal class PlayerTouchController(
             TouchGestureMode.Seek -> finishSeekGesture(commitSeek = commitSeek)
             TouchGestureMode.Brightness,
             TouchGestureMode.Volume,
-            -> activity.scheduleHideSeekHint()
+            -> host.scheduleHideTouchHint()
 
             TouchGestureMode.Blocked,
             TouchGestureMode.None,
@@ -412,67 +582,53 @@ internal class PlayerTouchController(
     }
 
     private fun startSeekGesture(): Boolean {
-        val engine = activity.player ?: return false
-        val duration = engine.duration.takeIf { it > 0 } ?: activity.currentViewDurationMs ?: return false
-        activity.cancelPendingAutoResume(reason = "user_seek")
-        activity.cancelPendingAutoSkip(reason = "user_seek", markIgnored = true)
-        activity.cancelPendingAutoNext(reason = "user_seek", markCancelledByUser = false)
-        activity.cancelDeferredKeySeekPreview(resetScrubbing = false)
-        activity.scrubbing = true
-        activity.keyScrubPendingSeekToMs = null
-        activity.keyScrubEndJob?.cancel()
-        touchSeekDurationMs = duration
-        touchSeekBufferedPosMs = engine.bufferedPosition.coerceAtLeast(0L)
-        touchSeekStartPosMs = engine.currentPosition.coerceIn(0L, duration)
-        activity.holdScrubPreviewPosMs = touchSeekStartPosMs
+        val seekDelegate = host.seekDelegate ?: return false
+        val snapshot = seekDelegate.beginTouchSeek() ?: return false
+        touchSeekDurationMs = snapshot.durationMs
+        touchSeekBufferedPosMs = snapshot.bufferedPositionMs
+        touchSeekStartPosMs = snapshot.startPositionMs
+        touchSeekPreviewPosMs = touchSeekStartPosMs
         gestureMode = TouchGestureMode.Seek
-        activity.noteUserInteraction()
-        activity.showSeekOsd(
+        host.noteUserInteractionFromTouch()
+        seekDelegate.showTouchSeekPreview(
             posMs = touchSeekStartPosMs,
             durationMs = touchSeekDurationMs,
-            bufferedPosMs = touchSeekBufferedPosMs,
+            bufferedPositionMs = touchSeekBufferedPosMs,
         )
         return true
     }
 
     private fun updateSeekGesture(x: Float) {
+        val seekDelegate = host.seekDelegate ?: return
         val width = gestureLayerWidth().coerceAtLeast(1f)
         val preview =
             (touchSeekStartPosMs + computeSeekDeltaMs(dx = x - downX, width = width, durationMs = touchSeekDurationMs))
                 .coerceIn(0L, touchSeekDurationMs)
-        if (preview == activity.holdScrubPreviewPosMs) return
-        activity.holdScrubPreviewPosMs = preview
-        activity.showSeekOsd(
+        if (preview == touchSeekPreviewPosMs) return
+        touchSeekPreviewPosMs = preview
+        seekDelegate.setTouchSeekPreviewPosition(preview)
+        seekDelegate.showTouchSeekPreview(
             posMs = preview,
             durationMs = touchSeekDurationMs,
-            bufferedPosMs = touchSeekBufferedPosMs,
+            bufferedPositionMs = touchSeekBufferedPosMs,
         )
     }
 
     private fun finishSeekGesture(commitSeek: Boolean) {
-        val engine = activity.player
-        val target = activity.holdScrubPreviewPosMs ?: touchSeekStartPosMs
-        activity.holdScrubPreviewPosMs = null
-        activity.scrubbing = false
-        if (commitSeek && engine != null) {
-            engine.seekTo(target)
-            activity.requestDanmakuSegmentsForPosition(target, immediate = true)
-            activity.requestReportProgressOnce(reason = "user_seek_end")
-            activity.showSeekOsd(
-                posMs = target,
-                durationMs = touchSeekDurationMs,
-                bufferedPosMs = engine.bufferedPosition.coerceAtLeast(0L),
-            )
-        } else if (!commitSeek) {
-            activity.showSeekOsd()
-        }
-        activity.restartAutoHideTimer()
+        val seekDelegate = host.seekDelegate ?: return
+        val target = touchSeekPreviewPosMs ?: touchSeekStartPosMs
+        touchSeekPreviewPosMs = null
+        seekDelegate.finishTouchSeek(
+            targetMs = target,
+            durationMs = touchSeekDurationMs,
+            commit = commitSeek,
+        )
     }
 
     private fun startBrightnessGesture() {
         gestureMode = TouchGestureMode.Brightness
         brightnessStart = readCurrentBrightness()
-        activity.noteUserInteraction()
+        host.noteUserInteractionFromTouch()
     }
 
     private fun updateBrightnessGesture(y: Float) {
@@ -487,13 +643,13 @@ internal class PlayerTouchController(
         attrs.screenBrightness = brightness
         activity.window.attributes = attrs
         val percent = (brightness * 100f).roundToInt().coerceIn(0, 100)
-        activity.showSeekHint(activity.getString(R.string.player_touch_brightness_fmt, percent), hold = true)
+        host.showTouchHint(activity.getString(R.string.player_touch_brightness_fmt, percent), hold = true)
     }
 
     private fun startVolumeGesture() {
         gestureMode = TouchGestureMode.Volume
         volumeStart = audioManager?.getStreamVolume(AudioManager.STREAM_MUSIC) ?: 0
-        activity.noteUserInteraction()
+        host.noteUserInteractionFromTouch()
     }
 
     private fun updateVolumeGesture(y: Float) {
@@ -504,17 +660,18 @@ internal class PlayerTouchController(
         val volume = (volumeStart + deltaSteps).coerceIn(0, maxVolume)
         manager.setStreamVolume(AudioManager.STREAM_MUSIC, volume, 0)
         val percent = (volume * 100f / maxVolume.toFloat()).roundToInt().coerceIn(0, 100)
-        activity.showSeekHint(activity.getString(R.string.player_touch_volume_fmt, percent), hold = true)
+        host.showTouchHint(activity.getString(R.string.player_touch_volume_fmt, percent), hold = true)
     }
 
     private fun scheduleRightEdgeBoostIfNeeded() {
+        if (host.boostDelegate == null) return
         val width = gestureLayerWidth()
         if (width <= 0f) return
         val threshold = PlayerActivity.TOUCH_GESTURE_EDGE_LONG_PRESS_THRESHOLD
         if (downX < width * (1f - threshold)) return
         pendingRightEdgeBoostJob?.cancel()
         pendingRightEdgeBoostJob =
-            activity.lifecycleScope.launch {
+            host.lifecycleScope.launch {
                 delay(longPressTimeoutMs)
                 if (!pointerDown || tapSuppressed || gestureMode != TouchGestureMode.None || boostActive) return@launch
                 if (hasExceededTouchSlop(lastX, lastY)) return@launch
@@ -523,17 +680,18 @@ internal class PlayerTouchController(
     }
 
     private fun startBoostPlayback() {
-        val engine = activity.player ?: return
-        val speed = activity.holdSeekSpeed()
+        val boostDelegate = host.boostDelegate ?: return
+        val engine = host.player ?: return
+        val speed = boostDelegate.touchBoostSpeed()
         boostPrevSpeed = engine.playbackSpeed
         boostPrevPlayWhenReady = engine.playWhenReady
         boostActive = true
         tapSuppressed = true
         engine.setPlaybackSpeed(speed)
         engine.playWhenReady = true
-        activity.noteUserInteraction()
-        activity.showSeekHint(
-            activity.getString(R.string.player_touch_boost_fmt, activity.holdSeekSpeedText(speed)),
+        host.noteUserInteractionFromTouch()
+        host.showTouchHint(
+            activity.getString(R.string.player_touch_boost_fmt, boostDelegate.touchBoostSpeedText(speed)),
             hold = true,
         )
         overlayBinding.touchGestureLayer.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
@@ -542,11 +700,11 @@ internal class PlayerTouchController(
     private fun stopBoostPlayback() {
         if (!boostActive) return
         boostActive = false
-        activity.player?.let { engine ->
+        host.player?.let { engine ->
             engine.setPlaybackSpeed(boostPrevSpeed)
             engine.playWhenReady = boostPrevPlayWhenReady
         }
-        activity.scheduleHideSeekHint()
+        host.scheduleHideTouchHint()
     }
 
     private fun lockTouch() {
@@ -558,8 +716,8 @@ internal class PlayerTouchController(
         pendingRightEdgeBoostJob?.cancel()
         finishActiveGesture(commitSeek = false)
         stopBoostPlayback()
-        activity.setControlsVisible(false)
-        activity.showSeekHint(activity.getString(R.string.player_touch_locked), hold = false)
+        host.setControlsVisibleFromTouch(false)
+        host.showTouchHint(activity.getString(R.string.player_touch_locked), hold = false)
         showLockedButtonTemporarily()
     }
 
@@ -569,9 +727,9 @@ internal class PlayerTouchController(
         lockedButtonVisible = false
         lockUiHideJob?.cancel()
         updateLockUi()
-        activity.showSeekHint(activity.getString(R.string.player_touch_unlocked), hold = false)
-        activity.setControlsVisible(true)
-        activity.noteUserInteraction()
+        host.showTouchHint(activity.getString(R.string.player_touch_unlocked), hold = false)
+        host.setControlsVisibleFromTouch(true)
+        host.noteUserInteractionFromTouch()
     }
 
     private fun toggleLockedButtonVisibility() {
@@ -591,7 +749,7 @@ internal class PlayerTouchController(
         updateLockUi()
         lockUiHideJob?.cancel()
         lockUiHideJob =
-            activity.lifecycleScope.launch {
+            host.lifecycleScope.launch {
                 delay(PlayerActivity.TOUCH_LOCK_UI_HIDE_DELAY_MS)
                 lockedButtonVisible = false
                 updateLockUi()
@@ -603,10 +761,10 @@ internal class PlayerTouchController(
             if (touchLocked) {
                 lockedButtonVisible
             } else {
-                activity.osdMode == PlayerActivity.OsdMode.Full &&
-                    !activity.isSidePanelVisible() &&
-                    !activity.isBottomCardPanelVisible() &&
-                    binding.commentImageViewer.visibility != View.VISIBLE
+                host.controlsVisibleForTouch &&
+                    !host.isSidePanelVisible &&
+                    !host.isBottomCardPanelVisible &&
+                    !host.isCommentImageViewerVisible
             }
         overlayBinding.btnTouchLock.visibility = if (visible) View.VISIBLE else View.GONE
         overlayBinding.btnTouchLock.setImageResource(
@@ -664,5 +822,13 @@ internal class PlayerTouchController(
 
     private companion object {
         private const val touchTapSeekActiveMs = 1_200L
+    }
+
+    private fun edgeDirection(x: Float, width: Float): Int {
+        return when {
+            x < width * PlayerActivity.EDGE_TAP_THRESHOLD -> -1
+            x > width * (1f - PlayerActivity.EDGE_TAP_THRESHOLD) -> +1
+            else -> 0
+        }
     }
 }

@@ -55,23 +55,10 @@ class AppPrefs(context: Context) {
 
     var themePreset: String
         get() {
-            val raw = prefs.getString(KEY_THEME_PRESET, THEME_PRESET_DEFAULT) ?: THEME_PRESET_DEFAULT
-            val v = raw.trim()
-            return when (v) {
-                THEME_PRESET_DEFAULT,
-                THEME_PRESET_TV_PINK,
-                -> v
-                else -> THEME_PRESET_DEFAULT
-            }
+            return normalizeThemePreset(prefs.getString(KEY_THEME_PRESET, THEME_PRESET_DEFAULT))
         }
         set(value) {
-            val v = value.trim()
-            val normalized =
-                when (v) {
-                    THEME_PRESET_TV_PINK -> THEME_PRESET_TV_PINK
-                    else -> THEME_PRESET_DEFAULT
-                }
-            prefs.edit().putString(KEY_THEME_PRESET, normalized).apply()
+            prefs.edit().putString(KEY_THEME_PRESET, normalizeThemePreset(value)).apply()
         }
 
     var startupPage: String
@@ -91,6 +78,22 @@ class AppPrefs(context: Context) {
                 prefs.edit().putString(KEY_CUSTOM_PAGE_CONFIG, CustomPageConfigStore.serialize(normalized)).apply()
             }
         }
+
+    var mainHomeVisibleTabs: List<String>
+        get() = loadStringList(KEY_MAIN_HOME_VISIBLE_TABS)
+        set(value) = saveStringList(KEY_MAIN_HOME_VISIBLE_TABS, normalizeStringList(value))
+
+    var mainCategoryVisibleTabs: List<String>
+        get() = loadStringList(KEY_MAIN_CATEGORY_VISIBLE_TABS)
+        set(value) = saveStringList(KEY_MAIN_CATEGORY_VISIBLE_TABS, normalizeStringList(value))
+
+    var mainLiveVisibleTabs: List<String>
+        get() = loadStringList(KEY_MAIN_LIVE_VISIBLE_TABS)
+        set(value) = saveStringList(KEY_MAIN_LIVE_VISIBLE_TABS, normalizeStringList(value))
+
+    var mainMyVisibleTabs: List<String>
+        get() = loadStringList(KEY_MAIN_MY_VISIBLE_TABS)
+        set(value) = saveStringList(KEY_MAIN_MY_VISIBLE_TABS, normalizeStringList(value))
 
     var followingListOrder: String
         get() {
@@ -478,6 +481,30 @@ class AppPrefs(context: Context) {
             prefs.edit().putString(KEY_PLAYER_HOLD_SEEK_MODE, v).apply()
         }
 
+    var playerHoldScrubTraverseSeconds: Int
+        get() =
+            normalizePlayerHoldScrubSeconds(
+                prefs.getInt(KEY_PLAYER_HOLD_SCRUB_TRAVERSE_SECONDS, PLAYER_HOLD_SCRUB_SECONDS_DEFAULT),
+            )
+        set(value) =
+            prefs.edit()
+                .putInt(
+                    KEY_PLAYER_HOLD_SCRUB_TRAVERSE_SECONDS,
+                    normalizePlayerHoldScrubSeconds(value),
+                ).apply()
+
+    var playerHoldScrubFixedStepSeconds: Int
+        get() =
+            normalizePlayerHoldScrubSeconds(
+                prefs.getInt(KEY_PLAYER_HOLD_SCRUB_FIXED_STEP_SECONDS, PLAYER_HOLD_SCRUB_SECONDS_DEFAULT),
+            )
+        set(value) =
+            prefs.edit()
+                .putInt(
+                    KEY_PLAYER_HOLD_SCRUB_FIXED_STEP_SECONDS,
+                    normalizePlayerHoldScrubSeconds(value),
+                ).apply()
+
     var playerAutoResumeEnabled: Boolean
         get() = prefs.getBoolean(KEY_PLAYER_AUTO_RESUME_ENABLED, true)
         set(value) = prefs.edit().putBoolean(KEY_PLAYER_AUTO_RESUME_ENABLED, value).apply()
@@ -705,6 +732,10 @@ class AppPrefs(context: Context) {
         get() = prefs.getBoolean(KEY_PLAYER_SETTINGS_APPLY_TO_GLOBAL, false)
         set(value) = prefs.edit().putBoolean(KEY_PLAYER_SETTINGS_APPLY_TO_GLOBAL, value).apply()
 
+    var playerUpQuickCardEnabled: Boolean
+        get() = prefs.getBoolean(KEY_PLAYER_UP_QUICK_CARD_ENABLED, true)
+        set(value) = prefs.edit().putBoolean(KEY_PLAYER_UP_QUICK_CARD_ENABLED, value).apply()
+
     var playerOsdButtons: List<String>
         get() {
             // IMPORTANT:
@@ -797,6 +828,12 @@ class AppPrefs(context: Context) {
             excludeKeys = CREDENTIAL_KEYS,
         )
 
+    fun exportDiagnosticsSnapshotJson(): JSONObject =
+        SharedPreferencesSnapshot.encode(
+            prefs = prefs,
+            excludeKeys = DIAGNOSTIC_EXCLUDED_KEYS,
+        )
+
     fun exportCredentialsSnapshotJson(): JSONObject =
         SharedPreferencesSnapshot.encode(
             prefs = prefs,
@@ -839,6 +876,18 @@ class AppPrefs(context: Context) {
         prefs.edit().putString(key, arr.toString()).apply()
     }
 
+    private fun normalizeStringList(value: List<String>): List<String> {
+        if (value.isEmpty()) return emptyList()
+        val out = ArrayList<String>(value.size)
+        val seen = HashSet<String>(value.size * 2)
+        for (raw in value) {
+            val key = raw.trim()
+            if (key.isBlank()) continue
+            if (seen.add(key)) out.add(key)
+        }
+        return out
+    }
+
     private fun migratePlayerOsdDetailButtonIfNeeded(normalized: List<String>): List<String> {
         if (prefs.getBoolean(KEY_PLAYER_OSD_BUTTONS_DETAIL_MIGRATED, false)) return normalized
         // Requirement: auto-enable the new "Detail" button even for users who previously customized OSD.
@@ -879,6 +928,10 @@ class AppPrefs(context: Context) {
         return if (PLAYER_SHORT_SEEK_STEP_SECONDS_OPTIONS.contains(value)) value else PLAYER_SHORT_SEEK_STEP_SECONDS_DEFAULT
     }
 
+    private fun normalizePlayerHoldScrubSeconds(value: Int): Int {
+        return if (PLAYER_HOLD_SCRUB_SECONDS_OPTIONS.contains(value)) value else PLAYER_HOLD_SCRUB_SECONDS_DEFAULT
+    }
+
     companion object {
         const val STARTUP_PAGE_HOME = "home"
         const val STARTUP_PAGE_CATEGORY = "category"
@@ -898,6 +951,7 @@ class AppPrefs(context: Context) {
 
         const val THEME_PRESET_DEFAULT = "default"
         const val THEME_PRESET_TV_PINK = "tv_pink"
+        const val THEME_PRESET_TV_PINK_ILLUSTRATION = "tv_pink_illustration"
 
         const val FOLLOWING_LIST_ORDER_FOLLOW_TIME = "follow_time"
         const val FOLLOWING_LIST_ORDER_RECENT_VISIT = "recent_visit"
@@ -929,6 +983,10 @@ class AppPrefs(context: Context) {
         private const val KEY_THEME_PRESET = "theme_preset"
         private const val KEY_STARTUP_PAGE = "startup_page"
         private const val KEY_CUSTOM_PAGE_CONFIG = "custom_page_config"
+        private const val KEY_MAIN_HOME_VISIBLE_TABS = "main_home_visible_tabs"
+        private const val KEY_MAIN_CATEGORY_VISIBLE_TABS = "main_category_visible_tabs"
+        private const val KEY_MAIN_LIVE_VISIBLE_TABS = "main_live_visible_tabs"
+        private const val KEY_MAIN_MY_VISIBLE_TABS = "main_my_visible_tabs"
         private const val KEY_FOLLOWING_LIST_ORDER = "following_list_order"
         private const val KEY_DYNAMIC_FOLLOWING_RECENT_UPDATE_DOT_ENABLED = "dynamic_following_recent_update_dot_enabled"
         private const val KEY_IMAGE_QUALITY = "image_quality"
@@ -967,6 +1025,8 @@ class AppPrefs(context: Context) {
         private const val KEY_PLAYER_SHORT_SEEK_STEP_SECONDS = "player_short_seek_step_seconds"
         private const val KEY_PLAYER_HOLD_SEEK_SPEED = "player_hold_seek_speed"
         private const val KEY_PLAYER_HOLD_SEEK_MODE = "player_hold_seek_mode"
+        private const val KEY_PLAYER_HOLD_SCRUB_TRAVERSE_SECONDS = "player_hold_scrub_traverse_seconds"
+        private const val KEY_PLAYER_HOLD_SCRUB_FIXED_STEP_SECONDS = "player_hold_scrub_fixed_step_seconds"
         private const val KEY_PLAYER_AUTO_RESUME_ENABLED = "player_auto_resume_enabled"
         private const val KEY_PLAYER_AUTO_SKIP_SEGMENTS_ENABLED = "player_auto_skip_segments_enabled"
         private const val KEY_PLAYER_AUTO_SKIP_SERVER_BASE_URL = "player_auto_skip_server_base_url"
@@ -987,6 +1047,7 @@ class AppPrefs(context: Context) {
         private const val KEY_PLAYER_AUDIO_BALANCE_LEVEL = "player_audio_balance_level"
         private const val KEY_PLAYER_PLAYBACK_MODE = "player_playback_mode"
         private const val KEY_PLAYER_SETTINGS_APPLY_TO_GLOBAL = "player_settings_apply_to_global"
+        private const val KEY_PLAYER_UP_QUICK_CARD_ENABLED = "player_up_quick_card_enabled"
         private const val KEY_PLAYER_OSD_BUTTONS = "player_osd_buttons"
         private const val KEY_PLAYER_OSD_BUTTONS_DETAIL_MIGRATED = "player_osd_buttons_detail_migrated"
         private const val KEY_PLAYER_CUSTOM_SHORTCUTS = "player_custom_shortcuts"
@@ -1006,6 +1067,13 @@ class AppPrefs(context: Context) {
                 KEY_GAIA_VGATE_V_VOUCHER,
                 KEY_GAIA_VGATE_V_VOUCHER_SAVED_AT_MS,
             )
+
+        private val DIAGNOSTIC_EXCLUDED_KEYS: Set<String> =
+            CREDENTIAL_KEYS +
+                setOf(
+                    KEY_BUVID_ACTIVATED_MID,
+                    KEY_SEARCH_HISTORY,
+                )
 
         // PC browser UA is used to reduce CDN 403 for media resources.
         const val DEFAULT_UA =
@@ -1106,6 +1174,8 @@ class AppPrefs(context: Context) {
         const val PLAYER_HOLD_SEEK_MODE_SCRUB = "scrub"
         const val PLAYER_HOLD_SEEK_MODE_SCRUB_FIXED_TIME = "scrub_fixed_time"
         const val PLAYER_HOLD_SEEK_SPEED_DEFAULT = 3.0f
+        val PLAYER_HOLD_SCRUB_SECONDS_OPTIONS: Set<Int> = linkedSetOf(5, 8, 10, 12, 15, 17, 20, 22, 25, 27, 30)
+        const val PLAYER_HOLD_SCRUB_SECONDS_DEFAULT = 10
 
         const val DEFAULT_PLAYER_AUTO_SKIP_SERVER_BASE_URL = "https://bsbsb.top"
         const val FALLBACK_PLAYER_AUTO_SKIP_SERVER_BASE_URL = "http://154.222.28.109"
@@ -1199,6 +1269,14 @@ class AppPrefs(context: Context) {
             val url = value.parseHttpUrl() ?: return null
             if (url.urlQuery() != null || url.urlFragment() != null) return null
             return url.toString().trimEnd('/')
+        }
+
+        fun normalizeThemePreset(value: String?): String {
+            return when (value?.trim()) {
+                THEME_PRESET_TV_PINK -> THEME_PRESET_TV_PINK
+                THEME_PRESET_TV_PINK_ILLUSTRATION -> THEME_PRESET_TV_PINK_ILLUSTRATION
+                else -> THEME_PRESET_DEFAULT
+            }
         }
     }
 

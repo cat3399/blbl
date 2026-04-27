@@ -39,6 +39,8 @@ import blbl.cat3399.databinding.ActivityMainBinding
 import blbl.cat3399.databinding.DialogUserInfoBinding
 import blbl.cat3399.feature.following.FollowingListActivity
 import blbl.cat3399.feature.login.QrLoginActivity
+import blbl.cat3399.feature.player.engine.IjkPlayerPlugin
+import blbl.cat3399.feature.player.engine.IjkPlayerPluginUi
 import blbl.cat3399.feature.settings.SettingsActivity
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -58,6 +60,8 @@ class MainActivity : BaseActivity(), SidebarFocusHost {
     private var focusListener: ViewTreeObserver.OnGlobalFocusChangeListener? = null
     private var disclaimerPopup: PopupHandle? = null
     private var crashPromptPopup: PopupHandle? = null
+    private var ijkKernelPromptPopup: PopupHandle? = null
+    private var ijkKernelPromptShown: Boolean = false
     private lateinit var userInfoOverlay: DialogUserInfoBinding
     private val userInfoReturnFocus = FocusReturn()
     private var userInfoLoadJob: Job? = null
@@ -190,6 +194,7 @@ class MainActivity : BaseActivity(), SidebarFocusHost {
         ensureInitialFocus()
         refreshSidebarUser()
         showLastCrashPromptIfNeeded()
+        showIjkKernelUpdatePromptIfNeeded()
     }
 
     override fun onPause() {
@@ -743,6 +748,7 @@ class MainActivity : BaseActivity(), SidebarFocusHost {
                 onDismiss = {
                     disclaimerPopup = null
                     if (!BiliClient.prefs.disclaimerAccepted && !isChangingConfigurations) finish()
+                    showIjkKernelUpdatePromptIfNeeded()
                 },
             )
     }
@@ -764,7 +770,47 @@ class MainActivity : BaseActivity(), SidebarFocusHost {
                 positiveText = "打开设置",
                 negativeText = "知道了",
                 onPositive = { startActivity(Intent(this, SettingsActivity::class.java)) },
-                onDismiss = { crashPromptPopup = null },
+                onDismiss = {
+                    crashPromptPopup = null
+                    showIjkKernelUpdatePromptIfNeeded()
+                },
+            )
+    }
+
+    private fun showIjkKernelUpdatePromptIfNeeded() {
+        if (ijkKernelPromptShown) return
+        if (!BiliClient.prefs.disclaimerAccepted) return
+        if (BiliClient.prefs.playerEngineKind != AppPrefs.PLAYER_ENGINE_IJK) return
+        if (disclaimerPopup?.isShowing == true) return
+        if (crashPromptPopup?.isShowing == true) return
+        if (ijkKernelPromptPopup?.isShowing == true) return
+
+        val status = IjkPlayerPlugin.status(this)
+        val (title, message) =
+            when (status) {
+                IjkPlayerPlugin.InstallStatus.NeedsUpdate ->
+                    "播放器内核需要更新" to "当前默认播放器内核是 IjkPlayer，本地内核不是当前应用要求的最新版。更新前不会加载旧 IjkPlayer 内核。"
+
+                IjkPlayerPlugin.InstallStatus.NotInstalled ->
+                    "播放器内核未安装" to "当前默认播放器内核是 IjkPlayer，需要先下载播放器内核。"
+
+                else -> return
+            }
+
+        ijkKernelPromptShown = true
+        ijkKernelPromptPopup =
+            AppPopup.confirm(
+                context = this,
+                title = title,
+                message = message,
+                positiveText = "立即更新",
+                negativeText = "稍后",
+                onPositive = {
+                    IjkPlayerPluginUi.ensureInstalled(this) {}
+                },
+                onDismiss = {
+                    ijkKernelPromptPopup = null
+                },
             )
     }
 

@@ -185,9 +185,10 @@
                             android:background="?attr/blblFocusBgRound"
                             android:gravity="center"
                             android:orientation="vertical"
-                            android:paddingHorizontal="@dimen/player_info_action_padding_h"
-                            android:paddingVertical="@dimen/player_info_action_padding_v">
-
+                            android:paddingStart="@dimen/player_info_action_padding_h"
+                            android:paddingEnd="@dimen/player_info_action_padding_h"
+                            android:paddingTop="@dimen/player_info_action_padding_v"
+                            android:paddingBottom="@dimen/player_info_action_padding_v">
                             <ImageView
                                 android:id="@+id/iv_player_info_like"
                                 android:layout_width="@dimen/player_info_action_icon_size"
@@ -214,9 +215,10 @@
                             android:background="?attr/blblFocusBgRound"
                             android:gravity="center"
                             android:orientation="vertical"
-                            android:paddingHorizontal="@dimen/player_info_action_padding_h"
-                            android:paddingVertical="@dimen/player_info_action_padding_v">
-
+                            android:paddingStart="@dimen/player_info_action_padding_h"
+                            android:paddingEnd="@dimen/player_info_action_padding_h"
+                            android:paddingTop="@dimen/player_info_action_padding_v"
+                            android:paddingBottom="@dimen/player_info_action_padding_v">
                             <ImageView
                                 android:id="@+id/iv_player_info_coin"
                                 android:layout_width="@dimen/player_info_action_icon_size"
@@ -243,9 +245,10 @@
                             android:background="?attr/blblFocusBgRound"
                             android:gravity="center"
                             android:orientation="vertical"
-                            android:paddingHorizontal="@dimen/player_info_action_padding_h"
-                            android:paddingVertical="@dimen/player_info_action_padding_v">
-
+                            android:paddingStart="@dimen/player_info_action_padding_h"
+                            android:paddingEnd="@dimen/player_info_action_padding_h"
+                            android:paddingTop="@dimen/player_info_action_padding_v"
+                            android:paddingBottom="@dimen/player_info_action_padding_v">
                             <ImageView
                                 android:id="@+id/iv_player_info_fav"
                                 android:layout_width="@dimen/player_info_action_icon_size"
@@ -416,8 +419,10 @@
                     android:focusable="true"
                     android:nextFocusUp="@id/chip_comment_sort_hot"
                     android:nextFocusRight="@id/chip_comment_sort_new"
-                    android:paddingHorizontal="@dimen/player_comment_sort_chip_padding_h"
-                    android:paddingVertical="@dimen/player_comment_sort_chip_padding_v"
+                    android:paddingStart="@dimen/player_comment_sort_chip_padding_h"
+                    android:paddingEnd="@dimen/player_comment_sort_chip_padding_h"
+                    android:paddingTop="@dimen/player_comment_sort_chip_padding_v"
+                    android:paddingBottom="@dimen/player_comment_sort_chip_padding_v"
                     android:stateListAnimator="@animator/blbl_focus_scale"
                     android:text="@string/player_comment_sort_hot"
                     android:textColor="?attr/colorOnSurface"
@@ -434,8 +439,10 @@
                     android:nextFocusLeft="@id/chip_comment_sort_hot"
                     android:nextFocusUp="@id/chip_comment_sort_new"
                     android:nextFocusRight="@id/chip_comment_sort_new"
-                    android:paddingHorizontal="@dimen/player_comment_sort_chip_padding_h"
-                    android:paddingVertical="@dimen/player_comment_sort_chip_padding_v"
+                    android:paddingStart="@dimen/player_comment_sort_chip_padding_h"
+                    android:paddingEnd="@dimen/player_comment_sort_chip_padding_h"
+                    android:paddingTop="@dimen/player_comment_sort_chip_padding_v"
+                    android:paddingBottom="@dimen/player_comment_sort_chip_padding_v"
                     android:stateListAnimator="@animator/blbl_focus_scale"
                     android:text="@string/player_comment_sort_new"
                     android:textColor="?attr/colorOnSurface"

@@ -15,7 +15,8 @@ internal object IjkPlayerPluginUi {
     private var installJob: Job? = null
 
     fun ensureInstalled(activity: BaseActivity, onInstalled: () -> Unit) {
-        if (IjkPlayerPlugin.isInstalled(activity)) {
+        val status = IjkPlayerPlugin.status(activity)
+        if (status == IjkPlayerPlugin.InstallStatus.Installed) {
             onInstalled()
             return
         }
@@ -32,10 +33,11 @@ internal object IjkPlayerPluginUi {
         }
 
         var job: Job? = null
+        val isUpdate = status == IjkPlayerPlugin.InstallStatus.NeedsUpdate
         val popup =
             AppPopup.progress(
                 context = activity,
-                title = "下载 IjkPlayer 插件",
+                title = if (isUpdate) "更新 IjkPlayer 插件" else "下载 IjkPlayer 插件",
                 status = "连接中…",
                 negativeText = "取消",
                 cancelable = false,
@@ -71,15 +73,15 @@ internal object IjkPlayerPluginUi {
                     }
 
                     popup?.dismiss()
-                    AppToast.show(activity, "IjkPlayer 插件已就绪（$abi）")
+                    AppToast.show(activity, if (isUpdate) "IjkPlayer 插件已更新（$abi）" else "IjkPlayer 插件已就绪（$abi）")
                     onInstalled()
                 } catch (_: CancellationException) {
                     popup?.dismiss()
-                    AppToast.show(activity, "已取消下载")
+                    AppToast.show(activity, if (isUpdate) "已取消更新" else "已取消下载")
                 } catch (t: Throwable) {
                     AppLog.w("IjkPlugin", "install failed: ${t.message}", t)
                     popup?.dismiss()
-                    AppToast.showLong(activity, "IjkPlayer 插件下载失败：${t.message ?: "未知错误"}")
+                    AppToast.showLong(activity, "IjkPlayer 插件${if (isUpdate) "更新" else "下载"}失败：${t.message ?: "未知错误"}")
                 } finally {
                     if (installJob === job) installJob = null
                 }

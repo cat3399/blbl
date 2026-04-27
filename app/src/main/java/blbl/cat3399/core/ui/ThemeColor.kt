@@ -2,6 +2,7 @@ package blbl.cat3399.core.ui
 
 import android.content.Context
 import android.util.TypedValue
+import android.view.View
 import androidx.annotation.AttrRes
 import androidx.annotation.ColorRes
 import androidx.core.content.ContextCompat
@@ -26,5 +27,23 @@ object ThemeColor {
 
         return ContextCompat.getColor(context, fallbackRes)
     }
-}
 
+    fun applyBackground(
+        view: View,
+        @AttrRes attr: Int,
+        @ColorRes fallbackRes: Int,
+    ) {
+        val typed = TypedValue()
+        val ok = view.context.theme.resolveAttribute(attr, typed, true)
+        if (!ok) {
+            view.setBackgroundColor(ContextCompat.getColor(view.context, fallbackRes))
+            return
+        }
+
+        when {
+            typed.resourceId != 0 -> view.setBackgroundResource(typed.resourceId)
+            typed.type in TypedValue.TYPE_FIRST_COLOR_INT..TypedValue.TYPE_LAST_COLOR_INT -> view.setBackgroundColor(typed.data)
+            else -> view.setBackgroundColor(ContextCompat.getColor(view.context, fallbackRes))
+        }
+    }
+}

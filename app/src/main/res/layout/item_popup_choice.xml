@@ -8,9 +8,10 @@
     android:background="?attr/blblFocusBgRound"
     android:clickable="true"
     android:focusable="true"
-    android:paddingHorizontal="16dp"
-    android:paddingVertical="14dp">
-
+    android:paddingStart="16dp"
+    android:paddingEnd="16dp"
+    android:paddingTop="14dp"
+    android:paddingBottom="14dp">
     <TextView
         android:id="@+id/tv_label"
         android:layout_width="0dp"

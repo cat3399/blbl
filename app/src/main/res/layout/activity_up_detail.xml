@@ -3,19 +3,19 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="?attr/colorBackground">
+    android:background="?attr/blblPageBackdrop">
 
     <com.google.android.material.appbar.AppBarLayout
         android:id="@+id/app_bar"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:background="?attr/colorBackground">
+        android:background="@android:color/transparent">
 
         <com.google.android.material.appbar.CollapsingToolbarLayout
             android:id="@+id/collapsing_header"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:background="?attr/colorBackground"
+            android:background="@android:color/transparent"
             android:minHeight="54dp"
             app:layout_scrollFlags="scroll|exitUntilCollapsed">
 
@@ -23,7 +23,7 @@
                 android:id="@+id/header_container"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:background="?attr/colorBackground"
+                android:background="@android:color/transparent"
                 android:minHeight="0dp"
                 android:paddingTop="54dp">
 
@@ -64,7 +64,7 @@
                 android:layout_marginEnd="12dp"
                 android:ellipsize="end"
                 android:maxLines="1"
-                android:textColor="?attr/colorOnSurface"
+                android:textColor="?attr/blblOnPageBackdrop"
                 android:textSize="20sp"
                 android:textStyle="bold"
                 app:layout_constraintEnd_toStartOf="@id/btn_follow"
@@ -79,7 +79,7 @@
                 android:layout_marginEnd="12dp"
                 android:ellipsize="end"
                 android:maxLines="1"
-                android:textColor="?android:attr/textColorSecondary"
+                android:textColor="?attr/blblOnPageBackdropSecondary"
                 android:textSize="14sp"
                 app:layout_constraintEnd_toStartOf="@id/btn_follow"
                 app:layout_constraintStart_toStartOf="@id/tv_name"
@@ -119,7 +119,7 @@
                         android:ellipsize="end"
                         android:maxLines="1"
                         android:text="-"
-                        android:textColor="?attr/colorOnSurface"
+                        android:textColor="?attr/blblOnPageBackdrop"
                         android:textSize="18sp"
                         android:textStyle="bold" />
 
@@ -130,7 +130,7 @@
                         android:ellipsize="end"
                         android:maxLines="1"
                         android:text="@string/up_stat_fans"
-                        android:textColor="?android:attr/textColorSecondary"
+                        android:textColor="?attr/blblOnPageBackdropSecondary"
                         android:textSize="14sp" />
                 </LinearLayout>
 
@@ -148,7 +148,7 @@
                         android:ellipsize="end"
                         android:maxLines="1"
                         android:text="-"
-                        android:textColor="?attr/colorOnSurface"
+                        android:textColor="?attr/blblOnPageBackdrop"
                         android:textSize="18sp"
                         android:textStyle="bold" />
 
@@ -159,7 +159,7 @@
                         android:ellipsize="end"
                         android:maxLines="1"
                         android:text="@string/up_stat_likes"
-                        android:textColor="?android:attr/textColorSecondary"
+                        android:textColor="?attr/blblOnPageBackdropSecondary"
                         android:textSize="14sp" />
                 </LinearLayout>
 
@@ -176,7 +176,7 @@
                         android:ellipsize="end"
                         android:maxLines="1"
                         android:text="-"
-                        android:textColor="?attr/colorOnSurface"
+                        android:textColor="?attr/blblOnPageBackdrop"
                         android:textSize="18sp"
                         android:textStyle="bold" />
 
@@ -187,7 +187,7 @@
                         android:ellipsize="end"
                         android:maxLines="1"
                         android:text="@string/up_stat_play"
-                        android:textColor="?android:attr/textColorSecondary"
+                        android:textColor="?attr/blblOnPageBackdropSecondary"
                         android:textSize="14sp" />
                 </LinearLayout>
             </LinearLayout>
@@ -198,7 +198,7 @@
                 android:id="@+id/top_bar"
                 android:layout_width="match_parent"
                 android:layout_height="54dp"
-                android:background="?attr/colorBackground"
+                android:background="@android:color/transparent"
                 app:layout_collapseMode="pin">
 
                 <ImageButton
@@ -213,7 +213,7 @@
                     android:padding="@dimen/sidebar_settings_padding"
                     android:scaleType="fitCenter"
                     app:srcCompat="@drawable/ic_back"
-                    app:tint="?android:attr/textColorSecondary"
+                    app:tint="?attr/blblOnPageBackdropSecondary"
                     app:layout_constraintStart_toStartOf="parent"
                     app:layout_constraintTop_toTopOf="parent" />
             </androidx.constraintlayout.widget.ConstraintLayout>
@@ -226,21 +226,17 @@
             android:layout_height="wrap_content"
             android:layout_marginStart="12dp"
             android:layout_marginEnd="12dp"
-            android:background="?attr/colorBackground"
+            android:background="@android:color/transparent"
             android:focusable="false"
-            app:tabBackground="?attr/blblFocusBgRound"
-            app:tabIndicatorColor="?attr/blblAccent"
-            app:tabSelectedTextColor="?attr/colorOnSurface"
             app:tabPaddingBottom="0dp"
-            app:tabPaddingTop="2dp"
-            app:tabTextColor="?android:attr/textColorSecondary" />
+            app:tabPaddingTop="2dp" />
     </com.google.android.material.appbar.AppBarLayout>
 
     <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
         android:id="@+id/swipe_refresh"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:background="?attr/colorBackground"
+        android:background="@android:color/transparent"
         app:layout_behavior="@string/appbar_scrolling_view_behavior">
 
         <androidx.recyclerview.widget.RecyclerView

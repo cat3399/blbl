@@ -22,8 +22,8 @@
         android:layout_height="wrap_content"
         android:gravity="center"
         android:orientation="vertical"
-        android:paddingVertical="@dimen/sidebar_nav_container_padding_v">
-
+        android:paddingTop="@dimen/sidebar_nav_container_padding_v"
+        android:paddingBottom="@dimen/sidebar_nav_container_padding_v">
         <ImageView
             android:id="@+id/iv_icon"
             android:layout_width="@dimen/sidebar_nav_icon_size"
@@ -37,7 +37,7 @@
             android:layout_marginTop="@dimen/sidebar_nav_label_margin_top"
             android:ellipsize="end"
             android:maxLines="1"
-            android:textColor="?attr/colorOnSurface"
+            android:textColor="?attr/blblOnPageBackdrop"
             android:textSize="@dimen/sidebar_nav_label_text_size"
             android:visibility="gone" />
     </LinearLayout>

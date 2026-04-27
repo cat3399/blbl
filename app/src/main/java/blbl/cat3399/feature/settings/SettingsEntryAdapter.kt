@@ -57,7 +57,13 @@ class SettingsEntryAdapter(
         fun bind(item: SettingEntry, onClick: (SettingEntry) -> Unit) {
             binding.root.tag = item.id
             binding.tvTitle.text = item.title
-            binding.tvValue.text = item.value
+            if (item.value.isBlank()) {
+                binding.tvValue.visibility = android.view.View.GONE
+                binding.tvValue.text = ""
+            } else {
+                binding.tvValue.visibility = android.view.View.VISIBLE
+                binding.tvValue.text = item.value
+            }
             if (item.desc.isNullOrBlank()) {
                 binding.tvDesc.visibility = android.view.View.GONE
             } else {
