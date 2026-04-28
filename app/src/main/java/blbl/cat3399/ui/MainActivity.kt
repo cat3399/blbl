@@ -10,6 +10,8 @@ import android.view.ViewGroup.MarginLayoutParams
 import android.view.ViewTreeObserver
 import androidx.activity.OnBackPressedCallback
 import androidx.constraintlayout.widget.ConstraintLayout
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.fragment.app.Fragment
@@ -30,6 +32,7 @@ import blbl.cat3399.core.ui.BaseActivity
 import blbl.cat3399.core.ui.FocusReturn
 import blbl.cat3399.core.ui.FocusTreeUtils
 import blbl.cat3399.core.ui.Immersive
+import blbl.cat3399.core.ui.ScreenCornerInsets
 import blbl.cat3399.core.ui.TabContentSwitchFocusHost
 import blbl.cat3399.core.ui.cloneInUserScale
 import blbl.cat3399.core.ui.dispatchToAncestorDpadItemKeyHandler
@@ -42,6 +45,8 @@ import blbl.cat3399.feature.login.QrLoginActivity
 import blbl.cat3399.feature.player.engine.IjkPlayerPlugin
 import blbl.cat3399.feature.player.engine.IjkPlayerPluginUi
 import blbl.cat3399.feature.settings.SettingsActivity
+import kotlin.math.ceil
+import kotlin.math.sqrt
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import org.json.JSONObject
@@ -90,6 +95,7 @@ class MainActivity : BaseActivity(), SidebarFocusHost {
         binding = ActivityMainBinding.inflate(layoutInflater.cloneInUserScale(this))
         setContentView(binding.root)
         Immersive.apply(this, BiliClient.prefs.fullscreenEnabled)
+        applyDisplayCutoutInsets()
         setSidebarExpanded(expanded = true)
         launchNavId = resolveLaunchNavId()
 
@@ -444,6 +450,55 @@ class MainActivity : BaseActivity(), SidebarFocusHost {
         userInfoOverlay.btnFollowing.onFocusChangeListener = invalidateOverlay
         userInfoOverlay.btnFollower.onFocusChangeListener = invalidateOverlay
         userInfoOverlay.btnLogout.onFocusChangeListener = invalidateOverlay
+    }
+
+    private fun applyDisplayCutoutInsets() {
+        ViewCompat.setOnApplyWindowInsetsListener(binding.root) { _, insets ->
+            val cutoutInsets = insets.getInsetsIgnoringVisibility(WindowInsetsCompat.Type.displayCutout())
+            val sidebarWidth = resources.getDimensionPixelSize(R.dimen.sidebar_width)
+            val avatarSize = resources.getDimensionPixelSize(R.dimen.sidebar_user_size)
+            val avatarMarginTop = resources.getDimensionPixelSize(R.dimen.sidebar_user_margin_top)
+            val sidebarAvatarInset = ((sidebarWidth - avatarSize) / 2).coerceAtLeast(0)
+            val avatarRadius = avatarSize / 2f
+            val avatarCenterX = sidebarWidth / 2f
+            val avatarCenterY = avatarMarginTop + avatarRadius
+
+            val sidebarLeftMargin = (cutoutInsets.left - sidebarAvatarInset).coerceAtLeast(0)
+                .coerceAtLeast(ScreenCornerInsets.safeLeftInsetForCircle(insets, avatarRadius, avatarCenterX, avatarCenterY))
+            val mainRightMargin = cutoutInsets.right
+                .coerceAtLeast(ScreenCornerInsets.safeRightInset(insets))
+
+            val sidebarLayoutParams = binding.sidebar.layoutParams as? ConstraintLayout.LayoutParams
+            if (sidebarLayoutParams != null) {
+                val changed =
+                    sidebarLayoutParams.leftMargin != sidebarLeftMargin ||
+                        sidebarLayoutParams.topMargin != cutoutInsets.top ||
+                        sidebarLayoutParams.bottomMargin != cutoutInsets.bottom
+                if (changed) {
+                    sidebarLayoutParams.leftMargin = sidebarLeftMargin
+                    sidebarLayoutParams.topMargin = cutoutInsets.top
+                    sidebarLayoutParams.bottomMargin = cutoutInsets.bottom
+                    binding.sidebar.layoutParams = sidebarLayoutParams
+                }
+            }
+
+            val mainLayoutParams = binding.mainContainer.layoutParams as? ConstraintLayout.LayoutParams
+            if (mainLayoutParams != null) {
+                val changed =
+                    mainLayoutParams.topMargin != cutoutInsets.top ||
+                        mainLayoutParams.rightMargin != mainRightMargin ||
+                        mainLayoutParams.bottomMargin != cutoutInsets.bottom
+                if (changed) {
+                    mainLayoutParams.topMargin = cutoutInsets.top
+                    mainLayoutParams.rightMargin = mainRightMargin
+                    mainLayoutParams.bottomMargin = cutoutInsets.bottom
+                    binding.mainContainer.layoutParams = mainLayoutParams
+                }
+            }
+
+            insets
+        }
+        ViewCompat.requestApplyInsets(binding.root)
     }
 
     private fun isUserInfoOverlayVisible(): Boolean = userInfoOverlay.root.visibility == View.VISIBLE

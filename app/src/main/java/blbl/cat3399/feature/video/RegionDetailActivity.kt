@@ -4,6 +4,8 @@ import android.content.Intent
 import android.os.Bundle
 import android.os.SystemClock
 import android.view.KeyEvent
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -19,6 +21,7 @@ import blbl.cat3399.core.ui.BaseActivity
 import blbl.cat3399.core.ui.DpadGridController
 import blbl.cat3399.core.ui.GridSpanPolicy
 import blbl.cat3399.core.ui.Immersive
+import blbl.cat3399.core.ui.ScreenCornerInsets
 import blbl.cat3399.core.ui.cloneInUserScale
 import blbl.cat3399.core.ui.requestFocusFirstItemOrSelfAfterRefresh
 import blbl.cat3399.databinding.ActivityRegionDetailBinding
@@ -51,6 +54,7 @@ class RegionDetailActivity : BaseActivity() {
         binding = ActivityRegionDetailBinding.inflate(layoutInflater.cloneInUserScale(this))
         setContentView(binding.root)
         Immersive.apply(this, BiliClient.prefs.fullscreenEnabled)
+        applyDisplayCutoutInsets()
 
         if (rid <= 0) {
             AppToast.show(this, "缺少 rid")
@@ -329,6 +333,29 @@ class RegionDetailActivity : BaseActivity() {
                 canAdvance = res.hasMore && res.items.isNotEmpty(),
             )
         }
+
+    private fun applyDisplayCutoutInsets() {
+        ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view, insets ->
+            val cutoutInsets = insets.getInsetsIgnoringVisibility(WindowInsetsCompat.Type.displayCutout())
+            val btnSize = resources.getDimensionPixelSize(blbl.cat3399.R.dimen.sidebar_settings_size)
+            val btnMarginStart = (12 * resources.displayMetrics.density).toInt()
+            val btnMarginTop = (10 * resources.displayMetrics.density).toInt()
+            val btnRadius = btnSize / 2f
+            val btnCenterX = btnMarginStart + btnRadius
+            val btnCenterY = btnMarginTop + btnRadius
+
+            val leftPadding = cutoutInsets.left
+                .coerceAtLeast(ScreenCornerInsets.safeLeftInsetForCircle(insets, btnRadius, btnCenterX, btnCenterY))
+            val rightPadding = cutoutInsets.right
+                .coerceAtLeast(ScreenCornerInsets.safeRightInset(insets))
+
+            if (view.paddingLeft != leftPadding || view.paddingRight != rightPadding) {
+                view.setPadding(leftPadding, 0, rightPadding, 0)
+            }
+            insets
+        }
+        ViewCompat.requestApplyInsets(binding.root)
+    }
 
     companion object {
         const val EXTRA_RID: String = "rid"

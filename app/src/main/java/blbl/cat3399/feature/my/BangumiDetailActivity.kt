@@ -7,6 +7,8 @@ import android.view.View
 import android.widget.FrameLayout
 import android.widget.ProgressBar
 import androidx.activity.OnBackPressedCallback
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.SimpleItemAnimator
@@ -20,6 +22,7 @@ import blbl.cat3399.core.net.BiliClient
 import blbl.cat3399.core.ui.AppToast
 import blbl.cat3399.core.ui.BaseActivity
 import blbl.cat3399.core.ui.Immersive
+import blbl.cat3399.core.ui.ScreenCornerInsets
 import blbl.cat3399.core.ui.ThemeColor
 import blbl.cat3399.core.ui.cloneInUserScale
 import blbl.cat3399.core.ui.smoothScrollToPositionStart
@@ -143,6 +146,7 @@ class BangumiDetailActivity : BaseActivity() {
         binding = ActivityVideoDetailBinding.inflate(layoutInflater.cloneInUserScale(this))
         setContentView(binding.root)
         Immersive.apply(this, BiliClient.prefs.fullscreenEnabled)
+        applyDisplayCutoutInsets()
 
         binding.btnBack.setOnClickListener { finish() }
 
@@ -576,6 +580,29 @@ class BangumiDetailActivity : BaseActivity() {
             append('|')
             append(card.title)
         }
+
+    private fun applyDisplayCutoutInsets() {
+        ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view, insets ->
+            val cutoutInsets = insets.getInsetsIgnoringVisibility(WindowInsetsCompat.Type.displayCutout())
+            val btnSize = resources.getDimensionPixelSize(R.dimen.sidebar_settings_size)
+            val btnMarginStart = (12 * resources.displayMetrics.density).toInt()
+            val btnMarginTop = (10 * resources.displayMetrics.density).toInt()
+            val btnRadius = btnSize / 2f
+            val btnCenterX = btnMarginStart + btnRadius
+            val btnCenterY = btnMarginTop + btnRadius
+
+            val leftPadding = cutoutInsets.left
+                .coerceAtLeast(ScreenCornerInsets.safeLeftInsetForCircle(insets, btnRadius, btnCenterX, btnCenterY))
+            val rightPadding = cutoutInsets.right
+                .coerceAtLeast(ScreenCornerInsets.safeRightInset(insets))
+
+            if (view.paddingLeft != leftPadding || view.paddingRight != rightPadding) {
+                view.setPadding(leftPadding, 0, rightPadding, 0)
+            }
+            insets
+        }
+        ViewCompat.requestApplyInsets(binding.root)
+    }
 
     companion object {
         const val EXTRA_SEASON_ID: String = "season_id"

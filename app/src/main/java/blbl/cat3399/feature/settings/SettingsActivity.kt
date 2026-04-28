@@ -4,11 +4,15 @@ import android.net.Uri
 import android.os.Bundle
 import android.view.KeyEvent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.recyclerview.widget.LinearLayoutManager
+import blbl.cat3399.R
 import blbl.cat3399.core.io.CreateDocumentContract
 import blbl.cat3399.core.net.BiliClient
 import blbl.cat3399.core.ui.BaseActivity
 import blbl.cat3399.core.ui.FocusTreeUtils
+import blbl.cat3399.core.ui.ScreenCornerInsets
 import blbl.cat3399.core.ui.cloneInUserScale
 import blbl.cat3399.core.ui.Immersive
 import blbl.cat3399.core.ui.popup.PopupHost
@@ -56,6 +60,7 @@ class SettingsActivity : BaseActivity() {
         binding = ActivitySettingsBinding.inflate(layoutInflater.cloneInUserScale(this))
         setContentView(binding.root)
         Immersive.apply(this, BiliClient.prefs.fullscreenEnabled)
+        applyDisplayCutoutInsets()
 
         interactionHandler =
             SettingsInteractionHandler(
@@ -144,5 +149,27 @@ class SettingsActivity : BaseActivity() {
         return keyCode == KeyEvent.KEYCODE_BACK ||
             keyCode == KeyEvent.KEYCODE_ESCAPE ||
             keyCode == KeyEvent.KEYCODE_BUTTON_B
+    }
+
+    private fun applyDisplayCutoutInsets() {
+        ViewCompat.setOnApplyWindowInsetsListener(binding.root) { view, insets ->
+            val cutoutInsets = insets.getInsetsIgnoringVisibility(WindowInsetsCompat.Type.displayCutout())
+            val btnSize = resources.getDimensionPixelSize(R.dimen.sidebar_settings_size)
+            val btnMargin = (12 * resources.displayMetrics.density).toInt()
+            val btnRadius = btnSize / 2f
+            val btnCenterX = btnMargin + btnRadius
+            val btnCenterY = btnMargin + btnRadius
+
+            val leftPadding = cutoutInsets.left
+                .coerceAtLeast(ScreenCornerInsets.safeLeftInsetForCircle(insets, btnRadius, btnCenterX, btnCenterY))
+            val rightPadding = cutoutInsets.right
+                .coerceAtLeast(ScreenCornerInsets.safeRightInset(insets))
+
+            if (view.paddingLeft != leftPadding || view.paddingRight != rightPadding) {
+                view.setPadding(leftPadding, 0, rightPadding, 0)
+            }
+            insets
+        }
+        ViewCompat.requestApplyInsets(binding.root)
     }
 }
