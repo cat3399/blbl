@@ -3,7 +3,6 @@ package blbl.cat3399
 import android.app.Application
 import android.os.Build
 import androidx.multidex.MultiDexApplication
-import blbl.cat3399.core.theme.LauncherAliasManager
 import blbl.cat3399.core.log.AppLog
 import blbl.cat3399.core.log.CrashTracker
 import blbl.cat3399.core.emote.ReplyEmotePanelRepository
@@ -32,7 +31,6 @@ class BlblApp : MultiDexApplication() {
             installConscrypt()
         }
         BiliClient.init(this)
-        LauncherAliasManager.sync(this)
         appScope.launch {
             runCatching { WebCookieMaintainer.ensureDailyMaintenance() }
                 .onFailure { AppLog.w("BlblApp", "daily maintenance failed", it) }

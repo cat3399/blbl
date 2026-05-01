@@ -21,6 +21,12 @@ data class CustomPageAddGroup(
     val directOption: CustomPageTabOption? = null,
 )
 
+data class CustomPageSearchSourceKind(
+    val sourceType: String,
+    val label: String,
+    val order: Int,
+)
+
 data class CustomPageResolvedTab(
     val stableKey: String,
     val title: String,
@@ -30,6 +36,7 @@ data class CustomPageResolvedTab(
 object CustomPageTabRegistry {
     const val GROUP_RECOMMEND = "recommend"
     const val GROUP_CATEGORY = "category"
+    const val GROUP_SEARCH = "search"
     const val GROUP_DYNAMIC = "dynamic"
     const val GROUP_LIVE = "live"
     const val GROUP_MY = "my"
@@ -40,6 +47,10 @@ object CustomPageTabRegistry {
     const val TYPE_HOME_CINEMA = "home_cinema"
     const val TYPE_CATEGORY_ALL = "category_all"
     const val TYPE_CATEGORY_ZONE = "category_zone"
+    const val TYPE_SEARCH_VIDEO = "search_video"
+    const val TYPE_SEARCH_LIVE = "search_live"
+    const val TYPE_SEARCH_CINEMA = "search_cinema"
+    const val TYPE_SEARCH_BANGUMI = "search_bangumi"
     const val TYPE_DYNAMIC_VIDEO = "dynamic_video"
     const val TYPE_MY_HISTORY = "my_history"
     const val TYPE_MY_FAV = "my_fav"
@@ -72,9 +83,18 @@ object CustomPageTabRegistry {
         listOf(
             GroupDescriptor(key = GROUP_RECOMMEND, label = "推荐", order = 10),
             GroupDescriptor(key = GROUP_CATEGORY, label = "分类", order = 20),
-            GroupDescriptor(key = GROUP_DYNAMIC, label = "动态", order = 30, directAdd = true),
-            GroupDescriptor(key = GROUP_LIVE, label = "直播", order = 40),
-            GroupDescriptor(key = GROUP_MY, label = "我的", order = 50),
+            GroupDescriptor(key = GROUP_SEARCH, label = "搜索", order = 30),
+            GroupDescriptor(key = GROUP_DYNAMIC, label = "动态", order = 40, directAdd = true),
+            GroupDescriptor(key = GROUP_LIVE, label = "直播", order = 50),
+            GroupDescriptor(key = GROUP_MY, label = "我的", order = 60),
+        )
+
+    private val searchSourceKinds =
+        listOf(
+            CustomPageSearchSourceKind(sourceType = TYPE_SEARCH_VIDEO, label = "普通视频", order = 10),
+            CustomPageSearchSourceKind(sourceType = TYPE_SEARCH_LIVE, label = "直播", order = 20),
+            CustomPageSearchSourceKind(sourceType = TYPE_SEARCH_CINEMA, label = "影视", order = 30),
+            CustomPageSearchSourceKind(sourceType = TYPE_SEARCH_BANGUMI, label = "番剧", order = 40),
         )
 
     fun isEnabled(
@@ -112,6 +132,14 @@ object CustomPageTabRegistry {
         isLoggedIn: Boolean = BiliClient.cookies.hasSessData(),
     ): List<CustomPageAddGroup> {
         return groups.sortedBy { it.order }.mapNotNull { group ->
+            if (group.key == GROUP_SEARCH) {
+                return@mapNotNull if (availableSearchSourceKinds(config).isEmpty()) {
+                    null
+                } else {
+                    CustomPageAddGroup(key = group.key, label = group.label)
+                }
+            }
+
             val options = availableAddOptionsForGroup(group.key, config = config, isLoggedIn = isLoggedIn)
             if (options.isEmpty()) {
                 null
@@ -130,6 +158,7 @@ object CustomPageTabRegistry {
         config: CustomPageConfig,
         isLoggedIn: Boolean = BiliClient.cookies.hasSessData(),
     ): List<CustomPageTabOption> {
+        if (groupKey == GROUP_SEARCH) return emptyList()
         val existingStableKeys = config.tabs.mapTo(HashSet(config.tabs.size * 2)) { stableKeyFor(it) }
         return addMenuConfigs()
             .mapNotNull { supportedConfig ->
@@ -145,6 +174,31 @@ object CustomPageTabRegistry {
                 CustomPageTabOption(
                     stableKey = stableKeyFor(supportedConfig),
                     label = label,
+                    config = supportedConfig,
+                )
+            }
+            .sortedWith(compareBy({ descriptorFor(it.config)?.itemOrder ?: Int.MAX_VALUE }, { it.label }))
+    }
+
+    fun availableSearchSourceKinds(config: CustomPageConfig): List<CustomPageSearchSourceKind> {
+        return searchSourceKinds
+            .filter { availableSearchHistoryOptions(it.sourceType, config).isNotEmpty() }
+            .sortedBy { it.order }
+    }
+
+    fun availableSearchHistoryOptions(
+        sourceType: String,
+        config: CustomPageConfig,
+    ): List<CustomPageTabOption> {
+        val kind = searchKindForSourceType(sourceType) ?: return emptyList()
+        val existingStableKeys = config.tabs.mapTo(HashSet(config.tabs.size * 2)) { stableKeyFor(it) }
+        return searchHistoryConfigs(kind)
+            .mapNotNull { supportedConfig ->
+                val descriptor = descriptorFor(supportedConfig) ?: return@mapNotNull null
+                if (stableKeyFor(supportedConfig) in existingStableKeys) return@mapNotNull null
+                CustomPageTabOption(
+                    stableKey = stableKeyFor(supportedConfig),
+                    label = descriptor.tabTitle,
                     config = supportedConfig,
                 )
             }
@@ -266,6 +320,31 @@ object CustomPageTabRegistry {
                 )
             }
 
+            TYPE_SEARCH_VIDEO,
+            TYPE_SEARCH_LIVE,
+            TYPE_SEARCH_CINEMA,
+            TYPE_SEARCH_BANGUMI,
+            -> {
+                val kind = searchKindForSourceType(config.sourceType) ?: return null
+                val keyword = config.sourceKey?.trim()?.takeIf { it.isNotBlank() } ?: return null
+                Descriptor(
+                    stableKey = stableKeyFor(config),
+                    managerLabel = "搜索-${kind.label}-$keyword",
+                    tabTitle = keyword,
+                    groupKey = GROUP_SEARCH,
+                    itemOrder = kind.order * 1000 + searchHistoryOrderForKeyword(keyword),
+                    createFragment =
+                        {
+                            when (kind.sourceType) {
+                                TYPE_SEARCH_LIVE -> LiveGridFragment.newSearch(keyword)
+                                TYPE_SEARCH_CINEMA -> PgcRecommendGridFragment.newSearchCinema(keyword)
+                                TYPE_SEARCH_BANGUMI -> PgcRecommendGridFragment.newSearchBangumi(keyword)
+                                else -> VideoGridFragment.newSearch(keyword)
+                            }
+                        },
+                )
+            }
+
             TYPE_DYNAMIC_VIDEO ->
                 Descriptor(
                     stableKey = TYPE_DYNAMIC_VIDEO,
@@ -365,6 +444,24 @@ object CustomPageTabRegistry {
 
             else -> null
         }
+    }
+
+    private fun searchHistoryConfigs(kind: CustomPageSearchSourceKind): List<CustomPageTabConfig> {
+        return BiliClient.prefs.searchHistory.mapNotNull { keyword ->
+            keyword.trim().takeIf { it.isNotBlank() }?.let {
+                CustomPageTabConfig(sourceType = kind.sourceType, sourceKey = it)
+            }
+        }
+    }
+
+    private fun searchKindForSourceType(sourceType: String): CustomPageSearchSourceKind? {
+        val type = sourceType.trim().lowercase()
+        return searchSourceKinds.firstOrNull { it.sourceType == type }
+    }
+
+    private fun searchHistoryOrderForKeyword(keyword: String): Int {
+        val index = BiliClient.prefs.searchHistory.indexOfFirst { it.equals(keyword, ignoreCase = true) }
+        return if (index >= 0) 100 + index else Int.MAX_VALUE
     }
 
     private fun categoryOrderForTid(tid: Int?): Int {

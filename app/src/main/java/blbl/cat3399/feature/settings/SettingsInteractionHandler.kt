@@ -39,12 +39,12 @@ import blbl.cat3399.core.prefs.PlayerCustomShortcut
 import blbl.cat3399.core.prefs.PlayerCustomShortcutAction
 import blbl.cat3399.core.prefs.PlayerPlaybackModes
 import blbl.cat3399.core.prefs.PlayerCustomShortcutsStore
-import blbl.cat3399.core.theme.LauncherAliasManager
 import blbl.cat3399.core.ui.AppToast
 import blbl.cat3399.core.ui.Immersive
 import blbl.cat3399.core.ui.popup.AppPopup
 import blbl.cat3399.core.ui.popup.PopupAction
 import blbl.cat3399.core.ui.popup.PopupActionRole
+import blbl.cat3399.core.update.ApkUpdateFlow
 import blbl.cat3399.core.update.ApkUpdater
 import blbl.cat3399.feature.player.engine.IjkPlayerPlugin
 import blbl.cat3399.feature.player.engine.IjkPlayerPluginUi
@@ -53,6 +53,7 @@ import blbl.cat3399.feature.player.PlaybackSettingChoices
 import blbl.cat3399.feature.player.PlayerCustomShortcutCatalog
 import blbl.cat3399.feature.risk.GaiaVgateActivity
 import blbl.cat3399.feature.category.CategoryZones
+import blbl.cat3399.feature.custom.CustomPageSearchSourceKind
 import blbl.cat3399.feature.custom.CustomPageTabRegistry
 import blbl.cat3399.feature.home.HomeTabs
 import blbl.cat3399.feature.live.LiveFragment
@@ -331,7 +332,6 @@ class SettingsInteractionHandler(
                     AppConfigBackup.apply(parsed, prefs = BiliClient.prefs, cookies = BiliClient.cookies)
                 },
             ) {
-                LauncherAliasManager.sync(activity.applicationContext, BiliClient.prefs.themePreset)
                 evictNetworkConnections()
                 AppToast.showLong(activity, if (parsed.includesCredentials) "已导入配置与登录状态，正在重启…" else "已导入配置，正在重启…")
                 restartToMain()
@@ -695,7 +695,6 @@ class SettingsInteractionHandler(
                     }
 
                     prefs.themePreset = key
-                    LauncherAliasManager.sync(activity.applicationContext, key)
                     AppToast.show(activity, "主题：$selected（已应用）")
                     restartToMain()
                 }
@@ -724,6 +723,12 @@ class SettingsInteractionHandler(
 
             SettingId.UploadLogs -> {
                 showUploadLogsDialog()
+            }
+
+            SettingId.AutoUpdateCheckEnabled -> {
+                prefs.autoUpdateCheckEnabled = !prefs.autoUpdateCheckEnabled
+                AppToast.show(activity, "自动检查更新：${if (prefs.autoUpdateCheckEnabled) "开" else "关"}")
+                renderer.refreshSection(entry.id)
             }
 
             SettingId.FullscreenEnabled -> {
@@ -1521,10 +1526,12 @@ class SettingsInteractionHandler(
                     }
 
                     is TestUpdateCheckState.UpdateAvailable -> {
-                        startTestUpdateDownload(latestVersionHint = checkState.latestVersion)
+                        ApkUpdateFlow.showUpdatePrompt(activity, checkState.update) {
+                            startTestUpdateDownload(checkState.latestVersion)
+                        }
                     }
 
-                    else -> ensureTestUpdateChecked(force = true, refreshUi = true)
+                    else -> ensureTestUpdateChecked(force = true, refreshUi = true, promptIfUpdate = true)
                 }
             }
 
@@ -2194,9 +2201,63 @@ class SettingsInteractionHandler(
                         val current = loadConfig()
                         saveConfig(current.copy(tabs = current.tabs + directOption.config))
                         showManager(focusStableKey = directOption.config.stableKey())
+                    } else if (picked.key == CustomPageTabRegistry.GROUP_SEARCH) {
+                        showSearchTypePicker()
                     } else {
                         showAddLeafPicker(group = picked)
                     }
+                }
+            }
+
+            private fun showSearchTypePicker() {
+                var forward = false
+                val config = loadConfig()
+                val kinds = CustomPageTabRegistry.availableSearchSourceKinds(config)
+                if (kinds.isEmpty()) {
+                    AppToast.show(activity, "暂无可添加的搜索历史")
+                    showAddPicker()
+                    return
+                }
+
+                AppPopup.singleChoice(
+                    context = activity,
+                    title = "添加搜索页面",
+                    items = kinds.map { it.label },
+                    checkedIndex = 0,
+                    onDismiss = {
+                        if (!forward) showAddPicker()
+                    },
+                ) { which, _ ->
+                    val picked = kinds.getOrNull(which) ?: return@singleChoice
+                    forward = true
+                    showSearchHistoryPicker(kind = picked)
+                }
+            }
+
+            private fun showSearchHistoryPicker(kind: CustomPageSearchSourceKind) {
+                var forward = false
+                val config = loadConfig()
+                val options = CustomPageTabRegistry.availableSearchHistoryOptions(kind.sourceType, config)
+                if (options.isEmpty()) {
+                    AppToast.show(activity, "该类别下暂无可添加的搜索历史")
+                    showSearchTypePicker()
+                    return
+                }
+
+                AppPopup.singleChoice(
+                    context = activity,
+                    title = "添加${kind.label}搜索",
+                    items = options.map { it.label },
+                    checkedIndex = 0,
+                    onDismiss = {
+                        if (!forward) showSearchTypePicker()
+                    },
+                ) { which, _ ->
+                    val picked = options.getOrNull(which) ?: return@singleChoice
+                    forward = true
+                    val current = loadConfig()
+                    saveConfig(current.copy(tabs = current.tabs + picked.config))
+                    showManager(focusStableKey = picked.config.stableKey())
                 }
             }
 
@@ -2566,7 +2627,7 @@ class SettingsInteractionHandler(
         return total.coerceAtLeast(0L)
     }
 
-    private fun ensureTestUpdateChecked(force: Boolean, refreshUi: Boolean = true) {
+    private fun ensureTestUpdateChecked(force: Boolean, refreshUi: Boolean = true, promptIfUpdate: Boolean = false) {
         if (testUpdateJob?.isActive == true) return
         if (testUpdateCheckJob?.isActive == true) return
         if (state.testUpdateCheckState is TestUpdateCheckState.Checking) return
@@ -2587,15 +2648,21 @@ class SettingsInteractionHandler(
         testUpdateCheckJob =
             activity.lifecycleScope.launch {
                 try {
-                    val latest = ApkUpdater.fetchLatestVersionName()
+                    val update = ApkUpdater.fetchLatestUpdate()
+                    val latest = update.versionName
                     val current = BuildConfig.VERSION_NAME
                     state.testUpdateCheckState =
                         if (ApkUpdater.isRemoteNewer(latest, current)) {
-                            TestUpdateCheckState.UpdateAvailable(latest)
+                            TestUpdateCheckState.UpdateAvailable(update)
                         } else {
                             TestUpdateCheckState.Latest(latest)
                         }
                     state.testUpdateCheckedAtMs = System.currentTimeMillis()
+                    if (promptIfUpdate && state.testUpdateCheckState is TestUpdateCheckState.UpdateAvailable) {
+                        ApkUpdateFlow.showUpdatePrompt(activity, update) {
+                            startTestUpdateDownload(update.versionName)
+                        }
+                    }
                 } catch (_: CancellationException) {
                     return@launch
                 } catch (t: Throwable) {
@@ -2612,82 +2679,27 @@ class SettingsInteractionHandler(
             return
         }
 
-        val now = System.currentTimeMillis()
-        val cooldownLeftMs = ApkUpdater.cooldownLeftMs(now)
-        if (cooldownLeftMs > 0) {
-            AppToast.show(activity, "操作太频繁，请稍后再试（${(cooldownLeftMs / 1000).coerceAtLeast(1)}s）")
-            return
-        }
-
-        val popup =
-            AppPopup.progress(
-                context = activity,
-                title = "下载更新",
-                status = "检查更新…",
-                negativeText = "取消",
-                cancelable = false,
-                onNegative = { testUpdateJob?.cancel() },
-            )
-
         testUpdateJob =
-            activity.lifecycleScope.launch {
-                try {
-                    val currentVersion = BuildConfig.VERSION_NAME
-                    val latestVersion = latestVersionHint ?: ApkUpdater.fetchLatestVersionName()
-                    if (!ApkUpdater.isRemoteNewer(latestVersion, currentVersion)) {
-                        state.testUpdateCheckState = TestUpdateCheckState.Latest(latestVersion)
-                        state.testUpdateCheckedAtMs = System.currentTimeMillis()
-                        renderer.refreshAboutSectionKeepPosition()
-                        popup?.dismiss()
-                        AppToast.show(activity, "已是最新版（当前：$currentVersion）")
-                        return@launch
+            ApkUpdateFlow.startDownloadAndInstall(
+                activity = activity,
+                latestVersionHint = latestVersionHint,
+            ) { latestVersion, isNewer ->
+                val changelog = (state.testUpdateCheckState as? TestUpdateCheckState.UpdateAvailable)?.update?.changelog ?: ""
+                state.testUpdateCheckState =
+                    if (isNewer) {
+                        TestUpdateCheckState.UpdateAvailable(
+                            ApkUpdater.RemoteUpdate(
+                                versionName = latestVersion,
+                                changelog = changelog,
+                            ),
+                        )
+                    } else {
+                        TestUpdateCheckState.Latest(latestVersion)
                     }
-
-                    state.testUpdateCheckState = TestUpdateCheckState.UpdateAvailable(latestVersion)
-                    state.testUpdateCheckedAtMs = System.currentTimeMillis()
-                    renderer.refreshAboutSectionKeepPosition()
-
-                    popup?.updateStatus("准备下载…（最新：$latestVersion）")
-                    popup?.updateProgress(null)
-
-                    ApkUpdater.markStarted(now)
-                    val apkFile =
-                        ApkUpdater.downloadApkToCache(
-                            context = activity,
-                            url = ApkUpdater.TEST_APK_URL,
-                        ) { dlState ->
-                            when (dlState) {
-                                ApkUpdater.Progress.Connecting -> {
-                                    popup?.updateProgress(null)
-                                    popup?.updateStatus("连接中…")
-                                }
-
-                                is ApkUpdater.Progress.Downloading -> {
-                                    val pct = dlState.percent
-                                    if (pct != null) {
-                                        popup?.updateProgress(pct.coerceIn(0, 100))
-                                        popup?.updateStatus("下载中… ${pct.coerceIn(0, 100)}% ${dlState.hint}")
-                                    } else {
-                                        popup?.updateProgress(null)
-                                        popup?.updateStatus("下载中… ${dlState.hint}")
-                                    }
-                                }
-                            }
-                        }
-
-                    popup?.updateStatus("准备安装…")
-                    popup?.updateProgress(null)
-                    popup?.dismiss()
-                    ApkUpdater.installApk(activity, apkFile)
-                } catch (_: CancellationException) {
-                    popup?.dismiss()
-                    AppToast.show(activity, "已取消更新")
-                } catch (t: Throwable) {
-                    AppLog.w("TestUpdate", "update failed: ${t.message}")
-                    popup?.dismiss()
-                    AppToast.showLong(activity, "更新失败：${t.message ?: "未知错误"}")
-                }
+                state.testUpdateCheckedAtMs = System.currentTimeMillis()
+                renderer.refreshAboutSectionKeepPosition()
             }
+                ?: return
     }
 
     private fun showProjectDialog() {

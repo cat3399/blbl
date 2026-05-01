@@ -66,6 +66,7 @@ import blbl.cat3399.core.prefs.AppPrefs
 import blbl.cat3399.core.ui.ActivityStackLimiter
 import blbl.cat3399.core.ui.AppToast
 import blbl.cat3399.core.ui.BaseActivity
+import blbl.cat3399.core.ui.CompatThemedBackgrounds
 import blbl.cat3399.core.ui.DpadGridController
 import blbl.cat3399.core.ui.DoubleBackToExitHandler
 import blbl.cat3399.core.ui.FocusReturn
@@ -73,7 +74,6 @@ import blbl.cat3399.core.ui.FocusTreeUtils
 import blbl.cat3399.core.ui.Immersive
 import blbl.cat3399.core.ui.popup.PopupHost
 import blbl.cat3399.core.util.Format as BlblFormat
-import blbl.cat3399.feature.following.UpDetailActivity
 import blbl.cat3399.feature.my.BangumiDetailActivity
 import blbl.cat3399.feature.player.danmaku.DanmakuSessionSettings
 import blbl.cat3399.feature.player.danmaku.DanmakuFontWeight
@@ -125,6 +125,13 @@ class PlayerActivity : BaseActivity() {
     override fun shouldRecreateOnUiScaleChange(): Boolean = true
 
     internal lateinit var binding: ActivityPlayerBinding
+    internal lateinit var upQuickCard: PlayerUpQuickCardController
+    internal val currentUpMid: Long get() = if (::upQuickCard.isInitialized) upQuickCard.currentMid else 0L
+    internal val currentUpName: String? get() = if (::upQuickCard.isInitialized) upQuickCard.currentName else null
+    internal val currentUpAvatar: String? get() = if (::upQuickCard.isInitialized) upQuickCard.currentAvatar else null
+    internal val currentUpFollowed: Boolean? get() = if (::upQuickCard.isInitialized) upQuickCard.currentFollowed else null
+    internal val upFollowActionInFlight: Boolean get() = if (::upQuickCard.isInitialized) upQuickCard.followActionInFlight else false
+
     internal var player: BlblPlayerEngine? = null
     private var ijkRenderView: View? = null
     private var ijkTextureSurface: Surface? = null
@@ -265,10 +272,6 @@ class PlayerActivity : BaseActivity() {
     internal var currentAid: Long? = null
     internal var currentSeasonId: Long? = null
     internal var currentMainTitle: String? = null
-    internal var currentUpMid: Long = 0L
-    internal var currentUpName: String? = null
-    internal var currentUpAvatar: String? = null
-    internal var currentUpFollowed: Boolean? = null
     internal var currentPlayerDesc: String? = null
     internal var currentPlayerViewCount: Long? = null
     internal var currentPlayerDanmakuCount: Long? = null
@@ -277,10 +280,6 @@ class PlayerActivity : BaseActivity() {
     internal var currentPlayerLikeCount: Long? = null
     internal var currentPlayerCoinCount: Long? = null
     internal var currentPlayerFavCount: Long? = null
-    internal var upFollowActionInFlight: Boolean = false
-    internal var upFollowActionJob: Job? = null
-    internal var upFollowStateJob: Job? = null
-    internal var upFollowStateToken: Int = 0
     internal var playerInfoShelfUsesRecommendFallback: Boolean = false
 
     internal var pageListToken: String? = null
@@ -371,8 +370,8 @@ class PlayerActivity : BaseActivity() {
 
     @Volatile
     private var exitTraceNavTargetFirstPreDrawLogged: Boolean = false
-    private var decoderReleaseRequestedOnStopReason: String? = null
-    private var decoderReleaseRequestedResumePlayWhenReady: Boolean? = null
+    private var transientPlaybackResumeRequested: Boolean? = null
+    private var decoderReleaseRequestedOnStop: Boolean = false
     private var resumeAfterDecoderRelease: Boolean = false
     private var resumeAfterDecoderReleasePositionMs: Long = 0L
     private var resumeAfterDecoderReleasePlayWhenReady: Boolean = true
@@ -389,7 +388,7 @@ class PlayerActivity : BaseActivity() {
     internal var currentVideoContentHeight: Int? = null
 
     private fun isPlayerTeardownInProgress(): Boolean {
-        return exitCleanupRequested || isFinishing || isDestroyed || decoderReleaseRequestedOnStopReason != null || resumeAfterDecoderRelease
+        return exitCleanupRequested || isFinishing || isDestroyed || decoderReleaseRequestedOnStop || resumeAfterDecoderRelease
     }
 
     private fun shouldSuppressPlayerError(error: Throwable): Boolean {
@@ -400,7 +399,7 @@ class PlayerActivity : BaseActivity() {
         AppLog.i(
             "Player",
             "ignorePlayerError teardown=1 finishing=${if (isFinishing) 1 else 0} destroyed=${if (isDestroyed) 1 else 0} " +
-                "exitCleanup=${if (exitCleanupRequested) 1 else 0} releaseOnStop=${decoderReleaseRequestedOnStopReason.orEmpty()} " +
+                "exitCleanup=${if (exitCleanupRequested) 1 else 0} releaseOnStop=${if (decoderReleaseRequestedOnStop) 1 else 0} " +
                 "resumeAfterRelease=${if (resumeAfterDecoderRelease) 1 else 0} type=$errorLabel",
         )
         return true
@@ -572,29 +571,33 @@ class PlayerActivity : BaseActivity() {
 
     internal var trace: PlaybackTrace? = null
     internal var traceFirstFrameLogged: Boolean = false
-    private fun requestDecoderReleaseOnStop(reason: String) {
-        if (reason.isBlank()) return
-        val engine = player as? ExoPlayerEngine ?: return
-        decoderReleaseRequestedOnStopReason = reason
-        // Snapshot the pre-navigation auto-play intent before onPause() forces pause().
-        decoderReleaseRequestedResumePlayWhenReady = engine.isPlaying || engine.playWhenReady
-        trace?.log("exo:releaseOnStop:request", "reason=$reason")
+
+    internal fun prepareTransientPlaybackExit() {
+        val engine = player ?: return
+        val shouldResume = engine.isPlaying || engine.playWhenReady
+        transientPlaybackResumeRequested = shouldResume
+        decoderReleaseRequestedOnStop = engine is ExoPlayerEngine
+        trace?.log(
+            "player:transientExit",
+            "resume=${if (shouldResume) 1 else 0} releaseOnStop=${if (decoderReleaseRequestedOnStop) 1 else 0}",
+        )
+        engine.pause()
     }
 
-    private fun releaseDecoderNowForBackground(reason: String) {
+    private fun releaseDecoderNowForBackground() {
         val engine = player ?: return
         if (engine !is ExoPlayerEngine) return
         if (exitCleanupRequested || isFinishing || isDestroyed) return
         val pos = engine.currentPosition.coerceAtLeast(0L)
         val shouldPlayAfterReturn =
-            decoderReleaseRequestedResumePlayWhenReady
+            transientPlaybackResumeRequested
                 ?: (engine.isPlaying || engine.playWhenReady)
-        decoderReleaseRequestedResumePlayWhenReady = null
-        trace?.log("exo:releaseOnStop:do", "reason=$reason pos=${pos}ms")
+        transientPlaybackResumeRequested = null
+        trace?.log("exo:releaseOnStop:do", "pos=${pos}ms")
 
         // Stop progress reporting before stopping the player (stop() resets currentPosition).
-        stopReportProgressLoop(flush = false, reason = "nav_$reason")
-        enqueueExitProgressReport(reason = "nav_$reason")
+        stopReportProgressLoop(flush = false, reason = "transient_nav")
+        enqueueExitProgressReport(reason = "transient_nav")
 
         resumeAfterDecoderRelease = true
         resumeAfterDecoderReleasePositionMs = pos
@@ -613,6 +616,8 @@ class PlayerActivity : BaseActivity() {
         if (exitCleanupRequested) return
         exitCleanupRequested = true
         exitCleanupReason = reason
+        transientPlaybackResumeRequested = null
+        decoderReleaseRequestedOnStop = false
         cancelPlayUrlAutoRefresh(reason = "exit_cleanup:$reason")
         trace?.log("activity:exit:request", "reason=$reason")
         exitTraceLog(
@@ -720,6 +725,18 @@ class PlayerActivity : BaseActivity() {
                 null,
             )
         binding = ActivityPlayerBinding.bind(root)
+        upQuickCard =
+            PlayerUpQuickCardController(
+                activity = this,
+                binding = binding,
+                isCardVisible = { isTopBarContentVisible() },
+                keepControlsVisible = { setControlsVisible(true) },
+                beforeOpenUpDetail = { prepareTransientPlaybackExit() },
+                onUiUpdated = {
+                    updatePlayerInfoUpUi()
+                    updateUpButton()
+                },
+            )
         setContentView(binding.root)
         applyPostInflateCompatUi()
         Immersive.apply(this, prefs.fullscreenEnabled, playerScreen = true)
@@ -1561,6 +1578,7 @@ class PlayerActivity : BaseActivity() {
         binding.btnBack.isFocusableInTouchMode = false
         updatePersistentBottomProgressBarVisibility()
         (binding.recyclerSettings.adapter as? PlayerSettingsAdapter)?.let { refreshSettings(it) }
+        consumeTransientPlaybackResumeIfNeeded()
     }
 
     private fun captureSystemBarAvoidanceBaseState() {
@@ -2124,13 +2142,7 @@ class PlayerActivity : BaseActivity() {
                     return super.dispatchKeyEvent(event)
                 }
                 if (isSidePanelVisible()) return super.dispatchKeyEvent(event)
-                if (osdMode == OsdMode.Full && binding.seekProgress.isFocused) return super.dispatchKeyEvent(event)
-                if (
-                    osdMode == OsdMode.Full &&
-                    (binding.topBar.hasFocus() || binding.cardUpQuick.hasFocus() || binding.bottomBar.hasFocus())
-                ) {
-                    return super.dispatchKeyEvent(event)
-                }
+                if (hasControlsFocusOutsideSeekBar()) return super.dispatchKeyEvent(event)
 
                 if (event.repeatCount > 0) {
                     clearKeySeekPending()
@@ -2148,13 +2160,7 @@ class PlayerActivity : BaseActivity() {
             KeyEvent.KEYCODE_MEDIA_FAST_FORWARD,
             -> {
                 if (isSidePanelVisible()) return super.dispatchKeyEvent(event)
-                if (osdMode == OsdMode.Full && binding.seekProgress.isFocused) return super.dispatchKeyEvent(event)
-                if (
-                    osdMode == OsdMode.Full &&
-                    (binding.topBar.hasFocus() || binding.cardUpQuick.hasFocus() || binding.bottomBar.hasFocus())
-                ) {
-                    return super.dispatchKeyEvent(event)
-                }
+                if (hasControlsFocusOutsideSeekBar()) return super.dispatchKeyEvent(event)
 
                 if (event.repeatCount > 0) {
                     clearKeySeekPending()
@@ -2183,9 +2189,11 @@ class PlayerActivity : BaseActivity() {
             )
         }
         trace?.log("activity:onStop")
-        val releaseReason = decoderReleaseRequestedOnStopReason
-        decoderReleaseRequestedOnStopReason = null
-        if (releaseReason == null) decoderReleaseRequestedResumePlayWhenReady = null
+        val releaseDecoderOnStop = decoderReleaseRequestedOnStop
+        decoderReleaseRequestedOnStop = false
+        if (isChangingConfigurations) {
+            transientPlaybackResumeRequested = null
+        }
         super.onStop()
         player?.pause()
         if ((exitCleanupRequested || isFinishing) && !isChangingConfigurations) {
@@ -2198,8 +2206,8 @@ class PlayerActivity : BaseActivity() {
                 exitTraceLog("exitCleanup:detachView:onStop", "cost=${detachCostMs}ms")
             }
         }
-        if (releaseReason != null && !isChangingConfigurations) {
-            releaseDecoderNowForBackground(reason = releaseReason)
+        if (releaseDecoderOnStop && !isChangingConfigurations) {
+            releaseDecoderNowForBackground()
         } else {
             val flush = !isFinishing && !isChangingConfigurations && !exitCleanupRequested
             stopReportProgressLoop(flush = flush, reason = if (flush) "stop" else "stop_skip")
@@ -2209,7 +2217,7 @@ class PlayerActivity : BaseActivity() {
     override fun onStart() {
         super.onStart()
         val engine = player ?: return
-        val exo = (engine as? ExoPlayerEngine)?.exoPlayer ?: return
+        val exo = (engine as? ExoPlayerEngine)?.exoPlayer
         if (!resumeAfterDecoderRelease) return
         if (exitCleanupRequested || isFinishing || isDestroyed) return
 
@@ -2220,7 +2228,7 @@ class PlayerActivity : BaseActivity() {
         resumeAfterDecoderReleasePlayWhenReady = true
         trace?.log("exo:releaseOnStop:resume", "pos=${pos}ms")
 
-        if (::binding.isInitialized && binding.playerView.player == null) {
+        if (exo != null && ::binding.isInitialized && binding.playerView.player == null) {
             binding.playerView.player = exo
         }
         resumeExpiredUrlReloadArmed = true
@@ -2228,6 +2236,17 @@ class PlayerActivity : BaseActivity() {
         engine.playWhenReady = playWhenReadyAfterReturn
         engine.prepare()
         if (pos > 0L) engine.seekTo(pos)
+    }
+
+    private fun consumeTransientPlaybackResumeIfNeeded() {
+        val shouldResume = transientPlaybackResumeRequested ?: return
+        transientPlaybackResumeRequested = null
+        if (exitCleanupRequested || isFinishing || isDestroyed || isChangingConfigurations) return
+        val engine = player ?: return
+        if (shouldResume) {
+            trace?.log("player:transientResume")
+            engine.playWhenReady = true
+        }
     }
 
     override fun onPause() {
@@ -2299,6 +2318,7 @@ class PlayerActivity : BaseActivity() {
         relatedVideosFetchJob?.cancel()
         commentsFetchJob?.cancel()
         commentThreadFetchJob?.cancel()
+        releaseUpQuickCardJobs()
         pageListLoadMoreJob?.cancel()
         partsListLoadMoreJob?.cancel()
         pageListLoadMoreCallbacks.clear()
@@ -2340,7 +2360,7 @@ class PlayerActivity : BaseActivity() {
     internal fun openCurrentMediaDetail() {
         val epId = currentEpId
         if (epId != null && epId > 0L) {
-            requestDecoderReleaseOnStop(reason = "video_detail")
+            prepareTransientPlaybackExit()
             startActivity(
                 Intent(this, BangumiDetailActivity::class.java)
                     .putExtra(BangumiDetailActivity.EXTRA_EP_ID, epId)
@@ -2357,7 +2377,7 @@ class PlayerActivity : BaseActivity() {
             return
         }
 
-        requestDecoderReleaseOnStop(reason = "video_detail")
+        prepareTransientPlaybackExit()
         val title =
             currentMainTitle?.trim().orEmpty().ifBlank {
                 binding.tvTitle.text?.toString()?.trim().orEmpty()
@@ -2381,20 +2401,7 @@ class PlayerActivity : BaseActivity() {
     }
 
     internal fun openCurrentUpDetail() {
-        val mid = currentUpMid
-        if (mid <= 0L) {
-            AppToast.show(this, "未获取到 UP 主信息")
-            return
-        }
-        requestDecoderReleaseOnStop(reason = "up_detail")
-        startActivity(
-            Intent(this, UpDetailActivity::class.java)
-                .putExtra(UpDetailActivity.EXTRA_MID, mid)
-                .apply {
-                    currentUpName?.takeIf { it.isNotBlank() }?.let { putExtra(UpDetailActivity.EXTRA_NAME, it) }
-                    currentUpAvatar?.takeIf { it.isNotBlank() }?.let { putExtra(UpDetailActivity.EXTRA_AVATAR, it) }
-                },
-        )
+        openUpQuickCardProfile()
     }
 
     internal fun shouldShowOsdOnPlaybackToggle(): Boolean {
@@ -2576,10 +2583,11 @@ class PlayerActivity : BaseActivity() {
             viewData.optJSONObject("owner")
                 ?: viewData.optJSONObject("up_info")
                 ?: JSONObject()
-        currentUpMid = owner.optLong("mid").takeIf { it > 0L } ?: 0L
-        currentUpName = owner.optString("name", "").trim().takeIf { it.isNotBlank() }
-        currentUpAvatar = owner.optString("face", "").trim().takeIf { it.isNotBlank() }
-        updateUpButton()
+        setUpQuickCardOwner(
+            mid = owner.optLong("mid").takeIf { it > 0L } ?: 0L,
+            name = owner.optString("name", "").trim().takeIf { it.isNotBlank() },
+            avatar = owner.optString("face", "").trim().takeIf { it.isNotBlank() },
+        )
         applyUpFollowStateFromView(viewData)
     }
 
@@ -4176,6 +4184,8 @@ class PlayerActivity : BaseActivity() {
     }
 
     private fun applyPostInflateCompatUi() {
+        binding.btnUpQuickProfile.background = CompatThemedBackgrounds.playerUpQuickChip(this)
+        binding.btnUpQuickFollow.background = CompatThemedBackgrounds.playerUpQuickFollow(this)
         if (Build.VERSION.SDK_INT >= 21) {
             val tint = ContextCompat.getColorStateList(this, R.color.blbl_text)
             binding.progressBuffering.indeterminateTintList = tint

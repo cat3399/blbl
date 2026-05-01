@@ -60,9 +60,14 @@ jobs:
           if [ -n "${KEY_PREFIX}" ]; then
             KEY_PREFIX="${KEY_PREFIX}/"
           fi
+          if [ ! -s CHANGELOG.md ]; then
+            echo "CHANGELOG.md missing or empty."
+            exit 1
+          fi
 
           printf '%s' "${CLEAN_VERSION}" > version
           aws s3 cp "version" "s3://${R2_BUCKET}/${KEY_PREFIX}version" --endpoint-url "${ENDPOINT}" --content-type "text/plain" --cache-control "no-cache"
+          aws s3 cp "CHANGELOG.md" "s3://${R2_BUCKET}/${KEY_PREFIX}CHANGELOG.md" --endpoint-url "${ENDPOINT}" --content-type "text/markdown; charset=utf-8" --cache-control "no-cache"
           aws s3 cp "app/build/outputs/apk/debug/app-debug.apk" "s3://${R2_BUCKET}/${KEY_PREFIX}blbl-${CLEAN_VERSION}-debug.apk" --endpoint-url "${ENDPOINT}" --content-type "application/vnd.android.package-archive"
           aws s3 cp "app/build/outputs/apk/debug/app-debug.apk" "s3://${R2_BUCKET}/${KEY_PREFIX}blbl-latest-debug.apk" --endpoint-url "${ENDPOINT}" --content-type "application/vnd.android.package-archive" --cache-control "no-cache"
       - name: Upload debug APK

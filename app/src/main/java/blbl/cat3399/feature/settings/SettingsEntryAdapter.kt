@@ -4,6 +4,7 @@ import android.view.LayoutInflater
 import android.view.ViewGroup
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.RecyclerView
+import blbl.cat3399.core.ui.CompatThemedBackgrounds
 import blbl.cat3399.databinding.ItemSettingEntryBinding
 
 class SettingsEntryAdapter(
@@ -54,6 +55,10 @@ class SettingsEntryAdapter(
     override fun getItemCount(): Int = items.size
 
     class Vh(private val binding: ItemSettingEntryBinding) : RecyclerView.ViewHolder(binding.root) {
+        init {
+            binding.root.background = CompatThemedBackgrounds.settingEntry(binding.root.context)
+        }
+
         fun bind(item: SettingEntry, onClick: (SettingEntry) -> Unit) {
             binding.root.tag = item.id
             binding.tvTitle.text = item.title

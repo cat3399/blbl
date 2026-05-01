@@ -34,7 +34,7 @@ internal object IjkPlayerPlugin {
     private const val ZIP_FILE_NAME = "libijkplayer.zip"
     private const val SO_FILE_NAME = "libijkplayer.so"
     private const val INSTALL_STAMP_FILE_NAME = "install_stamp"
-    private const val REQUIRED_INSTALL_STAMP = 2
+    private const val REQUIRED_INSTALL_STAMP = 3
     private const val MIN_SO_BYTES = 1_000_000L
 
     private val supportedAbis: Set<String> =
@@ -171,6 +171,8 @@ internal object IjkPlayerPlugin {
             val targetSo = soFile(context, abi)
             targetSo.parentFile?.mkdirs()
             bundledSo.copyTo(targetSo, overwrite = true)
+            validateInstalledSo(targetSo)
+            writeInstallStamp(context, abi)
 
             if (isInstalled(context, abi)) targetSo else null
         } catch (e: Exception) {
@@ -183,7 +185,7 @@ internal object IjkPlayerPlugin {
         // API 19 needs a .so built with an older NDK (no _FORTIFY_SOURCE) to avoid
         // UnsatisfiedLinkError on missing __read_chk / __write_chk symbols.
         val variant = if (Build.VERSION.SDK_INT < 21) "$safeAbi-api19" else safeAbi
-        return "$BASE_URL/$variant/$ZIP_FILE_NAME"
+        return "$BASE_URL/$variant/$ZIP_FILE_NAME?cb=${System.currentTimeMillis()}"
     }
 
     private val okHttp: OkHttpClient by lazy {

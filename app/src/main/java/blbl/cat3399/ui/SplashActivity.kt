@@ -22,7 +22,7 @@ open class SplashActivity : BaseActivity() {
 
     override fun shouldRecreateOnUiScaleChange(): Boolean = false
 
-    override fun shouldApplyThemePreset(): Boolean = false
+    override fun shouldApplyThemePreset(): Boolean = true
 
     private fun forwardToMainIfNeeded() {
         if (forwarded) return

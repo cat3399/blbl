@@ -114,6 +114,8 @@
             </intent-filter>
         </activity-alias>
 
+        <!-- Legacy themed aliases stay disabled by default, but keep their launcher filters so
+             devices with persisted alias state from older versions can still launch after upgrade. -->
         <activity-alias
             android:name=".ui.MainLauncherTvPinkAlias"
             android:banner="@drawable/tv_banner"
