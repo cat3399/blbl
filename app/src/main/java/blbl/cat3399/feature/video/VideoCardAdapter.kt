@@ -2,6 +2,7 @@ package blbl.cat3399.feature.video
 
 import android.view.KeyEvent
 import android.view.LayoutInflater
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewGroup.MarginLayoutParams
@@ -114,25 +115,11 @@ class VideoCardAdapter(
 
     override fun onBindViewHolder(holder: Vh, position: Int) {
         val item = items[position]
-        val overlayUi =
-            if (isOverlayExpanded(item)) {
-                val actions = actionDelegate?.manualActions(item, position).orEmpty().take(ACTION_BUTTON_COUNT)
-                if (actions.size == ACTION_BUTTON_COUNT) {
-                    ActionOverlayUi(
-                        actions = actions,
-                        selectedIndex = selectedActionIndex.coerceIn(0, actions.lastIndex),
-                    )
-                } else {
-                    null
-                }
-            } else {
-                null
-            }
         holder.bind(
             item = item,
             position = position,
             isSelected = isSelected,
-            overlayUi = overlayUi,
+            overlayUi = currentOverlayUi(item, position),
             actionDelegate = actionDelegate,
         )
     }
@@ -166,10 +153,17 @@ class VideoCardAdapter(
     private fun handleItemLongClick(
         item: VideoCard,
         position: Int,
+        isPointerLongClick: Boolean,
     ): Boolean {
         val delegate = actionDelegate ?: return onLongClick?.invoke(item, position) ?: false
         return when (delegate.resolveLongPressAction(item, position)) {
-            VideoCardConfiguredLongPressAction.MANUAL -> toggleOverlay(item)
+            VideoCardConfiguredLongPressAction.MANUAL -> {
+                openOverlay(
+                    item = item,
+                    initialSelectedIndex = if (isPointerLongClick) NO_ACTION_SELECTED else 0,
+                )
+            }
+
             VideoCardConfiguredLongPressAction.WATCH_LATER -> {
                 delegate.manualActions(item, position)
                     .firstOrNull { it.id == VideoCardQuickActionId.WATCH_LATER }
@@ -225,16 +219,22 @@ class VideoCardAdapter(
         notifyExpandedKeyChanged(expandedKey)
     }
 
-    private fun toggleOverlay(item: VideoCard): Boolean {
+    private fun openOverlay(
+        item: VideoCard,
+        initialSelectedIndex: Int,
+    ): Boolean {
         val key = stableKeyFor(item)
         if (expandedCardStableKey == key) {
-            collapseExpandedOverlay()
+            if (selectedActionIndex == NO_ACTION_SELECTED && initialSelectedIndex != NO_ACTION_SELECTED) {
+                selectedActionIndex = initialSelectedIndex
+            }
+            notifyExpandedKeyChanged(key)
             return true
         }
 
         val previousKey = expandedCardStableKey
         expandedCardStableKey = key
-        selectedActionIndex = 0
+        selectedActionIndex = initialSelectedIndex
         previousKey?.let(::notifyExpandedKeyChanged)
         notifyExpandedKeyChanged(key)
         return true
@@ -261,11 +261,12 @@ class VideoCardAdapter(
         if (actions.size != ACTION_BUTTON_COUNT) return null
         return ActionOverlayUi(
             actions = actions,
-            selectedIndex = selectedActionIndex.coerceIn(0, actions.lastIndex),
+            selectedIndex = selectedActionIndex.takeIf { it in actions.indices } ?: NO_ACTION_SELECTED,
         )
     }
 
     companion object {
+        private const val NO_ACTION_SELECTED = -1
         private const val ACTION_BUTTON_COUNT = 4
     }
 
@@ -274,12 +275,14 @@ class VideoCardAdapter(
         private val fixedItemWidthDimenRes: Int?,
         private val fixedItemMarginDimenRes: Int?,
         private val onItemClick: (VideoCard, Int, Boolean) -> Unit,
-        private val onItemLongClick: (VideoCard, Int) -> Boolean,
+        private val onItemLongClick: (VideoCard, Int, Boolean) -> Boolean,
         private val onOverlayActionClick: (VideoCard, Int, Int) -> Unit,
         private val onItemFocusLost: (VideoCard) -> Unit,
         private val onOverlayActionSelect: (Int) -> Unit,
         private val isOverlayExpanded: (VideoCard) -> Boolean,
     ) : RecyclerView.ViewHolder(binding.root) {
+        private var pointerDownForLongClick: Boolean = false
+
         init {
             applyFixedSizing()
         }
@@ -361,12 +364,28 @@ class VideoCardAdapter(
 
             binding.root.setOnLongClickListener {
                 val pos = bindingAdapterPosition.takeIf { it != RecyclerView.NO_POSITION } ?: return@setOnLongClickListener false
-                onItemLongClick(item, pos)
+                onItemLongClick(item, pos, pointerDownForLongClick)
+            }
+
+            binding.root.setOnTouchListener { _, event ->
+                when (event.actionMasked) {
+                    MotionEvent.ACTION_DOWN -> pointerDownForLongClick = true
+                    MotionEvent.ACTION_UP,
+                    MotionEvent.ACTION_CANCEL,
+                    -> pointerDownForLongClick = false
+                }
+                false
             }
 
             binding.root.onFocusChangeListener =
                 View.OnFocusChangeListener { _, hasFocus ->
-                    if (!hasFocus) onItemFocusLost(item)
+                    if (!hasFocus) {
+                        binding.root.post {
+                            if (bindingAdapterPosition != RecyclerView.NO_POSITION && !binding.root.hasFocus()) {
+                                onItemFocusLost(item)
+                            }
+                        }
+                    }
                 }
         }
 

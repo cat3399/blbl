@@ -43,6 +43,7 @@ class LiveGridFragment : Fragment(), LivePageFocusTarget, RefreshKeyHandler {
 
     private val source: String by lazy { requireArguments().getString(ARG_SOURCE) ?: SRC_RECOMMEND }
     private val enableTabFocus: Boolean by lazy { requireArguments().getBoolean(ARG_ENABLE_TAB_FOCUS, true) }
+    private val searchKeyword: String by lazy { requireArguments().getString(ARG_SEARCH_KEYWORD).orEmpty().trim() }
 
     private val loadedRoomIds = HashSet<Long>()
     private val paging = PagedGridStateMachine(initialKey = 1)
@@ -214,6 +215,18 @@ class LiveGridFragment : Fragment(), LivePageFocusTarget, RefreshKeyHandler {
                                     val res = BiliApi.liveFollowing(page = page, pageSize = 10)
                                     FetchedPage(items = res.items, hasMore = res.hasMore)
                                 }
+                                SRC_SEARCH -> {
+                                    val keyword = searchKeyword
+                                    if (keyword.isBlank()) {
+                                        FetchedPage(items = emptyList(), hasMore = false)
+                                    } else {
+                                        val res = BiliApi.searchLiveRoom(keyword = keyword, page = page, order = "online")
+                                        FetchedPage(
+                                            items = res.items,
+                                            hasMore = res.items.isNotEmpty() && (res.pages <= 0 || res.page < res.pages),
+                                        )
+                                    }
+                                }
                                 else -> FetchedPage(items = BiliApi.liveRecommend(page = page), hasMore = null)
                             }
                         },
@@ -227,6 +240,7 @@ class LiveGridFragment : Fragment(), LivePageFocusTarget, RefreshKeyHandler {
                             val endReached =
                                 when (source) {
                                     SRC_FOLLOWING -> fetched.hasMore == false
+                                    SRC_SEARCH -> fetched.hasMore == false
                                     else -> fetched.items.isEmpty() || (filtered.isEmpty() && page >= 8)
                                 }
                             PagedGridStateMachine.Update(
@@ -239,9 +253,7 @@ class LiveGridFragment : Fragment(), LivePageFocusTarget, RefreshKeyHandler {
 
                 val applied = result.appliedOrNull() ?: return@launch
                 applied.items.forEach { loadedRoomIds.add(it.roomId) }
-                if (applied.items.isNotEmpty()) {
-                    if (applied.isRefresh) adapter.submit(applied.items) else adapter.append(applied.items)
-                }
+                if (applied.isRefresh) adapter.submit(applied.items) else if (applied.items.isNotEmpty()) adapter.append(applied.items)
                 _binding?.let { b ->
                     b.recycler.postIfAlive(isAlive = { _binding === b && isResumed }) {
                         if (pendingFocusFirstCardAfterRefresh && applied.isRefresh) {
@@ -562,12 +574,21 @@ class LiveGridFragment : Fragment(), LivePageFocusTarget, RefreshKeyHandler {
     companion object {
         private const val ARG_SOURCE = "source"
         private const val ARG_ENABLE_TAB_FOCUS = "enable_tab_focus"
+        private const val ARG_SEARCH_KEYWORD = "search_keyword"
 
         const val SRC_RECOMMEND = "recommend"
         const val SRC_FOLLOWING = "following"
+        const val SRC_SEARCH = "search"
 
         fun newRecommend() = LiveGridFragment().apply { arguments = Bundle().apply { putString(ARG_SOURCE, SRC_RECOMMEND) } }
 
         fun newFollowing() = LiveGridFragment().apply { arguments = Bundle().apply { putString(ARG_SOURCE, SRC_FOLLOWING) } }
+
+        fun newSearch(keyword: String) = LiveGridFragment().apply {
+            arguments = Bundle().apply {
+                putString(ARG_SOURCE, SRC_SEARCH)
+                putString(ARG_SEARCH_KEYWORD, keyword.trim())
+            }
+        }
     }
 }

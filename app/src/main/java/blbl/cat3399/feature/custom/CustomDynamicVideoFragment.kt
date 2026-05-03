@@ -376,10 +376,9 @@ class CustomDynamicVideoFragment : Fragment(), RefreshKeyHandler, TabSwitchFocus
     private fun spanCountForWidth(): Int {
         val dm = resources.displayMetrics
         val widthDp = dm.widthPixels / dm.density
-        return GridSpanPolicy.dynamicSpanCountForWidthDp(
+        return GridSpanPolicy.fixedSpanCountForWidthDp(
             widthDp = widthDp,
-            dynamicOverrideSpanCount = BiliClient.prefs.dynamicGridSpanCount,
-            globalOverrideSpanCount = BiliClient.prefs.gridSpanCount,
+            overrideSpanCount = BiliClient.prefs.gridSpanCount,
         )
     }
 

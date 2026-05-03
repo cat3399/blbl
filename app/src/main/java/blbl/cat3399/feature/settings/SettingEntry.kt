@@ -105,6 +105,7 @@ enum class SettingId(
     LogTag("log_tag"),
     ExportLogs("export_logs"),
     UploadLogs("upload_logs"),
+    AutoUpdateCheckEnabled("auto_update_check_enabled"),
     CheckUpdate("check_update"),
 
     // 设备信息

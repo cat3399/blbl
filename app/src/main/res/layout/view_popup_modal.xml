@@ -23,7 +23,10 @@
             android:clipChildren="false"
             android:clipToPadding="false"
             android:orientation="vertical"
-            android:padding="18dp">
+            android:paddingStart="18dp"
+            android:paddingTop="18dp"
+            android:paddingEnd="18dp"
+            android:paddingBottom="12dp">
 
             <TextView
                 android:id="@+id/tv_title"
@@ -46,13 +49,13 @@
                 android:id="@+id/actions"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
+                android:layout_marginTop="14dp"
                 android:clipChildren="false"
                 android:clipToPadding="false"
                 android:gravity="end"
                 android:orientation="horizontal"
-                android:paddingTop="@dimen/focus_safe_padding_v"
-                android:paddingBottom="@dimen/focus_safe_padding_v" />
+                android:paddingTop="2dp"
+                android:paddingBottom="2dp" />
         </blbl.cat3399.core.ui.popup.PopupModalLayout>
     </com.google.android.material.card.MaterialCardView>
 </FrameLayout>

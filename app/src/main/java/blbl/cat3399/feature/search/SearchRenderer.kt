@@ -1,7 +1,6 @@
 package blbl.cat3399.feature.search
 
 import android.content.Context
-import android.content.Intent
 import android.util.TypedValue
 import android.view.KeyEvent
 import android.view.View
@@ -9,7 +8,6 @@ import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.TextView
 import androidx.core.widget.doAfterTextChanged
-import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.recyclerview.widget.SimpleItemAnimator
@@ -17,160 +15,43 @@ import androidx.recyclerview.widget.StaggeredGridLayoutManager
 import blbl.cat3399.R
 import blbl.cat3399.core.net.BiliClient
 import blbl.cat3399.core.paging.PagedGridStateMachine
-import blbl.cat3399.core.ui.AppToast
 import blbl.cat3399.core.ui.DpadGridController
 import blbl.cat3399.core.ui.FocusTreeUtils
 import blbl.cat3399.core.ui.GridSpanPolicy
 import blbl.cat3399.core.ui.UiScale
 import blbl.cat3399.core.ui.enableDpadTabFocus
 import blbl.cat3399.core.ui.hideImeReliable
-import blbl.cat3399.core.ui.popup.AppPopup
 import blbl.cat3399.core.ui.postIfAlive
 import blbl.cat3399.core.ui.requestFocusAdapterPositionReliable
 import blbl.cat3399.core.ui.requestFocusFirstItemOrSelfAfterRefresh
 import blbl.cat3399.core.ui.showImeReliable
 import blbl.cat3399.core.ui.uiScaler
 import blbl.cat3399.databinding.FragmentSearchBinding
-import blbl.cat3399.feature.following.FollowingGridAdapter
-import blbl.cat3399.feature.following.UpDetailActivity
-import blbl.cat3399.feature.following.openUpDetailFromVideoCard
-import blbl.cat3399.feature.live.LivePlayerActivity
-import blbl.cat3399.feature.live.LiveRoomAdapter
-import blbl.cat3399.feature.my.BangumiFollowAdapter
 import blbl.cat3399.feature.player.VideoCardPlaylistPage
-import blbl.cat3399.feature.video.VideoCardActionController
-import blbl.cat3399.feature.video.VideoCardAdapter
-import blbl.cat3399.feature.video.VideoCardDismissBehavior
 import blbl.cat3399.feature.video.buildPagedVideoCardPlaybackHandle
 import blbl.cat3399.feature.video.openVideoDetailFromPlaybackHandle
 import blbl.cat3399.feature.video.openVideoFromPlaybackHandle
-import blbl.cat3399.feature.video.removeVideoCardAndRestoreFocus
 import com.google.android.material.card.MaterialCardView
 
-class SearchRenderer(
+class SearchRenderer internal constructor(
     private val fragment: SearchFragment,
     private val binding: FragmentSearchBinding,
     private val state: SearchState,
     private val interactor: SearchInteractor,
+    private val adapters: SearchAdapters,
 ) {
     private val viewContext: Context = binding.root.context
     private var released: Boolean = false
 
-    val keyAdapter: SearchKeyAdapter =
-        SearchKeyAdapter { key ->
-            interactor.onKeyClicked(key)
-        }
-
-    val suggestAdapter: SearchSuggestAdapter =
-        SearchSuggestAdapter { keyword ->
-            interactor.onKeywordClicked(keyword)
-        }
-
-    val hotAdapter: SearchHotAdapter =
-        SearchHotAdapter { keyword ->
-            interactor.onKeywordClicked(keyword)
-        }
-
-    lateinit var videoAdapter: VideoCardAdapter
-
-    val mediaAdapter: BangumiFollowAdapter =
-        BangumiFollowAdapter { position, season ->
-            state.pendingRestoreMediaPos = position
-            val isDrama = state.tabForIndex(state.currentTabIndex) == SearchTab.Media
-            fragment.openBangumiDetail(season = season, isDrama = isDrama)
-        }
-
-    val liveAdapter: LiveRoomAdapter =
-        LiveRoomAdapter { _, room ->
-            if (!room.isLive) {
-                AppToast.show(viewContext, "未开播")
-                return@LiveRoomAdapter
-            }
-            fragment.startActivity(
-                Intent(viewContext, LivePlayerActivity::class.java)
-                    .putExtra(LivePlayerActivity.EXTRA_ROOM_ID, room.roomId)
-                    .putExtra(LivePlayerActivity.EXTRA_TITLE, room.title)
-                    .putExtra(LivePlayerActivity.EXTRA_UNAME, room.uname),
-            )
-        }
-
-    val userAdapter: FollowingGridAdapter =
-        FollowingGridAdapter { following ->
-            fun openProfile() {
-                fragment.startActivity(
-                    Intent(viewContext, UpDetailActivity::class.java)
-                        .putExtra(UpDetailActivity.EXTRA_MID, following.mid)
-                        .putExtra(UpDetailActivity.EXTRA_NAME, following.name)
-                        .putExtra(UpDetailActivity.EXTRA_AVATAR, following.avatarUrl)
-                        .putExtra(UpDetailActivity.EXTRA_SIGN, following.sign),
-                )
-            }
-
-            fun openLive() {
-                val rid = following.liveRoomId.takeIf { it > 0L } ?: return
-                fragment.startActivity(
-                    Intent(viewContext, LivePlayerActivity::class.java)
-                        .putExtra(LivePlayerActivity.EXTRA_ROOM_ID, rid)
-                        .putExtra(LivePlayerActivity.EXTRA_TITLE, "")
-                        .putExtra(LivePlayerActivity.EXTRA_UNAME, following.name),
-                )
-            }
-
-            if (following.isLive && following.liveRoomId > 0L) {
-                AppPopup.singleChoice(
-                    context = viewContext,
-                    title = viewContext.getString(R.string.search_user_live_actions_title, following.name),
-                    items =
-                        listOf(
-                            viewContext.getString(R.string.search_user_action_enter_live),
-                            viewContext.getString(R.string.search_user_action_open_profile),
-                        ),
-                    checkedIndex = 0,
-                ) { which, _ ->
-                    when (which) {
-                        0 -> openLive()
-                        else -> openProfile()
-                    }
-                }
-            } else {
-                openProfile()
-            }
-        }
+    val keyAdapter: SearchKeyAdapter get() = adapters.keyAdapter
+    val suggestAdapter: SearchSuggestAdapter get() = adapters.suggestAdapter
+    val hotAdapter: SearchHotAdapter get() = adapters.hotAdapter
+    val videoAdapter get() = adapters.videoAdapter
+    val mediaAdapter get() = adapters.mediaAdapter
+    val liveAdapter get() = adapters.liveAdapter
+    val userAdapter get() = adapters.userAdapter
 
     private var resultsGridController: DpadGridController? = null
-
-    init {
-        val actionController =
-            VideoCardActionController(
-                context = viewContext,
-                scope = fragment.viewLifecycleOwner.lifecycleScope,
-                dismissBehavior = VideoCardDismissBehavior.LocalNotInterested,
-                onOpenDetail = { _, pos -> openDetail(pos) },
-                onOpenUp = { card -> fragment.openUpDetailFromVideoCard(card) },
-                onCardRemoved = { stableKey ->
-                    binding.recyclerResults.removeVideoCardAndRestoreFocus(
-                        adapter = videoAdapter,
-                        stableKey = stableKey,
-                        isAlive = { !released && fragment.isResumed },
-                    )
-                },
-            )
-        videoAdapter =
-            VideoCardAdapter(
-                onClick = { _, pos ->
-                    viewContext.openVideoFromPlaybackHandle(
-                        playbackHandle = videoPlaybackHandle(),
-                        position = pos,
-                        openDetailBeforePlay = BiliClient.prefs.playerOpenDetailBeforePlay,
-                    )
-                },
-                onLongClick = { card, _ ->
-                    fragment.openUpDetailFromVideoCard(card)
-                    true
-                },
-                actionDelegate = actionController,
-            )
-    }
 
     fun setupInput() {
         setupQueryInput()
@@ -373,7 +254,6 @@ class SearchRenderer(
         }
 
         updateQueryUi()
-        updateMiddleUi(history = emptyList(), extra = emptyList())
         updateClearHistoryButton(state.query)
     }
 
@@ -537,6 +417,7 @@ class SearchRenderer(
         binding.tabLayout.addTab(binding.tabLayout.newTab().setText(R.string.search_tab_media))
         binding.tabLayout.addTab(binding.tabLayout.newTab().setText(R.string.search_tab_live))
         binding.tabLayout.addTab(binding.tabLayout.newTab().setText(R.string.search_tab_user))
+        binding.tabLayout.getTabAt(state.currentTabIndex)?.select()
 
         val tabLayout = binding.tabLayout
         tabLayout.postIfAlive(isAlive = { !released }) {
@@ -604,7 +485,15 @@ class SearchRenderer(
         restoreMediaFocusIfNeeded()
     }
 
-    private fun openDetail(position: Int) {
+    fun openVideoAt(position: Int) {
+        viewContext.openVideoFromPlaybackHandle(
+            playbackHandle = videoPlaybackHandle(),
+            position = position,
+            openDetailBeforePlay = BiliClient.prefs.playerOpenDetailBeforePlay,
+        )
+    }
+
+    fun openDetailAt(position: Int) {
         viewContext.openVideoDetailFromPlaybackHandle(videoPlaybackHandle(), position)
     }
 
@@ -644,11 +533,13 @@ class SearchRenderer(
     fun isResultsVisible(): Boolean = binding.panelResults.visibility == View.VISIBLE
 
     fun showInput() {
+        state.resultsVisible = false
         binding.panelResults.visibility = View.GONE
         binding.panelInput.visibility = View.VISIBLE
     }
 
     fun showResults() {
+        state.resultsVisible = true
         binding.panelInput.visibility = View.GONE
         binding.panelResults.visibility = View.VISIBLE
     }
@@ -711,6 +602,10 @@ class SearchRenderer(
         val list = merged.values.toList()
         binding.recyclerSuggest.visibility = if (list.isNotEmpty()) View.VISIBLE else View.INVISIBLE
         suggestAdapter.submit(list)
+    }
+
+    fun updateHotUi(keywords: List<String>) {
+        hotAdapter.submit(keywords)
     }
 
     fun updateClearHistoryButton(term: String) {

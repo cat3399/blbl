@@ -24,10 +24,11 @@ import kotlin.math.roundToInt
 object ApkUpdater {
     private const val DEBUG_APK_URL = "https://cat3399.top/blbl/blbl-latest-debug.apk"
     private const val RELEASE_APK_URL = "https://cat3399.top/blbl/blbl-latest-release.apk"
+    private const val CHANGELOG_URL = "https://cat3399.top/blbl/CHANGELOG.md"
     val TEST_APK_URL: String
         get() = if (BuildConfig.DEBUG) DEBUG_APK_URL else RELEASE_APK_URL
-    val TEST_APK_VERSION_URL: String
-        get() = "${TEST_APK_URL.substringBeforeLast('/')}/version"
+    val TEST_CHANGELOG_URL: String
+        get() = CHANGELOG_URL
 
     private const val COOLDOWN_MS = 5_000L
 
@@ -76,6 +77,14 @@ object ApkUpdater {
         }
     }
 
+    data class RemoteUpdate(
+        val versionName: String,
+        val changelog: String,
+    ) {
+        val displayChangelog: String
+            get() = changelog.ifBlank { "暂无更新日志" }
+    }
+
     fun markStarted(nowMs: Long = System.currentTimeMillis()) {
         lastStartedAtMs = nowMs
     }
@@ -86,18 +95,16 @@ object ApkUpdater {
         return left.coerceAtLeast(0)
     }
 
-    suspend fun fetchLatestVersionName(
-        url: String = TEST_APK_VERSION_URL,
-    ): String {
-        // Entering Settings -> About triggers an automatic check. On some networks/devices the first request
-        // may fail transiently but succeeds immediately when retried (e.g. connection warm-up / route setup).
+    suspend fun fetchLatestUpdate(
+        url: String = TEST_CHANGELOG_URL,
+    ): RemoteUpdate {
         return withContext(Dispatchers.IO) {
             var lastError: Throwable? = null
             val maxAttempts = 3
             for (attempt in 1..maxAttempts) {
                 ensureActive()
                 try {
-                    return@withContext fetchLatestVersionNameOnce(url)
+                    return@withContext fetchLatestUpdateOnce(url)
                 } catch (t: Throwable) {
                     if (t is CancellationException) throw t
                     lastError = t
@@ -112,18 +119,72 @@ object ApkUpdater {
         }
     }
 
-    private fun fetchLatestVersionNameOnce(url: String): String {
-        val req = Request.Builder().url(url).get().build()
+    private fun fetchLatestUpdateOnce(url: String): RemoteUpdate {
+        val req =
+            Request.Builder()
+                .url(url)
+                .header("Cache-Control", "no-cache")
+                .get()
+                .build()
         val call = okHttp.newCall(req)
         val res = call.execute()
         res.use { r ->
             check(r.isSuccessful) { "HTTP ${r.code} ${r.message}" }
             val body = r.body ?: error("empty body")
-            val versionName = body.string().trim()
-            check(versionName.isNotBlank()) { "版本号为空" }
-            check(parseVersion(versionName) != null) { "版本号格式不正确：$versionName" }
-            return versionName
+            return parseChangelog(body.string())
         }
+    }
+
+    internal fun parseChangelog(raw: String): RemoteUpdate {
+        val normalized = raw.replace("\r\n", "\n").replace('\r', '\n').trim()
+        check(normalized.isNotBlank()) { "更新日志为空" }
+
+        val lines = normalized.lines()
+        val latestHeading =
+            lines.withIndex()
+                .firstNotNullOfOrNull { (index, line) ->
+                    parseVersionHeading(line)?.let { heading -> index to heading }
+                }
+                ?: error("未找到版本标题")
+
+        val (headingIndex, heading) = latestHeading
+        val nextHeadingIndex =
+            lines.withIndex()
+                .drop(headingIndex + 1)
+                .firstOrNull { (_, line) ->
+                    val next = parseVersionHeading(line) ?: return@firstOrNull false
+                    next.level <= heading.level
+                }
+                ?.index
+                ?: lines.size
+
+        val sectionLines =
+            lines.subList(headingIndex + 1, nextHeadingIndex)
+                .dropLastWhile { it.isBlank() }
+        val changelog =
+            sectionLines
+                .joinToString("\n")
+                .trim()
+
+        return RemoteUpdate(
+            versionName = heading.versionName,
+            changelog = changelog,
+        )
+    }
+
+    private data class VersionHeading(
+        val level: Int,
+        val versionName: String,
+    )
+
+    private fun parseVersionHeading(line: String): VersionHeading? {
+        val trimmed = line.trim()
+        val match = Regex("""^(#{1,6})\s+\[?v?([0-9]+(?:\.[0-9]+)*(?:[-+][A-Za-z0-9_.-]+)?)\]?(?:\s+.*)?$""").matchEntire(trimmed)
+            ?: return null
+        val level = match.groupValues[1].length
+        val versionName = match.groupValues[2].trim()
+        if (parseVersion(versionName) == null) return null
+        return VersionHeading(level = level, versionName = versionName)
     }
 
     fun isRemoteNewer(remoteVersionName: String, currentVersionName: String = BuildConfig.VERSION_NAME): Boolean {

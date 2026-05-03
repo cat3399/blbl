@@ -243,7 +243,11 @@ internal class PopupHost private constructor(
 
         // Consume clicks inside the card so "outside click to dismiss" works reliably.
         card.isClickable = true
+        card.isFocusable = false
+        card.isFocusableInTouchMode = false
+        (card as? ViewGroup)?.descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
         card.setOnClickListener { /* consume */ }
+        actionsRow.descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
 
         val focusReturn =
             inheritedFocusReturn
@@ -262,10 +266,12 @@ internal class PopupHost private constructor(
         actionsRow.visibility = if (actions.isEmpty()) View.GONE else View.VISIBLE
         var preferredFocusView: View? = null
         val actionViewsByRole = HashMap<PopupActionRole, View>(3)
+        val actionViews = ArrayList<View>(actions.size)
         for ((idx, a) in actions.withIndex()) {
             val btn =
                 LayoutInflater.from(dialogContext)
                 .inflate(R.layout.item_popup_action, actionsRow, false)
+            btn.id = View.generateViewId()
             val tv = btn.findViewById<TextView>(R.id.tv_text)
             tv.text = a.text
             btn.setOnClickListener {
@@ -286,8 +292,10 @@ internal class PopupHost private constructor(
             if (idx > 0) lp.marginStart = dp(dialogContext, 10f)
             btn.layoutParams = lp
             actionsRow.addView(btn)
+            actionViews += btn
             if (!actionViewsByRole.containsKey(a.role)) actionViewsByRole[a.role] = btn
         }
+        wireActionButtonFocus(actionViews)
 
         if (preferredActionRole != null) {
             preferredFocusView = actionViewsByRole[preferredActionRole]
@@ -359,15 +367,7 @@ internal class PopupHost private constructor(
         overlay.animate().alpha(1f).setDuration(160L).start()
         card.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(180L).start()
 
-        // Focus after layout.
-        if (autoFocus) {
-            val focusTarget = preferredFocusView ?: findFirstFocusableDescendant(card)
-            focusTarget?.post {
-                focusTarget.requestFocus()
-            }
-        }
-
-        modalEntry =
+        val entry =
             ModalEntry(
                 rootView = overlay,
                 cancelable = cancelable,
@@ -379,6 +379,23 @@ internal class PopupHost private constructor(
                 onDismiss = onDismiss,
                 onRestoreFocus = onRestoreFocus,
             )
+        modalEntry = entry
+
+        // Focus after layout. Some TV devices can choose the card/container if focus is requested too
+        // early, so retry once after the modal has been attached and measured.
+        if (autoFocus) {
+            overlay.post {
+                if (modalEntry === entry) restoreModalFocus(entry)
+            }
+            overlay.postDelayed(
+                {
+                    if (modalEntry === entry && !isFocusInsideModal(entry.rootView)) {
+                        restoreModalFocus(entry)
+                    }
+                },
+                80L,
+            )
+        }
 
         return object : PopupHandle {
             override val isShowing: Boolean
@@ -437,6 +454,20 @@ internal class PopupHost private constructor(
             findFirstFocusableDescendant(child)?.let { return it }
         }
         return null
+    }
+
+    private fun wireActionButtonFocus(actionViews: List<View>) {
+        for ((index, view) in actionViews.withIndex()) {
+            val left = actionViews.getOrNull(index - 1)
+            val right = actionViews.getOrNull(index + 1)
+            view.nextFocusLeftId = (left ?: view).id
+            view.nextFocusRightId = (right ?: view).id
+        }
+    }
+
+    private fun isFocusInsideModal(modalRoot: View): Boolean {
+        val focused = activity.window?.decorView?.findFocus() ?: return false
+        return FocusTreeUtils.isDescendantOf(focused, modalRoot)
     }
 
     private fun restoreModalFocus(entry: ModalEntry) {

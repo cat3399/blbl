@@ -3,7 +3,9 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="?attr/blblPageBackdrop">
+    android:background="?attr/blblPageBackdrop"
+    android:clipChildren="false"
+    android:clipToPadding="false">
 
     <ImageButton
         android:id="@+id/btn_back"
@@ -52,7 +54,10 @@
         android:layout_marginTop="12dp"
         android:clipChildren="false"
         android:clipToPadding="false"
-        android:padding="16dp"
+        android:paddingStart="@dimen/settings_content_padding_h"
+        android:paddingTop="@dimen/settings_content_padding_v"
+        android:paddingEnd="@dimen/settings_content_padding_h"
+        android:paddingBottom="@dimen/settings_content_padding_v"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toEndOf="@id/recycler_left"

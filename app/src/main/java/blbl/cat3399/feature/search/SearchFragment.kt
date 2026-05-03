@@ -12,6 +12,7 @@ import blbl.cat3399.core.model.BangumiSeason
 import blbl.cat3399.core.ui.FocusTreeUtils
 import blbl.cat3399.databinding.FragmentSearchBinding
 import blbl.cat3399.feature.my.BangumiDetailActivity
+import blbl.cat3399.feature.video.removeVideoCardAndRestoreFocus
 import blbl.cat3399.ui.BackPressHandler
 import blbl.cat3399.ui.RefreshKeyHandler
 import blbl.cat3399.ui.SidebarFocusHost
@@ -21,6 +22,7 @@ class SearchFragment : Fragment(), BackPressHandler, RefreshKeyHandler {
     private val binding get() = _binding!!
 
     private val state = SearchState()
+    private lateinit var adapters: SearchAdapters
     private var renderer: SearchRenderer? = null
     private var interactor: SearchInteractor? = null
 
@@ -30,8 +32,9 @@ class SearchFragment : Fragment(), BackPressHandler, RefreshKeyHandler {
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        ensureAdapters()
         val interactor = SearchInteractor(fragment = this, state = state)
-        val renderer = SearchRenderer(fragment = this, binding = binding, state = state, interactor = interactor)
+        val renderer = SearchRenderer(fragment = this, binding = binding, state = state, interactor = interactor, adapters = adapters)
         interactor.renderer = renderer
 
         this.interactor = interactor
@@ -44,8 +47,12 @@ class SearchFragment : Fragment(), BackPressHandler, RefreshKeyHandler {
         interactor.loadHotAndDefault()
         interactor.scheduleMiddleList(state.query)
 
-        if (savedInstanceState == null) {
+        if (state.resultsVisible) {
+            renderer.showResults()
+        } else {
             renderer.showInput()
+        }
+        if (savedInstanceState == null) {
             renderer.focusFirstKey()
         }
     }
@@ -70,6 +77,7 @@ class SearchFragment : Fragment(), BackPressHandler, RefreshKeyHandler {
     override fun onResume() {
         super.onResume()
         renderer?.onResume()
+        interactor?.renderInputPanelFromState()
     }
 
     override fun onHiddenChanged(hidden: Boolean) {
@@ -102,6 +110,36 @@ class SearchFragment : Fragment(), BackPressHandler, RefreshKeyHandler {
 
     companion object {
         fun newInstance() = SearchFragment()
+    }
+
+    private fun ensureAdapters() {
+        if (::adapters.isInitialized) return
+        adapters = SearchAdapters(this, state)
+    }
+
+    internal fun onSearchKeyClicked(key: String) {
+        interactor?.onKeyClicked(key)
+    }
+
+    internal fun onSearchKeywordClicked(keyword: String) {
+        interactor?.onKeywordClicked(keyword)
+    }
+
+    internal fun openSearchVideoAt(position: Int) {
+        renderer?.openVideoAt(position)
+    }
+
+    internal fun openSearchVideoDetailAt(position: Int) {
+        renderer?.openDetailAt(position)
+    }
+
+    internal fun removeSearchVideoCardAndRestoreFocus(stableKey: String) {
+        if (!::adapters.isInitialized) return
+        _binding?.recyclerResults?.removeVideoCardAndRestoreFocus(
+            adapter = adapters.videoAdapter,
+            stableKey = stableKey,
+            isAlive = { _binding != null && isResumed },
+        )
     }
 
     internal fun openBangumiDetail(season: BangumiSeason, isDrama: Boolean) {

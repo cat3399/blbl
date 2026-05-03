@@ -2,6 +2,7 @@ package blbl.cat3399.feature.player.engine
 
 import android.content.Context
 import android.os.Bundle
+import android.os.SystemClock
 import android.view.Surface
 import androidx.media3.common.Player
 import blbl.cat3399.BuildConfig
@@ -23,12 +24,14 @@ internal class IjkPlayerEngine(
     private val listeners: MutableSet<BlblPlayerEngine.Listener> = CopyOnWriteArraySet()
 
     private var ijk: IjkMediaPlayer? = null
-    private var dashProxy: DashLocalHttpProxy? = null
     private var prepared: Boolean = false
     private var buffering: Boolean = false
     private var preparing: Boolean = false
     private var prepareRequested: Boolean = false
     private var pendingSeekMs: Long? = null
+    private var visibleSeekPositionMs: Long? = null
+    private var visibleSeekStartedAtMs: Long = 0L
+    private var visibleSeekClearsOnFirstFrame: Boolean = false
 
     private var playbackStateInternal: Int = Player.STATE_IDLE
     private var playWhenReadyInternal: Boolean = false
@@ -53,15 +56,7 @@ internal class IjkPlayerEngine(
         set(value) {
             playWhenReadyInternal = value
             val p = ijk ?: return
-            if (!prepared) return
-            runCatching {
-                if (value) {
-                    p.start()
-                } else {
-                    p.pause()
-                }
-            }
-            notifyIsPlayingIfChanged()
+            syncPlayWhenReadyToNative(p)
         }
 
     override val duration: Long
@@ -75,11 +70,14 @@ internal class IjkPlayerEngine(
         }
 
     override val currentPosition: Long
-        get() = ijk?.currentPosition ?: 0L
+        get() = visibleSeekPositionOrNull() ?: ijk?.currentPosition?.coerceAtLeast(0L) ?: 0L
 
     override val bufferedPosition: Long
         get() {
             val p = ijk ?: return 0L
+            visibleSeekPositionOrNull()?.let { seekPosition ->
+                return duration.takeIf { it > 0L }?.let { seekPosition.coerceIn(0L, it) } ?: seekPosition
+            }
             val pos = p.currentPosition.coerceAtLeast(0L)
             val vCache = p.videoCachedDuration.coerceAtLeast(0L)
             val aCache = p.audioCachedDuration.coerceAtLeast(0L)
@@ -116,6 +114,7 @@ internal class IjkPlayerEngine(
     override fun seekTo(positionMs: Long) {
         val p = ijk ?: return
         val pos = positionMs.coerceAtLeast(0L)
+        val leavesEndedState = seekLeavesEndedState(pos)
         val vod = source as? PlaybackSource.Vod
         val dash = vod?.playable as? Playable.Dash
         if (!prepared) {
@@ -124,13 +123,20 @@ internal class IjkPlayerEngine(
             if (dash != null) {
                 pendingSeekMs = null
                 runCatching { p.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "seek-at-start", pos) }
+                    .onSuccess { markVisibleSeekPosition(pos, clearsOnFirstFrame = true) }
             } else {
                 pendingSeekMs = pos
+                markVisibleSeekPosition(pos, clearsOnFirstFrame = false)
             }
             return
         }
         if (dash == null) {
             runCatching { p.seekTo(pos) }
+                .onSuccess {
+                    markVisibleSeekPosition(pos, clearsOnFirstFrame = false)
+                    handleSeekLeavesEndedState(p, leavesEndedState)
+                }
+                .onFailure { clearVisibleSeekPosition() }
             return
         }
 
@@ -144,6 +150,11 @@ internal class IjkPlayerEngine(
             )
         }
         runCatching { p.seekTo(pos) }
+            .onSuccess {
+                markVisibleSeekPosition(pos, clearsOnFirstFrame = false)
+                handleSeekLeavesEndedState(p, leavesEndedState)
+            }
+            .onFailure { clearVisibleSeekPosition() }
     }
 
     override val playbackSpeed: Float
@@ -176,6 +187,7 @@ internal class IjkPlayerEngine(
         preparing = false
         prepareRequested = false
         pendingSeekMs = null
+        clearVisibleSeekPosition()
         updateState(Player.STATE_IDLE)
 
         runCatching { ensurePlayer() }.onFailure { t ->
@@ -189,13 +201,8 @@ internal class IjkPlayerEngine(
         prepared = false
         buffering = false
         preparing = false
+        clearVisibleSeekPosition()
         updateState(Player.STATE_IDLE)
-
-        val needDashProxy = dataSource is PlaybackSource.Vod && dataSource.playable is Playable.Dash
-        if (!needDashProxy) {
-            dashProxy?.stop()
-            dashProxy = null
-        }
 
         applyCommonOptions(p)
         runCatching { p.setSurface(videoSurface) }
@@ -213,24 +220,17 @@ internal class IjkPlayerEngine(
                 is PlaybackSource.Vod -> {
                     when (val playable = dataSource.playable) {
                         is Playable.Dash -> {
-                            val proxy =
-                                dashProxy ?: DashLocalHttpProxy(okHttpClient = BiliClient.cdnOkHttp).also { dashProxy = it }
-                            proxy.resetRegistrations()
-                            val videoBaseUrl = proxy.register(kind = "v", upstreamUrl = playable.videoUrl)
-                            val audioBaseUrl = proxy.register(kind = "a", upstreamUrl = playable.audioUrl)
                             val mpdFile =
                                 writeDashMpd(
                                     playable,
                                     durationMs = dataSource.durationMs,
-                                    videoBaseUrl = videoBaseUrl,
-                                    audioBaseUrl = audioBaseUrl,
                                 )
                             if (BuildConfig.DEBUG) {
                                 val vLen = playable.videoUrl.length
                                 val aLen = playable.audioUrl.length
                                 AppLog.i(
                                     "IjkEngine",
-                                    "dash source mode=proxy mpd=${mpdFile.name} bytes=${mpdFile.length()} vUrlLen=$vLen aUrlLen=$aLen proxyPort=${proxy.port}",
+                                    "dash source mode=direct mpd=${mpdFile.name} bytes=${mpdFile.length()} vUrlLen=$vLen aUrlLen=$aLen",
                                 )
                                 if (vLen > 1024 || aLen > 1024) {
                                     AppLog.w(
@@ -285,6 +285,7 @@ internal class IjkPlayerEngine(
         preparing = false
         prepareRequested = false
         pendingSeekMs = null
+        clearVisibleSeekPosition()
         updateState(Player.STATE_IDLE)
     }
 
@@ -296,10 +297,8 @@ internal class IjkPlayerEngine(
         preparing = false
         prepareRequested = false
         pendingSeekMs = null
+        clearVisibleSeekPosition()
         updateState(Player.STATE_IDLE)
-
-        dashProxy?.stop()
-        dashProxy = null
 
         val p = ijk
         ijk = null
@@ -315,6 +314,67 @@ internal class IjkPlayerEngine(
 
     override fun removeListener(listener: BlblPlayerEngine.Listener) {
         listeners.remove(listener)
+    }
+
+    private fun seekLeavesEndedState(positionMs: Long): Boolean {
+        if (playbackStateInternal != Player.STATE_ENDED) return false
+        val d = duration
+        return d <= 0L || positionMs < d
+    }
+
+    private fun markVisibleSeekPosition(positionMs: Long, clearsOnFirstFrame: Boolean) {
+        visibleSeekPositionMs = positionMs.coerceAtLeast(0L)
+        visibleSeekStartedAtMs = SystemClock.elapsedRealtime()
+        visibleSeekClearsOnFirstFrame = clearsOnFirstFrame
+    }
+
+    private fun clearVisibleSeekPosition() {
+        visibleSeekPositionMs = null
+        visibleSeekStartedAtMs = 0L
+        visibleSeekClearsOnFirstFrame = false
+    }
+
+    private fun visibleSeekPositionOrNull(): Long? {
+        val position = visibleSeekPositionMs ?: return null
+        val elapsedMs = SystemClock.elapsedRealtime() - visibleSeekStartedAtMs
+        if (!visibleSeekClearsOnFirstFrame && elapsedMs > VISIBLE_SEEK_POSITION_TIMEOUT_MS) {
+            clearVisibleSeekPosition()
+            return null
+        }
+        return position
+    }
+
+    private fun handleSeekLeavesEndedState(
+        p: IjkMediaPlayer,
+        leavesEndedState: Boolean,
+    ) {
+        if (!leavesEndedState) return
+        updateState(Player.STATE_BUFFERING)
+        syncPlayWhenReadyToNative(p)
+    }
+
+    private fun settleSeekIfReady(p: IjkMediaPlayer) {
+        if (prepared && !buffering && playbackStateInternal == Player.STATE_BUFFERING) {
+            updateState(Player.STATE_READY)
+        }
+        if (playbackStateInternal == Player.STATE_READY) {
+            syncPlayWhenReadyToNative(p)
+        } else {
+            notifyIsPlayingIfChanged()
+        }
+    }
+
+    private fun syncPlayWhenReadyToNative(p: IjkMediaPlayer) {
+        if (prepared) {
+            runCatching {
+                if (playWhenReadyInternal) {
+                    p.start()
+                } else {
+                    p.pause()
+                }
+            }.onFailure { AppLog.w("IjkEngine", "sync playWhenReady failed", it) }
+        }
+        notifyIsPlayingIfChanged()
     }
 
     private fun updateState(state: Int) {
@@ -356,17 +416,19 @@ internal class IjkPlayerEngine(
                     prepared = true
                     buffering = false
                     preparing = false
+                    val preparedSeekMs = pendingSeekMs?.coerceAtLeast(0L)
+                    if (preparedSeekMs != null) {
+                        markVisibleSeekPosition(preparedSeekMs, clearsOnFirstFrame = false)
+                    }
                     updateState(Player.STATE_READY)
                     runCatching { p.setLooping(repeatModeInternal == Player.REPEAT_MODE_ONE) }
                     runCatching { p.setSpeed(playbackSpeedInternal) }
-                    pendingSeekMs?.let { pos ->
+                    preparedSeekMs?.let { target ->
                         pendingSeekMs = null
-                        runCatching { p.seekTo(pos.coerceAtLeast(0L)) }
+                        runCatching { p.seekTo(target) }
+                            .onFailure { clearVisibleSeekPosition() }
                     }
-                    if (playWhenReadyInternal) {
-                        runCatching { p.start() }
-                    }
-                    notifyIsPlayingIfChanged()
+                    syncPlayWhenReadyToNative(p)
                 },
             )
             p.setOnCompletionListener(
@@ -374,6 +436,7 @@ internal class IjkPlayerEngine(
                     prepared = true
                     buffering = false
                     preparing = false
+                    clearVisibleSeekPosition()
                     updateState(Player.STATE_ENDED)
                     notifyIsPlayingIfChanged()
                 },
@@ -384,6 +447,7 @@ internal class IjkPlayerEngine(
                     prepared = false
                     buffering = false
                     preparing = false
+                    clearVisibleSeekPosition()
                     updateState(Player.STATE_IDLE)
                     listeners.forEach { it.onPlayerError(e) }
                     true
@@ -400,9 +464,11 @@ internal class IjkPlayerEngine(
                         IMediaPlayer.MEDIA_INFO_BUFFERING_END -> {
                             buffering = false
                             updateState(if (prepared) Player.STATE_READY else Player.STATE_BUFFERING)
+                            syncPlayWhenReadyToNative(p)
                         }
 
                         IMediaPlayer.MEDIA_INFO_VIDEO_RENDERING_START -> {
+                            if (visibleSeekClearsOnFirstFrame) clearVisibleSeekPosition()
                             listeners.forEach { it.onRenderedFirstFrame() }
                         }
 
@@ -410,7 +476,9 @@ internal class IjkPlayerEngine(
                         IMediaPlayer.MEDIA_INFO_VIDEO_SEEK_RENDERING_START,
                         IMediaPlayer.MEDIA_INFO_AUDIO_SEEK_RENDERING_START,
                         -> {
+                            clearVisibleSeekPosition()
                             listeners.forEach { it.onPositionDiscontinuity(currentPosition) }
+                            settleSeekIfReady(p)
                         }
                     }
                     false
@@ -419,6 +487,7 @@ internal class IjkPlayerEngine(
             p.setOnSeekCompleteListener(
                 IMediaPlayer.OnSeekCompleteListener {
                     listeners.forEach { it.onPositionDiscontinuity(currentPosition) }
+                    settleSeekIfReady(p)
                 },
             )
             p.setOnVideoSizeChangedListener(
@@ -441,8 +510,8 @@ internal class IjkPlayerEngine(
                         false
                     },
                 )
-                // Keep IJK native logs at INFO so we can correlate failures when needed.
-                runCatching { IjkMediaPlayer.native_setLogLevel(IjkMediaPlayer.IJK_LOG_INFO) }
+                // Keep DASH/native playback diagnostics visible while validating custom ijk builds.
+                runCatching { IjkMediaPlayer.native_setLogLevel(IjkMediaPlayer.IJK_LOG_DEBUG) }
             }
         }
     }
@@ -587,9 +656,9 @@ internal class IjkPlayerEngine(
                 -> {
                     if (nativeHttpEventCount < 12) {
                         nativeHttpEventCount++
-                        AppLog.i(
+                        AppLog.d(
                             "IjkHttp",
-                            "event=$what willOpen urlLen=${url.length} url=${url.take(220)}",
+                            "event=$what willOpen urlLen=${url.length}",
                         )
                     }
                 }
@@ -631,6 +700,7 @@ internal class IjkPlayerEngine(
         runCatching { p.prepareAsync() }
             .onFailure { t ->
                 preparing = false
+                clearVisibleSeekPosition()
                 updateState(Player.STATE_IDLE)
                 listeners.forEach { it.onPlayerError(t) }
             }
@@ -696,5 +766,6 @@ internal class IjkPlayerEngine(
 
     private companion object {
         private const val MAX_BUFFERED_FORWARD_ESTIMATE_MS: Long = 5 * 60_000L
+        private const val VISIBLE_SEEK_POSITION_TIMEOUT_MS: Long = 10_000L
     }
 }

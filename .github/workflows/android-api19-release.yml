@@ -74,10 +74,15 @@ jobs:
           if [ -n "${KEY_PREFIX}" ]; then
             KEY_PREFIX="${KEY_PREFIX}/"
           fi
+          if [ ! -s CHANGELOG.md ]; then
+            echo "CHANGELOG.md missing or empty."
+            exit 1
+          fi
 
           APK_PATH="app/build/outputs/apk/kitkat/release/app-kitkat-release.apk"
           printf '%s' "${CLEAN_VERSION}" > version-api19
           aws s3 cp "version-api19" "s3://${R2_BUCKET}/${KEY_PREFIX}version-api19" --endpoint-url "${ENDPOINT}" --content-type "text/plain" --cache-control "no-cache"
+          aws s3 cp "CHANGELOG.md" "s3://${R2_BUCKET}/${KEY_PREFIX}CHANGELOG.md" --endpoint-url "${ENDPOINT}" --content-type "text/markdown; charset=utf-8" --cache-control "no-cache"
           aws s3 cp "${APK_PATH}" "s3://${R2_BUCKET}/${KEY_PREFIX}blbl-${CLEAN_VERSION}-api19-release.apk" --endpoint-url "${ENDPOINT}" --content-type "application/vnd.android.package-archive"
           aws s3 cp "${APK_PATH}" "s3://${R2_BUCKET}/${KEY_PREFIX}blbl-latest-api19-release.apk" --endpoint-url "${ENDPOINT}" --content-type "application/vnd.android.package-archive" --cache-control "no-cache"
       - name: Upload API19 release APK

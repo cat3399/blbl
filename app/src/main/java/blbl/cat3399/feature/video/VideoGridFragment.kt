@@ -55,6 +55,7 @@ class VideoGridFragment : Fragment(), RefreshKeyHandler, TabSwitchFocusTarget {
 
     private val source: String by lazy { requireArguments().getString(ARG_SOURCE) ?: SRC_POPULAR }
     private val rid: Int by lazy { requireArguments().getInt(ARG_RID, 0) }
+    private val searchKeyword: String by lazy { requireArguments().getString(ARG_SEARCH_KEYWORD).orEmpty().trim() }
 
     private val loadedStableKeys = HashSet<String>()
     private val paging = PagedGridStateMachine(initialKey = PagingKey(page = 1, recommendFetchRow = 1))
@@ -517,6 +518,24 @@ class VideoGridFragment : Fragment(), RefreshKeyHandler, TabSwitchFocusTarget {
                 )
             }
 
+            SRC_SEARCH -> {
+                val keyword = searchKeyword
+                if (keyword.isBlank()) {
+                    FetchedPage(
+                        items = emptyList(),
+                        nextKey = key.copy(page = key.page + 1),
+                        hasMore = false,
+                    )
+                } else {
+                    val res = BiliApi.searchVideo(keyword = keyword, page = key.page, order = "totalrank")
+                    FetchedPage(
+                        items = res.items,
+                        nextKey = key.copy(page = key.page + 1),
+                        hasMore = res.items.isNotEmpty() && (res.pages <= 0 || res.page < res.pages),
+                    )
+                }
+            }
+
             else -> {
                 val res = BiliApi.popularPage(pn = key.page, ps = ps)
                 FetchedPage(
@@ -551,10 +570,12 @@ class VideoGridFragment : Fragment(), RefreshKeyHandler, TabSwitchFocusTarget {
     companion object {
         private const val ARG_SOURCE = "source"
         private const val ARG_RID = "rid"
+        private const val ARG_SEARCH_KEYWORD = "search_keyword"
 
         const val SRC_RECOMMEND = "recommend"
         const val SRC_POPULAR = "popular"
         const val SRC_REGION = "region"
+        const val SRC_SEARCH = "search"
 
         fun newRecommend() = VideoGridFragment().apply { arguments = Bundle().apply { putString(ARG_SOURCE, SRC_RECOMMEND) } }
         fun newPopular() = VideoGridFragment().apply { arguments = Bundle().apply { putString(ARG_SOURCE, SRC_POPULAR) } }
@@ -562,6 +583,13 @@ class VideoGridFragment : Fragment(), RefreshKeyHandler, TabSwitchFocusTarget {
             arguments = Bundle().apply {
                 putString(ARG_SOURCE, SRC_REGION)
                 putInt(ARG_RID, rid)
+            }
+        }
+
+        fun newSearch(keyword: String) = VideoGridFragment().apply {
+            arguments = Bundle().apply {
+                putString(ARG_SOURCE, SRC_SEARCH)
+                putString(ARG_SEARCH_KEYWORD, keyword.trim())
             }
         }
     }

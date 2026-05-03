@@ -138,17 +138,40 @@
         </LinearLayout>
     </com.google.android.material.card.MaterialCardView>
 
-    <TextView
-        android:id="@+id/tv_desc"
+    <LinearLayout
+        android:id="@+id/layout_desc"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:layout_marginTop="12dp"
         android:layout_marginEnd="12dp"
-        android:textColor="?android:attr/textColorSecondary"
-        android:textSize="20sp"
+        android:background="?attr/blblFocusBgRound"
+        android:clickable="false"
+        android:focusable="false"
+        android:orientation="vertical"
+        android:paddingHorizontal="6dp"
+        android:paddingVertical="4dp"
+        android:stateListAnimator="@animator/blbl_focus_scale"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="@id/tv_title"
-        app:layout_constraintTop_toBottomOf="@id/card_up" />
+        app:layout_constraintTop_toBottomOf="@id/card_up">
+
+        <TextView
+            android:id="@+id/tv_desc"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:maxLines="4"
+            android:textColor="?android:attr/textColorSecondary"
+            android:textSize="20sp" />
+
+        <TextView
+            android:id="@+id/tv_desc_more_indicator"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="..."
+            android:textColor="?android:attr/textColorSecondary"
+            android:textSize="20sp"
+            android:visibility="gone" />
+    </LinearLayout>
 
     <com.google.android.material.chip.ChipGroup
         android:id="@+id/chip_group_tags"
@@ -161,7 +184,7 @@
         app:chipSpacingVertical="10dp"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="@id/tv_title"
-        app:layout_constraintTop_toBottomOf="@id/tv_desc"
+        app:layout_constraintTop_toBottomOf="@id/layout_desc"
         app:singleLine="false" />
 
     <com.google.android.material.card.MaterialCardView

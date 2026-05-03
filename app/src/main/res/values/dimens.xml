@@ -43,7 +43,7 @@
     <dimen name="video_card_action_button_height">56dp</dimen>
     <dimen name="video_card_action_group_margin_h">8dp</dimen>
     <dimen name="video_card_action_gap">7dp</dimen>
-    <dimen name="video_card_action_icon_watch_later_size">34dp</dimen>
+    <dimen name="video_card_action_icon_watch_later_size">42dp</dimen>
     <dimen name="video_card_action_icon_detail_size">31dp</dimen>
     <dimen name="video_card_action_icon_up_size">29dp</dimen>
     <dimen name="video_card_action_icon_dismiss_size">30dp</dimen>
@@ -94,6 +94,12 @@
     <dimen name="search_suggest_text_size">18sp</dimen>
     <dimen name="focus_safe_padding_h">8dp</dimen>
     <dimen name="focus_safe_padding_v">4dp</dimen>
+
+    <!-- Settings: right-side focused rows need enough paint budget for focus scale. -->
+    <dimen name="settings_content_padding_h">20dp</dimen>
+    <dimen name="settings_content_padding_v">16dp</dimen>
+    <dimen name="settings_entry_focus_margin_h">10dp</dimen>
+    <dimen name="settings_entry_margin_bottom">14dp</dimen>
 
     <dimen name="search_hot_margin_bottom">14dp</dimen>
     <dimen name="search_hot_padding_h">18dp</dimen>
@@ -178,6 +184,7 @@
     <dimen name="player_side_panel_elevation">10dp</dimen>
     <dimen name="player_side_panel_padding">8dp</dimen>
     <dimen name="player_side_panel_recycler_padding">4dp</dimen>
+    <dimen name="player_settings_recycler_padding_h">4dp</dimen>
     <dimen name="player_comments_recycler_padding_h">2dp</dimen>
     <dimen name="player_side_panel_content_margin_top">8dp</dimen>
 

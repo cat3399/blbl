@@ -406,7 +406,7 @@ internal object SearchApi {
             val faceUrl = obj.optString("uface").takeIf { it.isNotBlank() }
             val online = obj.optLong("online").takeIf { it > 0 } ?: 0L
             val isLive = obj.optInt("live_status").let { it == 1 } || obj.optBoolean("is_live", false)
-            val areaName = obj.optString("cate_name").takeIf { it.isNotBlank() }
+            val areaName = stripHtmlTags(obj.optString("cate_name")).trim().takeIf { it.isNotBlank() }
             out.add(
                 LiveRoomCard(
                     roomId = roomId,

@@ -9,6 +9,7 @@ import blbl.cat3399.core.model.Danmaku
 import blbl.cat3399.core.model.DanmakuUserFilter
 import blbl.cat3399.core.model.FavFolder
 import blbl.cat3399.core.model.Following
+import blbl.cat3399.core.model.HistoryEntry
 import blbl.cat3399.core.model.LiveAreaParent
 import blbl.cat3399.core.model.LiveRoomCard
 import blbl.cat3399.core.model.VideoCard
@@ -209,7 +210,7 @@ object BiliApi {
     )
 
     data class HistoryPage(
-        val items: List<VideoCard>,
+        val items: List<HistoryEntry>,
         val cursor: HistoryCursor?,
     )
 
@@ -236,6 +237,8 @@ object BiliApi {
     data class LiveRoomInfo(
         val roomId: Long,
         val uid: Long,
+        val uname: String?,
+        val faceUrl: String?,
         val title: String,
         val liveStatus: Int,
         val areaName: String?,
@@ -412,6 +415,8 @@ object BiliApi {
 
     suspend fun liveRoomInfo(roomId: Long): LiveRoomInfo = LiveApi.liveRoomInfo(roomId = roomId)
 
+    suspend fun liveRoomEntryAction(roomId: Long) = LiveApi.liveRoomEntryAction(roomId = roomId)
+
     suspend fun livePlayUrl(roomId: Long, qn: Int, highBitrateEnabled: Boolean): LivePlayUrl =
         LiveApi.livePlayUrl(roomId = roomId, qn = qn, highBitrateEnabled = highBitrateEnabled)
 
@@ -447,78 +452,127 @@ object BiliApi {
                 )
             }
         val list = data.optJSONArray("list") ?: JSONArray()
-        val cards =
-            withContext(Dispatchers.Default) {
-                val out = ArrayList<VideoCard>(list.length())
-                for (i in 0 until list.length()) {
-                    val it = list.optJSONObject(i) ?: continue
-                    val history = it.optJSONObject("history") ?: JSONObject()
-                    val businessType = history.optString("business", "")
-                    if (businessType != "archive" && businessType != "pgc") continue
+        val items = withContext(Dispatchers.Default) { parseHistoryEntries(list) }
+        return HistoryPage(items = items, cursor = cursor)
+    }
 
-                    val bvid = history.optString("bvid", "").trim()
-                    val aid = history.optLong("oid").takeIf { v -> v > 0 }
-                    val cid = history.optLong("cid").takeIf { v -> v > 0 }
-                    val epId = history.optLong("epid").takeIf { v -> v > 0 }
-                    val seasonId =
-                        if (businessType == "pgc") {
-                            it.optLong("kid").takeIf { v -> v > 0 }
-                                ?: parseBangumiRedirectUrl(it.optString("uri", ""))?.seasonId
-                        } else {
-                            null
-                        }
+    private fun parseHistoryEntries(list: JSONArray): List<HistoryEntry> {
+        val out = ArrayList<HistoryEntry>(list.length())
+        for (i in 0 until list.length()) {
+            val obj = list.optJSONObject(i) ?: continue
+            val history = obj.optJSONObject("history") ?: continue
+            when (val businessType = history.optString("business", "")) {
+                "archive",
+                "pgc",
+                -> parseHistoryVideoCard(obj, history, businessType)?.let { out += HistoryEntry.Video(it) }
 
-                    // For archive items bvid should exist; for PGC items bvid may be absent so we fall back to aid/epId.
-                    if (businessType == "archive" && bvid.isBlank()) continue
-                    if (businessType == "pgc" && (epId == null || cid == null) && (bvid.isBlank() && aid == null)) continue
-
-                    val covers = it.optJSONArray("covers")
-                    val coverUrl =
-                        it.optString("cover", "").takeIf { s -> s.isNotBlank() }
-                            ?: covers?.optString(0)?.takeIf { s -> s.isNotBlank() }
-                            ?: ""
-
-                    val durationSec = it.optInt("duration", 0).coerceAtLeast(0)
-                    val viewAtSec = it.optLong("view_at").takeIf { v -> v > 0 }
-                    val rawProgressSec = it.optLong("progress")
-                    val progressFinished = rawProgressSec < 0 || (durationSec > 0 && rawProgressSec >= durationSec.toLong())
-                    val progressSec = rawProgressSec.takeIf { v -> v > 0 && !progressFinished }
-                    val showTitle = it.optString("show_title", "").trim().takeIf { s -> s.isNotBlank() }
-                    val badge = it.optString("badge", "").trim().takeIf { s -> s.isNotBlank() }
-                    val subtitleParts = buildList {
-                        viewAtSec?.let { add(Format.timeText(it)) }
-                        badge?.let { add(it) }
-                        showTitle?.let { add(it) }
-                    }
-                    val subtitle = subtitleParts.joinToString(" · ").takeIf { s -> s.isNotBlank() }
-                    out.add(
-                        VideoCard(
-                            bvid = bvid,
-                            cid = cid,
-                            aid = aid,
-                            epId = epId,
-                            seasonId = seasonId,
-                            business = businessType.takeIf { s -> s.isNotBlank() },
-                            title = it.optString("title", ""),
-                            coverUrl = coverUrl,
-                            durationSec = durationSec,
-                            ownerName = it.optString("author_name", ""),
-                            ownerFace = it.optString("author_face").takeIf { s -> s.isNotBlank() },
-                            ownerMid =
-                                it.optLong("author_mid").takeIf { v -> v > 0 }
-                                    ?: it.optLong("mid").takeIf { v -> v > 0 },
-                            view = null,
-                            danmaku = null,
-                            pubDate = null,
-                            pubDateText = subtitle,
-                            progressSec = progressSec,
-                            progressFinished = progressFinished,
-                        ),
-                    )
-                }
-                out
+                "live" -> parseHistoryLiveRoom(obj, history)?.let { out += HistoryEntry.Live(it) }
             }
-        return HistoryPage(items = cards, cursor = cursor)
+        }
+        return out
+    }
+
+    private fun parseHistoryVideoCard(
+        obj: JSONObject,
+        history: JSONObject,
+        businessType: String,
+    ): VideoCard? {
+        val bvid = history.optString("bvid", "").trim()
+        val aid = history.optLong("oid").takeIf { v -> v > 0 }
+        val cid = history.optLong("cid").takeIf { v -> v > 0 }
+        val epId = history.optLong("epid").takeIf { v -> v > 0 }
+        val seasonId =
+            if (businessType == "pgc") {
+                obj.optLong("kid").takeIf { v -> v > 0 }
+                    ?: parseBangumiRedirectUrl(obj.optString("uri", ""))?.seasonId
+            } else {
+                null
+            }
+
+        // For archive items bvid should exist; for PGC items bvid may be absent so we fall back to aid/epId.
+        if (businessType == "archive" && bvid.isBlank()) return null
+        if (businessType == "pgc" && (epId == null || cid == null) && (bvid.isBlank() && aid == null)) return null
+
+        val coverUrl =
+            obj.optString("cover", "").takeIf { s -> s.isNotBlank() }
+                ?: obj.optJSONArray("covers")?.optString(0)?.takeIf { s -> s.isNotBlank() }
+                ?: ""
+
+        val durationSec = obj.optInt("duration", 0).coerceAtLeast(0)
+        val viewAtSec = obj.optLong("view_at").takeIf { v -> v > 0 }
+        val rawProgressSec = obj.optLong("progress")
+        val progressFinished = rawProgressSec < 0 || (durationSec > 0 && rawProgressSec >= durationSec.toLong())
+        val progressSec = rawProgressSec.takeIf { v -> v > 0 && !progressFinished }
+        val showTitle = obj.optString("show_title", "").trim().takeIf { s -> s.isNotBlank() }
+        val badge = obj.optString("badge", "").trim().takeIf { s -> s.isNotBlank() }
+        val subtitleParts = buildList {
+            viewAtSec?.let { add(Format.timeText(it)) }
+            badge?.let { add(it) }
+            showTitle?.let { add(it) }
+        }
+        val subtitle = subtitleParts.joinToString(" · ").takeIf { s -> s.isNotBlank() }
+        return VideoCard(
+            bvid = bvid,
+            cid = cid,
+            aid = aid,
+            epId = epId,
+            seasonId = seasonId,
+            business = businessType.takeIf { s -> s.isNotBlank() },
+            title = obj.optString("title", ""),
+            coverUrl = coverUrl,
+            durationSec = durationSec,
+            ownerName = obj.optString("author_name", ""),
+            ownerFace = obj.optString("author_face").takeIf { s -> s.isNotBlank() },
+            ownerMid =
+                obj.optLong("author_mid").takeIf { v -> v > 0 }
+                    ?: obj.optLong("mid").takeIf { v -> v > 0 },
+            view = null,
+            danmaku = null,
+            pubDate = null,
+            pubDateText = subtitle,
+            progressSec = progressSec,
+            progressFinished = progressFinished,
+        )
+    }
+
+    private fun parseHistoryLiveRoom(
+        obj: JSONObject,
+        history: JSONObject,
+    ): LiveRoomCard? {
+        val roomId =
+            history.optLong("oid").takeIf { v -> v > 0 }
+                ?: obj.optLong("kid").takeIf { v -> v > 0 }
+                ?: parseLiveRoomIdFromUrl(obj.optString("uri", ""))
+                ?: return null
+        val areaName = obj.optString("tag_name", "").trim().takeIf { s -> s.isNotBlank() }
+        val liveStatus = obj.optInt("live_status", 0)
+        val coverUrl =
+            obj.optString("cover", "").trim().takeIf { it.isNotBlank() }
+                ?: obj.optJSONArray("covers")?.optString(0)?.trim()?.takeIf { it.isNotBlank() }
+                ?: ""
+        return LiveRoomCard(
+            roomId = roomId,
+            uid =
+                obj.optLong("author_mid").takeIf { v -> v > 0 }
+                    ?: obj.optLong("mid").takeIf { v -> v > 0 }
+                    ?: 0L,
+            title = obj.optString("title", ""),
+            uname = obj.optString("author_name", ""),
+            coverUrl = coverUrl,
+            faceUrl = obj.optString("author_face", "").trim().takeIf { it.isNotBlank() },
+            online = 0L,
+            isLive = liveStatus == 1,
+            parentAreaId = null,
+            parentAreaName = null,
+            areaId = null,
+            areaName = areaName,
+            keyframe = null,
+        )
+    }
+
+    private fun parseLiveRoomIdFromUrl(raw: String): Long? {
+        val path = raw.substringBefore('?').substringBefore('#').trimEnd('/')
+        return path.substringAfterLast('/', missingDelimiterValue = "").toLongOrNull()?.takeIf { it > 0 }
     }
 
     suspend fun toViewList(): List<VideoCard> = VideoApi.toViewList()

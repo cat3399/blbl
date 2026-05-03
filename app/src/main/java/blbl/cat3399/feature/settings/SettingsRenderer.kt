@@ -448,6 +448,12 @@ class SettingsRenderer(
                     SettingEntry(SettingId.ExportLogs, "导出日志", "保存文件", null),
                     SettingEntry(SettingId.UploadLogs, "上传日志", "点击上传", "打包并上传日志zip到开发者（含设备/版本/非登录配置元数据）"),
                     playerKernelEntry(),
+                    SettingEntry(
+                        SettingId.AutoUpdateCheckEnabled,
+                        "自动检查更新",
+                        if (prefs.autoUpdateCheckEnabled) "开" else "关",
+                        "启动时后台检查，有新版本才提示",
+                    ),
                     aboutUpdateEntry(),
                 )
 
@@ -504,7 +510,7 @@ class SettingsRenderer(
         val defaultDesc = "检查新版本并下载安装"
         return when (val checkState = state.testUpdateCheckState) {
             TestUpdateCheckState.Idle -> SettingEntry(SettingId.CheckUpdate, title, "点击检查", defaultDesc)
-            TestUpdateCheckState.Checking -> SettingEntry(SettingId.CheckUpdate, title, "检查中…", "正在获取最新版本号…")
+            TestUpdateCheckState.Checking -> SettingEntry(SettingId.CheckUpdate, title, "检查中…", "正在获取更新日志…")
 
             is TestUpdateCheckState.Latest ->
                 SettingEntry(

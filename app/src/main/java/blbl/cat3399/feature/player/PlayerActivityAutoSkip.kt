@@ -43,7 +43,7 @@ internal fun PlayerActivity.updateProgressUi() {
     val duration = exo.duration.takeIf { it > 0 } ?: currentViewDurationMs ?: 0L
     val pos = exo.currentPosition.coerceAtLeast(0L)
     val uiPos = resolvePlayerUiPositionMs(pos, holdScrubPreviewPosMs, keySeekPreviewPosMs)
-    val bufPos = exo.bufferedPosition.coerceAtLeast(0L)
+    val bufPos = resolveSeekUiBufferedPositionMs(exo.bufferedPosition, uiPos)
 
     val uiScrubbing = scrubbing || holdScrubPreviewPosMs != null || keySeekPreviewPosMs != null
     if (!uiScrubbing) {

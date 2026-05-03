@@ -20,6 +20,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.recyclerview.widget.StaggeredGridLayoutManager
 import androidx.recyclerview.widget.SimpleItemAnimator
+import blbl.cat3399.BuildConfig
 import blbl.cat3399.R
 import blbl.cat3399.core.api.BiliApi
 import blbl.cat3399.core.log.AppLog
@@ -38,6 +39,8 @@ import blbl.cat3399.core.ui.cloneInUserScale
 import blbl.cat3399.core.ui.dispatchToAncestorDpadItemKeyHandler
 import blbl.cat3399.core.ui.popup.AppPopup
 import blbl.cat3399.core.ui.popup.PopupHandle
+import blbl.cat3399.core.update.ApkUpdateFlow
+import blbl.cat3399.core.update.ApkUpdater
 import blbl.cat3399.databinding.ActivityMainBinding
 import blbl.cat3399.databinding.DialogUserInfoBinding
 import blbl.cat3399.feature.following.FollowingListActivity
@@ -45,6 +48,7 @@ import blbl.cat3399.feature.login.QrLoginActivity
 import blbl.cat3399.feature.player.engine.IjkPlayerPlugin
 import blbl.cat3399.feature.player.engine.IjkPlayerPluginUi
 import blbl.cat3399.feature.settings.SettingsActivity
+import kotlinx.coroutines.CancellationException
 import kotlin.math.ceil
 import kotlin.math.sqrt
 import kotlinx.coroutines.Job
@@ -66,7 +70,12 @@ class MainActivity : BaseActivity(), SidebarFocusHost {
     private var disclaimerPopup: PopupHandle? = null
     private var crashPromptPopup: PopupHandle? = null
     private var ijkKernelPromptPopup: PopupHandle? = null
+    private var autoUpdatePromptPopup: PopupHandle? = null
     private var ijkKernelPromptShown: Boolean = false
+    private var autoUpdateCheckStarted: Boolean = false
+    private var autoUpdatePromptShownVersion: String? = null
+    private var pendingAutoUpdate: ApkUpdater.RemoteUpdate? = null
+    private var autoUpdateCheckJob: Job? = null
     private lateinit var userInfoOverlay: DialogUserInfoBinding
     private val userInfoReturnFocus = FocusReturn()
     private var userInfoLoadJob: Job? = null
@@ -181,6 +190,7 @@ class MainActivity : BaseActivity(), SidebarFocusHost {
 
         refreshSidebarUser()
         showFirstLaunchDisclaimerIfNeeded()
+        maybeStartAutoUpdateCheck()
     }
 
     private fun resolveLaunchNavId(): Int {
@@ -201,6 +211,8 @@ class MainActivity : BaseActivity(), SidebarFocusHost {
         refreshSidebarUser()
         showLastCrashPromptIfNeeded()
         showIjkKernelUpdatePromptIfNeeded()
+        maybeStartAutoUpdateCheck()
+        showAutoUpdatePromptIfReady()
     }
 
     override fun onPause() {
@@ -803,6 +815,7 @@ class MainActivity : BaseActivity(), SidebarFocusHost {
                 onDismiss = {
                     disclaimerPopup = null
                     if (!BiliClient.prefs.disclaimerAccepted && !isChangingConfigurations) finish()
+                    maybeStartAutoUpdateCheck()
                     showIjkKernelUpdatePromptIfNeeded()
                 },
             )
@@ -833,9 +846,15 @@ class MainActivity : BaseActivity(), SidebarFocusHost {
     }
 
     private fun showIjkKernelUpdatePromptIfNeeded() {
-        if (ijkKernelPromptShown) return
+        if (ijkKernelPromptShown) {
+            showAutoUpdatePromptIfReady()
+            return
+        }
         if (!BiliClient.prefs.disclaimerAccepted) return
-        if (BiliClient.prefs.playerEngineKind != AppPrefs.PLAYER_ENGINE_IJK) return
+        if (BiliClient.prefs.playerEngineKind != AppPrefs.PLAYER_ENGINE_IJK) {
+            showAutoUpdatePromptIfReady()
+            return
+        }
         if (disclaimerPopup?.isShowing == true) return
         if (crashPromptPopup?.isShowing == true) return
         if (ijkKernelPromptPopup?.isShowing == true) return
@@ -849,7 +868,10 @@ class MainActivity : BaseActivity(), SidebarFocusHost {
                 IjkPlayerPlugin.InstallStatus.NotInstalled ->
                     "播放器内核未安装" to "当前默认播放器内核是 IjkPlayer，需要先下载播放器内核。"
 
-                else -> return
+                else -> {
+                    showAutoUpdatePromptIfReady()
+                    return
+                }
             }
 
         ijkKernelPromptShown = true
@@ -865,8 +887,61 @@ class MainActivity : BaseActivity(), SidebarFocusHost {
                 },
                 onDismiss = {
                     ijkKernelPromptPopup = null
+                    showAutoUpdatePromptIfReady()
                 },
             )
+    }
+
+    private fun maybeStartAutoUpdateCheck() {
+        if (!BiliClient.prefs.disclaimerAccepted) return
+        if (!BiliClient.prefs.autoUpdateCheckEnabled) return
+        if (autoUpdateCheckStarted || autoUpdateCheckJob?.isActive == true) return
+
+        autoUpdateCheckStarted = true
+        autoUpdateCheckJob =
+            lifecycleScope.launch {
+                try {
+                    val update = ApkUpdater.fetchLatestUpdate()
+                    if (!ApkUpdater.isRemoteNewer(update.versionName, BuildConfig.VERSION_NAME)) return@launch
+                    if (BiliClient.prefs.autoUpdateIgnoredVersionName == update.versionName) return@launch
+                    pendingAutoUpdate = update
+                    showAutoUpdatePromptIfReady()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (t: Throwable) {
+                    AppLog.w("Update", "auto update check failed", t)
+                }
+            }
+    }
+
+    private fun showAutoUpdatePromptIfReady() {
+        if (!BiliClient.prefs.autoUpdateCheckEnabled) return
+        if (!BiliClient.prefs.disclaimerAccepted) return
+        if (disclaimerPopup?.isShowing == true) return
+        if (crashPromptPopup?.isShowing == true) return
+        if (ijkKernelPromptPopup?.isShowing == true) return
+        if (autoUpdatePromptPopup?.isShowing == true) return
+
+        val update = pendingAutoUpdate ?: return
+        if (!ApkUpdater.isRemoteNewer(update.versionName, BuildConfig.VERSION_NAME)) return
+        if (BiliClient.prefs.autoUpdateIgnoredVersionName == update.versionName) return
+        if (autoUpdatePromptShownVersion == update.versionName) return
+        autoUpdatePromptShownVersion = update.versionName
+
+        autoUpdatePromptPopup =
+            ApkUpdateFlow.showUpdatePrompt(
+                activity = this,
+                update = update,
+                onSkipVersion = { pendingAutoUpdate = null },
+                onDismiss = {
+                    autoUpdatePromptPopup = null
+                },
+            ) {
+                ApkUpdateFlow.startDownloadAndInstall(
+                    activity = this,
+                    latestVersionHint = update.versionName,
+                )
+            }
     }
 
     private fun refreshSidebarUser() {
