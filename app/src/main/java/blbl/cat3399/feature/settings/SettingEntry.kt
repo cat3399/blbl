@@ -11,6 +11,7 @@ enum class SettingId(
     // 通用设置
     ImageQuality("image_quality"),
     ThemePreset("theme_preset"),
+    ApiSource("api_source"),
     UserAgent("user_agent"),
     Ipv4OnlyEnabled("ipv4_only_enabled"),
     GaiaVgate("gaia_vgate"),
@@ -27,6 +28,7 @@ enum class SettingId(
     PgcGridSpanCount("pgc_grid_span_count"),
     UiScaleFactor("ui_scale_factor"),
     FullscreenEnabled("fullscreen_enabled"),
+    AvoidDisplayCutout("avoid_display_cutout"),
     TabSwitchFollowsFocus("tab_switch_follows_focus"),
     MainAutoHideSidebarOnEnterContent("main_auto_hide_sidebar_on_enter_content"),
     MainBackFocusScheme("main_back_focus_scheme"),

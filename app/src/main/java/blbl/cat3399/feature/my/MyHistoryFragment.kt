@@ -22,6 +22,8 @@ import blbl.cat3399.core.paging.appliedOrNull
 import blbl.cat3399.core.ui.AppToast
 import blbl.cat3399.core.ui.DpadGridController
 import blbl.cat3399.core.ui.FocusTreeUtils
+import blbl.cat3399.core.ui.GridViewportFillMonitor
+import blbl.cat3399.core.ui.installGridViewportFillMonitor
 import blbl.cat3399.core.ui.postIfAlive
 import blbl.cat3399.core.ui.requestFocusAdapterPositionReliable
 import blbl.cat3399.core.ui.requestFocusFirstItemOrSelfAfterRefresh
@@ -59,6 +61,7 @@ class MyHistoryFragment : Fragment(), MyTabSwitchFocusTarget, RefreshKeyHandler 
     private var pendingFocusFirstItemFromTabSwitch: Boolean = false
     private var pendingFocusFirstItemAfterRefresh: Boolean = false
     private var dpadGridController: DpadGridController? = null
+    private var viewportFillMonitor: GridViewportFillMonitor? = null
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         _binding = FragmentVideoGridBinding.inflate(inflater, container, false)
@@ -151,6 +154,16 @@ class MyHistoryFragment : Fragment(), MyTabSwitchFocusTarget, RefreshKeyHandler 
                         enableCenterLongPressToLongClick = true,
                     ),
             ).also { it.install() }
+        viewportFillMonitor?.release()
+        viewportFillMonitor =
+            binding.recycler.installGridViewportFillMonitor(
+                isEnabled = { _binding != null && isResumed },
+                canLoadMore = {
+                    val s = paging.snapshot()
+                    !s.isLoading && !s.endReached
+                },
+                loadMore = { loadNextPage() },
+            )
         binding.swipeRefresh.setOnRefreshListener {
             pendingFocusFirstItemAfterRefresh = true
             dpadGridController?.parkFocusForDataSetReset()
@@ -161,6 +174,7 @@ class MyHistoryFragment : Fragment(), MyTabSwitchFocusTarget, RefreshKeyHandler 
     override fun onResume() {
         super.onResume()
         (binding.recycler.layoutManager as? GridLayoutManager)?.spanCount = spanCountForWidth(resources)
+        viewportFillMonitor?.scheduleCheck()
         maybeTriggerInitialLoad()
         silentRefreshForProgressDataSource()
         maybeConsumePendingFocusFirstItemFromTabSwitch()
@@ -349,10 +363,12 @@ class MyHistoryFragment : Fragment(), MyTabSwitchFocusTarget, RefreshKeyHandler 
                             smoothScroll = false,
                             isAlive = isUiAlive,
                         )
+                        viewportFillMonitor?.scheduleCheck()
                         return@postIfAlive
                     }
                     maybeConsumePendingFocusFirstItemFromTabSwitch()
                     dpadGridController?.consumePendingFocusAfterLoadMore()
+                    viewportFillMonitor?.scheduleCheck()
                 }
 
             } catch (t: Throwable) {
@@ -375,6 +391,8 @@ class MyHistoryFragment : Fragment(), MyTabSwitchFocusTarget, RefreshKeyHandler 
         initialLoadTriggered = false
         dpadGridController?.release()
         dpadGridController = null
+        viewportFillMonitor?.release()
+        viewportFillMonitor = null
         _binding = null
         super.onDestroyView()
     }

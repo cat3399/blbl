@@ -16,8 +16,10 @@ import blbl.cat3399.core.net.BiliClient
 import blbl.cat3399.core.ui.AppToast
 import blbl.cat3399.core.ui.BackButtonSizingHelper
 import blbl.cat3399.core.ui.DpadGridController
+import blbl.cat3399.core.ui.GridViewportFillMonitor
 import blbl.cat3399.core.ui.UiScale
 import blbl.cat3399.core.ui.postIfAlive
+import blbl.cat3399.core.ui.installGridViewportFillMonitor
 import blbl.cat3399.core.ui.requestFocusFirstItemOrSelfAfterRefresh
 import blbl.cat3399.core.ui.setTextSizePxIfChanged
 import blbl.cat3399.core.ui.uiScaler
@@ -55,6 +57,7 @@ class MyFavFolderDetailFragment : Fragment(), RefreshKeyHandler {
     private var requestToken: Int = 0
     private var pendingFocusFirstItem: Boolean = false
     private var dpadGridController: DpadGridController? = null
+    private var viewportFillMonitor: GridViewportFillMonitor? = null
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         _binding = FragmentMyFavFolderDetailBinding.inflate(inflater, container, false)
@@ -146,6 +149,13 @@ class MyFavFolderDetailFragment : Fragment(), RefreshKeyHandler {
                         enableCenterLongPressToLongClick = true,
                     ),
             ).also { it.install() }
+        viewportFillMonitor?.release()
+        viewportFillMonitor =
+            binding.recycler.installGridViewportFillMonitor(
+                isEnabled = { _binding != null && isResumed },
+                canLoadMore = { !isLoadingMore && !endReached },
+                loadMore = { loadNextPage() },
+            )
         binding.swipeRefresh.setOnRefreshListener {
             pendingFocusFirstItem = true
             dpadGridController?.parkFocusForDataSetReset()
@@ -165,6 +175,7 @@ class MyFavFolderDetailFragment : Fragment(), RefreshKeyHandler {
         super.onResume()
         applyBackButtonSizing()
         (binding.recycler.layoutManager as? GridLayoutManager)?.spanCount = spanCountForWidth(resources)
+        viewportFillMonitor?.scheduleCheck()
     }
 
     private fun applyHeaderSizing(uiScale: Float) {
@@ -245,6 +256,7 @@ class MyFavFolderDetailFragment : Fragment(), RefreshKeyHandler {
             } finally {
                 if (token == requestToken) _binding?.swipeRefresh?.isRefreshing = false
                 isLoadingMore = false
+                viewportFillMonitor?.scheduleCheck()
             }
         }
     }
@@ -265,6 +277,8 @@ class MyFavFolderDetailFragment : Fragment(), RefreshKeyHandler {
     override fun onDestroyView() {
         dpadGridController?.release()
         dpadGridController = null
+        viewportFillMonitor?.release()
+        viewportFillMonitor = null
         _binding = null
         super.onDestroyView()
     }

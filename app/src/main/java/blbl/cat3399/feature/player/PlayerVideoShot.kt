@@ -4,7 +4,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Rect
 import android.util.LruCache
-import blbl.cat3399.core.api.BiliApi
+import blbl.cat3399.core.api.video.VideoShotInfo
 import blbl.cat3399.core.log.AppLog
 import blbl.cat3399.core.net.BiliClient
 import kotlinx.coroutines.Deferred
@@ -38,7 +38,7 @@ internal data class VideoShot(
             }
         }
 
-        suspend fun fromVideoShot(videoShot: BiliApi.VideoShotInfo): VideoShot? =
+        suspend fun fromVideoShot(videoShot: VideoShotInfo): VideoShot? =
             coroutineScope {
                 val ctx = coroutineContext
                 val normalizedImageUrls =

@@ -32,7 +32,8 @@ internal fun PlayerActivity.isCommentThreadVisible(): Boolean = binding.recycler
 
 internal fun PlayerActivity.isSidePanelVisible(): Boolean = isSettingsPanelVisible() || isCommentsPanelVisible()
 
-internal fun PlayerActivity.isOverlayPanelVisible(): Boolean = isSidePanelVisible() || isBottomCardPanelVisible()
+internal fun PlayerActivity.isOverlayPanelVisible(): Boolean =
+    isSidePanelVisible() || isBottomCardPanelVisible() || isSponsorSubmitPanelVisible()
 
 internal fun PlayerActivity.onOverlayPanelShown(openedFromMenuKey: Boolean) {
     when {

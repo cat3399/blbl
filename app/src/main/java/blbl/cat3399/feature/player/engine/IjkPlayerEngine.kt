@@ -6,6 +6,7 @@ import android.os.SystemClock
 import android.view.Surface
 import androidx.media3.common.Player
 import blbl.cat3399.BuildConfig
+import blbl.cat3399.core.api.video.VideoMediaRequestProfile
 import blbl.cat3399.core.log.AppLog
 import blbl.cat3399.core.net.BiliClient
 import blbl.cat3399.feature.player.Playable
@@ -219,7 +220,11 @@ internal class IjkPlayerEngine(
         try {
             when (dataSource) {
                 is PlaybackSource.Live -> {
-                    val headers = buildHttpHeaders(urlForCookie = dataSource.url)
+                    val headers =
+                        IjkHttpHeaderBuilder.build(
+                            urlForCookie = dataSource.url,
+                            mediaRequestProfile = VideoMediaRequestProfile.WEB,
+                        )
                     applyHttpOptions(p, headers)
                     p.setDataSource(dataSource.url)
                 }
@@ -253,20 +258,32 @@ internal class IjkPlayerEngine(
                                     )
                                 }
                             }
-                            val headers = buildHttpHeaders(urlForCookie = playable.videoUrl)
+                            val headers =
+                                IjkHttpHeaderBuilder.build(
+                                    urlForCookie = playable.videoUrl,
+                                    mediaRequestProfile = playable.videoMediaRequestProfile,
+                                )
                             applyHttpOptions(p, headers)
                             // Use a plain file path to avoid ContentResolver/fd:// schemes.
                             p.setDataSource(mpdFile.absolutePath)
                         }
 
                         is Playable.VideoOnly -> {
-                            val headers = buildHttpHeaders(urlForCookie = playable.videoUrl)
+                            val headers =
+                                IjkHttpHeaderBuilder.build(
+                                    urlForCookie = playable.videoUrl,
+                                    mediaRequestProfile = playable.videoMediaRequestProfile,
+                                )
                             applyHttpOptions(p, headers)
                             p.setDataSource(playable.videoUrl)
                         }
 
                         is Playable.Progressive -> {
-                            val headers = buildHttpHeaders(urlForCookie = playable.url)
+                            val headers =
+                                IjkHttpHeaderBuilder.build(
+                                    urlForCookie = playable.url,
+                                    mediaRequestProfile = playable.mediaRequestProfile,
+                                )
                             applyHttpOptions(p, headers)
                             p.setDataSource(playable.url)
                         }
@@ -613,39 +630,13 @@ internal class IjkPlayerEngine(
         )
     }
 
-    private data class BuiltHttpHeaders(
-        val userAgent: String,
-        val referer: String,
-        val cookie: String?,
-        val headersString: String,
-    )
-
-    private fun buildHttpHeaders(urlForCookie: String): BuiltHttpHeaders {
-        val userAgent = BiliClient.prefs.userAgent.trim().ifBlank { blbl.cat3399.core.prefs.AppPrefs.DEFAULT_UA }
-        val referer = "https://www.bilibili.com/"
-        val cookie = BiliClient.cookies.cookieHeaderFor(urlForCookie)?.trim().takeIf { !it.isNullOrBlank() }
-
-        // NOTE:
-        // - Keep User-Agent in `user_agent` option (not in custom headers) to avoid duplicates.
-        // - Keep Referer in custom headers for old cores, and also set `referer` explicitly for patched dashdec.
-        val headersString =
-            buildString {
-                append("Referer: ").append(referer).append("\r\n")
-                append("Accept-Encoding: identity\r\n")
-            }
-        return BuiltHttpHeaders(
-            userAgent = userAgent,
-            referer = referer,
-            cookie = cookie,
-            headersString = headersString,
-        )
-    }
-
-    private fun applyHttpOptions(p: IjkMediaPlayer, headers: BuiltHttpHeaders) {
+    private fun applyHttpOptions(p: IjkMediaPlayer, headers: IjkHttpHeaders) {
         // Prefer option-based UA so DASH sub-requests (init/m4s) can inherit it.
         runCatching { p.setOption(IjkMediaPlayer.OPT_CATEGORY_FORMAT, "user_agent", headers.userAgent) }
         runCatching { p.setOption(IjkMediaPlayer.OPT_CATEGORY_FORMAT, "user-agent", headers.userAgent) }
-        runCatching { p.setOption(IjkMediaPlayer.OPT_CATEGORY_FORMAT, "referer", headers.referer) }
+        headers.referer?.let { referer ->
+            runCatching { p.setOption(IjkMediaPlayer.OPT_CATEGORY_FORMAT, "referer", referer) }
+        }
         headers.cookie?.let { cookie ->
             runCatching { p.setOption(IjkMediaPlayer.OPT_CATEGORY_FORMAT, "cookies", cookie) }
         }
@@ -654,7 +645,8 @@ internal class IjkPlayerEngine(
         if (BuildConfig.DEBUG) {
             AppLog.i(
                 "IjkEngine",
-                "http opts: uaLen=${headers.userAgent.length} referer=${headers.referer} cookie=${if (headers.cookie != null) 1 else 0}",
+                "http opts: profile=${headers.mediaRequestProfile} uaLen=${headers.userAgent.length} " +
+                    "referer=${headers.referer ?: "-"} cookie=${if (headers.cookie != null) 1 else 0}",
             )
         }
     }
@@ -737,21 +729,21 @@ internal class IjkPlayerEngine(
                 videoBaseUrl = videoBaseUrl,
                 audioBaseUrl = audioBaseUrl,
             )
-        val videoSeg = playable.videoTrackInfo.segmentBase ?: error("video segment_base missing")
-        val audioSeg = playable.audioTrackInfo.segmentBase ?: error("audio segment_base missing")
+        val videoSeg = playable.videoTrackInfo.segmentBase
+        val audioSeg = playable.audioTrackInfo.segmentBase
         val key =
             buildString {
                 append(playable.videoUrl)
                 append('|')
                 append(playable.audioUrl)
                 append('|')
-                append(videoSeg.initialization)
+                append(videoSeg?.initialization.orEmpty())
                 append('|')
-                append(videoSeg.indexRange)
+                append(videoSeg?.indexRange.orEmpty())
                 append('|')
-                append(audioSeg.initialization)
+                append(audioSeg?.initialization.orEmpty())
                 append('|')
-                append(audioSeg.indexRange)
+                append(audioSeg?.indexRange.orEmpty())
                 append('|')
                 append(playable.qn)
                 append('|')
@@ -784,5 +776,61 @@ internal class IjkPlayerEngine(
     private companion object {
         private const val MAX_BUFFERED_FORWARD_ESTIMATE_MS: Long = 5 * 60_000L
         private const val VISIBLE_SEEK_POSITION_TIMEOUT_MS: Long = 10_000L
+    }
+}
+
+internal data class IjkHttpHeaders(
+    val mediaRequestProfile: VideoMediaRequestProfile,
+    val userAgent: String,
+    val referer: String?,
+    val cookie: String?,
+    val headersString: String,
+)
+
+internal object IjkHttpHeaderBuilder {
+    fun build(
+        urlForCookie: String,
+        mediaRequestProfile: VideoMediaRequestProfile,
+    ): IjkHttpHeaders =
+        when (mediaRequestProfile) {
+            VideoMediaRequestProfile.APP -> buildAppHeaders()
+            VideoMediaRequestProfile.WEB -> buildWebHeaders(urlForCookie)
+        }
+
+    private fun buildAppHeaders(): IjkHttpHeaders {
+        // Keep this aligned with BiliClient.appCdnOkHttp: app playurl CDN URLs reject web
+        // Referer/User-Agent combinations with 403.
+        return IjkHttpHeaders(
+            mediaRequestProfile = VideoMediaRequestProfile.APP,
+            userAgent = BiliClient.APP_CDN_USER_AGENT,
+            referer = null,
+            cookie = null,
+            headersString =
+                buildString {
+                    append("Accept-Encoding: identity\r\n")
+                    append("Connection: Keep-Alive\r\n")
+                },
+        )
+    }
+
+    private fun buildWebHeaders(urlForCookie: String): IjkHttpHeaders {
+        val userAgent = BiliClient.prefs.userAgent.trim().ifBlank { blbl.cat3399.core.prefs.AppPrefs.DEFAULT_UA }
+        val referer = "https://www.bilibili.com/"
+        val cookie = BiliClient.cookies.cookieHeaderFor(urlForCookie)?.trim().takeIf { !it.isNullOrBlank() }
+
+        // NOTE:
+        // - Keep User-Agent in `user_agent` option (not in custom headers) to avoid duplicates.
+        // - Keep Referer in custom headers for old cores, and also set `referer` explicitly for patched dashdec.
+        return IjkHttpHeaders(
+            mediaRequestProfile = VideoMediaRequestProfile.WEB,
+            userAgent = userAgent,
+            referer = referer,
+            cookie = cookie,
+            headersString =
+                buildString {
+                    append("Referer: ").append(referer).append("\r\n")
+                    append("Accept-Encoding: identity\r\n")
+                },
+        )
     }
 }

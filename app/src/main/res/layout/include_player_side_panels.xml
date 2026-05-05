@@ -194,7 +194,7 @@
                                 android:layout_width="@dimen/player_info_action_icon_size"
                                 android:layout_height="@dimen/player_info_action_icon_size"
                                 android:contentDescription="@string/app_name"
-                                android:src="@drawable/ic_action_like"
+                                app:srcCompat="@drawable/ic_action_like"
                                 app:tint="@color/player_button_tint" />
 
                             <TextView
@@ -224,7 +224,7 @@
                                 android:layout_width="@dimen/player_info_action_icon_size"
                                 android:layout_height="@dimen/player_info_action_icon_size"
                                 android:contentDescription="@string/app_name"
-                                android:src="@drawable/ic_action_coin"
+                                app:srcCompat="@drawable/ic_action_coin"
                                 app:tint="@color/player_button_tint" />
 
                             <TextView
@@ -254,7 +254,7 @@
                                 android:layout_width="@dimen/player_info_action_icon_size"
                                 android:layout_height="@dimen/player_info_action_icon_size"
                                 android:contentDescription="@string/app_name"
-                                android:src="@drawable/ic_action_fav"
+                                app:srcCompat="@drawable/ic_action_fav"
                                 app:tint="@color/player_button_tint" />
 
                             <TextView

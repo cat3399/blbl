@@ -1,24 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <selector xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- Focused + selected: overall (fill) highlight, blue only for focus ring. -->
+    <!-- Keep the same black chip surface as the comment sort chips; focus only adds the ring. -->
     <item android:state_focused="true" android:state_selected="true">
-        <layer-list>
-            <item>
-                <shape android:shape="rectangle">
-                    <solid android:color="#FF000000" />
-                    <corners android:radius="12dp" />
-                </shape>
-            </item>
-            <item>
-                <shape android:shape="rectangle">
-                    <solid android:color="#FF000000" />
-                    <corners android:radius="12dp" />
-                    <stroke
-                        android:width="2dp"
-                        android:color="@color/blbl_blue" />
-                </shape>
-            </item>
-        </layer-list>
+        <shape android:shape="rectangle">
+            <solid android:color="#FF000000" />
+            <corners android:radius="12dp" />
+            <stroke
+                android:width="2dp"
+                android:color="@color/blbl_blue" />
+        </shape>
     </item>
 
     <!-- Focused: readable on bright video frames -->
@@ -33,20 +23,10 @@
     </item>
 
     <item android:state_pressed="true" android:state_selected="true">
-        <layer-list>
-            <item>
-                <shape android:shape="rectangle">
-                    <solid android:color="#FF000000" />
-                    <corners android:radius="12dp" />
-                </shape>
-            </item>
-            <item>
-                <shape android:shape="rectangle">
-                    <solid android:color="#FF000000" />
-                    <corners android:radius="12dp" />
-                </shape>
-            </item>
-        </layer-list>
+        <shape android:shape="rectangle">
+            <solid android:color="#FF000000" />
+            <corners android:radius="12dp" />
+        </shape>
     </item>
 
     <item android:state_pressed="true">
@@ -56,22 +36,11 @@
         </shape>
     </item>
 
-    <!-- Selected: highlight via fill; no white outline. -->
     <item android:state_selected="true">
-        <layer-list>
-            <item>
-                <shape android:shape="rectangle">
-                    <solid android:color="#FF000000" />
-                    <corners android:radius="12dp" />
-                </shape>
-            </item>
-            <item>
-                <shape android:shape="rectangle">
-                    <solid android:color="#FF000000" />
-                    <corners android:radius="12dp" />
-                </shape>
-            </item>
-        </layer-list>
+        <shape android:shape="rectangle">
+            <solid android:color="#FF000000" />
+            <corners android:radius="12dp" />
+        </shape>
     </item>
 
     <!-- Default: per-tab background (no shared container background) -->

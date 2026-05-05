@@ -478,8 +478,8 @@ internal class DanmakuEngine(
         val drop = items.size - maxItems
         if (drop <= 0) return
         items = items.subList(drop, items.size).toMutableList()
-        index = (index - drop).coerceAtLeast(0)
-        rebuildRequested = true
+        index = (index - drop).coerceIn(0, items.size)
+        debugNextAtMs = items.getOrNull(index)?.timeMs()
         }
     }
 

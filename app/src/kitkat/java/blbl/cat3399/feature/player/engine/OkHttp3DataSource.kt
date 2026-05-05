@@ -22,7 +22,7 @@ import androidx.core.net.toUri
  * OkHttp 3.x based HttpDataSource for API 19 (kitkat flavor).
  * Reuses connection pool and cookies from the provided OkHttpClient.
  */
-internal class OkHttp3DataSource(
+class OkHttp3DataSource(
     private val callFactory: Call.Factory,
     private val userAgent: String?,
     private val defaultRequestProperties: Map<String, String>?,

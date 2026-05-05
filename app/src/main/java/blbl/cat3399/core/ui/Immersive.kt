@@ -34,6 +34,7 @@ object Immersive {
                 window.decorView.systemUiVisibility = targetFlags
             }
         } else {
+            WindowDisplayPolicy.applyWindow(activity, fullscreen = enabled)
             WindowCompat.setDecorFitsSystemWindows(window, !enabled)
             val controller = WindowInsetsControllerCompat(window, window.decorView)
             if (enabled) {
@@ -80,5 +81,6 @@ object Immersive {
                 ViewCompat.onApplyWindowInsets(view, insets)
             }
         }
+        WindowDisplayPolicy.requestApplyInsets(activity)
     }
 }

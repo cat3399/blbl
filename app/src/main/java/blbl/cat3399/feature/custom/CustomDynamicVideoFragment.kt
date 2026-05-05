@@ -18,11 +18,13 @@ import blbl.cat3399.core.paging.appliedOrNull
 import blbl.cat3399.core.ui.AppToast
 import blbl.cat3399.core.ui.DpadGridController
 import blbl.cat3399.core.ui.FocusTreeUtils
+import blbl.cat3399.core.ui.GridViewportFillMonitor
 import blbl.cat3399.core.ui.GridSpanPolicy
 import blbl.cat3399.core.ui.TabContentSwitchFocusHost
 import blbl.cat3399.core.ui.TabSwitchFocusTarget
 import blbl.cat3399.core.ui.postIfAlive
 import blbl.cat3399.core.ui.postIfAttached
+import blbl.cat3399.core.ui.installGridViewportFillMonitor
 import blbl.cat3399.core.ui.requestFocusAdapterPositionReliable
 import blbl.cat3399.core.ui.requestFocusFirstItemOrSelfAfterRefresh
 import blbl.cat3399.databinding.FragmentVideoGridBinding
@@ -62,6 +64,7 @@ class CustomDynamicVideoFragment : Fragment(), RefreshKeyHandler, TabSwitchFocus
     private var pendingFocusFirstCardAfterRefresh: Boolean = false
     private var lastFocusedAdapterPosition: Int? = null
     private var dpadGridController: DpadGridController? = null
+    private var viewportFillMonitor: GridViewportFillMonitor? = null
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         _binding = FragmentVideoGridBinding.inflate(inflater, container, false)
@@ -152,6 +155,16 @@ class CustomDynamicVideoFragment : Fragment(), RefreshKeyHandler, TabSwitchFocus
                         enableCenterLongPressToLongClick = true,
                     ),
             ).also { it.install() }
+        viewportFillMonitor?.release()
+        viewportFillMonitor =
+            binding.recycler.installGridViewportFillMonitor(
+                isEnabled = { _binding != null && isResumed },
+                canLoadMore = {
+                    val snapshot = paging.snapshot()
+                    !snapshot.isLoading && !snapshot.endReached
+                },
+                loadMore = { loadNextPage() },
+            )
 
         binding.swipeRefresh.setOnRefreshListener {
             pendingFocusFirstCardAfterRefresh = true
@@ -163,6 +176,7 @@ class CustomDynamicVideoFragment : Fragment(), RefreshKeyHandler, TabSwitchFocus
     override fun onResume() {
         super.onResume()
         (binding.recycler.layoutManager as? GridLayoutManager)?.spanCount = spanCountForWidth()
+        viewportFillMonitor?.scheduleCheck()
         maybeTriggerInitialLoad()
         maybeConsumePendingFocusFirstCard()
     }
@@ -171,6 +185,8 @@ class CustomDynamicVideoFragment : Fragment(), RefreshKeyHandler, TabSwitchFocus
         initialLoadTriggered = false
         dpadGridController?.release()
         dpadGridController = null
+        viewportFillMonitor?.release()
+        viewportFillMonitor = null
         _binding = null
         super.onDestroyView()
     }
@@ -274,10 +290,12 @@ class CustomDynamicVideoFragment : Fragment(), RefreshKeyHandler, TabSwitchFocus
                                     dpadGridController?.unparkFocusAfterDataSetReset()
                                 },
                             )
+                            viewportFillMonitor?.scheduleCheck()
                             return@postIfAlive
                         }
                         maybeConsumePendingFocusFirstCard()
                         dpadGridController?.consumePendingFocusAfterLoadMore()
+                        viewportFillMonitor?.scheduleCheck()
                     }
                 }
             } catch (t: Throwable) {

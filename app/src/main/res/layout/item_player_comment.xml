@@ -104,7 +104,7 @@
                 android:layout_marginStart="@dimen/player_comment_like_icon_margin_start"
                 android:contentDescription="@null"
                 android:importantForAccessibility="no"
-                android:src="@drawable/ic_action_like"
+                app:srcCompat="@drawable/ic_action_like"
                 app:tint="?android:attr/textColorSecondary" />
 
             <TextView

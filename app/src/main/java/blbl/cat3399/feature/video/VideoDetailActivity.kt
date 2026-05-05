@@ -15,6 +15,7 @@ import androidx.recyclerview.widget.SimpleItemAnimator
 import blbl.cat3399.R
 import blbl.cat3399.core.api.BiliApi
 import blbl.cat3399.core.api.BiliApiException
+import blbl.cat3399.core.api.video.VideoDetail
 import blbl.cat3399.core.log.AppLog
 import blbl.cat3399.core.model.VideoTag
 import blbl.cat3399.core.net.BiliClient
@@ -41,10 +42,9 @@ import blbl.cat3399.feature.player.PlayerPlaylistStore
 import blbl.cat3399.feature.player.VideoCardPlaylistPage
 import blbl.cat3399.feature.player.buildFreshVideoCardPlaylistContinuation
 import blbl.cat3399.feature.player.executeArchiveTripleAction
-import blbl.cat3399.feature.player.parsePlaylistPageTotalCount
-import blbl.cat3399.feature.player.parseMultiPagePlaylistFromViewWithUiCards
-import blbl.cat3399.feature.player.parseUgcSeasonPlaylistFromArchivesListWithUiCards
-import blbl.cat3399.feature.player.parseUgcSeasonPlaylistFromViewWithUiCards
+import blbl.cat3399.feature.player.parseMultiPagePlaylistFromDetailWithUiCards
+import blbl.cat3399.feature.player.parseVideoCardsToPlaylistParsed
+import blbl.cat3399.feature.player.parseUgcSeasonPlaylistFromDetailWithUiCards
 import blbl.cat3399.feature.player.userMessage
 import blbl.cat3399.feature.tag.TagDetailActivity
 import kotlinx.coroutines.CancellationException
@@ -54,7 +54,6 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.json.JSONObject
 
 class VideoDetailActivity : BaseActivity() {
     private lateinit var binding: ActivityVideoDetailBinding
@@ -139,8 +138,8 @@ class VideoDetailActivity : BaseActivity() {
 
         lifecycleScope.launch {
             try {
-                val viewData = fetchViewData()
-                val bangumiRedirect = parseBangumiRedirectUrl(viewData.optString("redirect_url", ""))
+                val detail = fetchVideoDetail()
+                val bangumiRedirect = parseBangumiRedirectUrl(detail.redirectUrl.orEmpty())
                 if (bangumiRedirect != null) {
                     startActivity(
                         Intent(this@VideoDetailActivity, BangumiDetailActivity::class.java)
@@ -160,7 +159,7 @@ class VideoDetailActivity : BaseActivity() {
                 }
 
                 initUi()
-                load(prefetchedViewData = viewData)
+                load(prefetchedDetail = detail)
             } catch (t: Throwable) {
                 if (t is CancellationException) return@launch
                 AppToast.show(this@VideoDetailActivity, t.message ?: "加载失败")
@@ -333,23 +332,16 @@ class VideoDetailActivity : BaseActivity() {
         binding.recycler.smoothScrollToPositionStart(0)
     }
 
-    private suspend fun fetchViewData(): JSONObject =
+    private suspend fun fetchVideoDetail(): VideoDetail =
         withContext(Dispatchers.IO) {
-            val json =
-                if (bvid.isNotBlank()) {
-                    BiliApi.view(bvid)
-                } else {
-                    BiliApi.view(aid ?: 0L)
-                }
-            val code = json.optInt("code", 0)
-            if (code != 0) {
-                val msg = json.optString("message", json.optString("msg", "加载失败")).ifBlank { "加载失败" }
-                throw IllegalStateException(msg)
+            if (bvid.isNotBlank()) {
+                BiliApi.videoDetail(bvid)
+            } else {
+                BiliApi.videoDetail(aid ?: 0L)
             }
-            json.optJSONObject("data") ?: JSONObject()
         }
 
-    private fun load(prefetchedViewData: JSONObject? = null) {
+    private fun load(prefetchedDetail: VideoDetail? = null) {
         val codeToken = ++requestToken
         loadJob?.cancel()
         loadJob = null
@@ -361,10 +353,10 @@ class VideoDetailActivity : BaseActivity() {
         loadJob =
             lifecycleScope.launch {
                 try {
-                    val viewData = prefetchedViewData ?: fetchViewData()
+                    val detail = prefetchedDetail ?: fetchVideoDetail()
                     if (codeToken != requestToken) return@launch
 
-                    val bangumiRedirect = parseBangumiRedirectUrl(viewData.optString("redirect_url", ""))
+                    val bangumiRedirect = parseBangumiRedirectUrl(detail.redirectUrl.orEmpty())
                     if (bangumiRedirect != null) {
                         startActivity(
                             Intent(this@VideoDetailActivity, BangumiDetailActivity::class.java)
@@ -383,80 +375,75 @@ class VideoDetailActivity : BaseActivity() {
                         return@launch
                     }
 
-                    val resolvedBvid = viewData.optString("bvid", "").trim().takeIf { it.isNotBlank() } ?: bvid
-                    val resolvedAid = viewData.optLong("aid").takeIf { it > 0L } ?: aid
-                    val resolvedCid = cid ?: viewData.optLong("cid").takeIf { it > 0L }
+                    val resolvedBvid = detail.bvid.trim().takeIf { it.isNotBlank() } ?: bvid
+                    val resolvedAid = detail.aid?.takeIf { it > 0L } ?: aid
+                    val resolvedCid = cid ?: detail.cid?.takeIf { it > 0L }
 
                     bvid = resolvedBvid
                     aid = resolvedAid
                     cid = resolvedCid
 
-                    title = viewData.optString("title", "").trim().takeIf { it.isNotBlank() } ?: title
-                    desc = viewData.optString("desc", "").trim()
-                    coverUrl = viewData.optString("pic", "").trim().takeIf { it.isNotBlank() } ?: coverUrl
-                    tabId = viewData.optInt("tid").takeIf { it > 0 } ?: tabId
-                    tabName = viewData.optString("tname", "").trim().takeIf { it.isNotBlank() }
+                    title = detail.title?.trim()?.takeIf { it.isNotBlank() } ?: title
+                    desc = detail.description?.trim().orEmpty()
+                    coverUrl = detail.coverUrl?.trim()?.takeIf { it.isNotBlank() } ?: coverUrl
+                    tabId = detail.tabId ?: tabId
+                    tabName = detail.tabName?.trim()?.takeIf { it.isNotBlank() }
 
                     actionLiked = false
                     actionCoinCount = 0
                     actionFavored = false
 
                     run {
-                        val pubDate = viewData.optLong("pubdate").takeIf { it > 0L }
-                        val stat = viewData.optJSONObject("stat") ?: JSONObject()
-                        val viewCount =
-                            stat.optLong("view").takeIf { it > 0L }
-                                ?: stat.optLong("play").takeIf { it > 0L }
-                        val likeCount = stat.optLong("like").takeIf { it > 0L }
-                        val favCount = stat.optLong("favorite").takeIf { it > 0L }
+                        val pubDate = detail.pubDateSec
+                        val viewCount = detail.stat.view
+                        val likeCount = detail.stat.like
+                        val coinCount = detail.stat.coin
+                        val favCount = detail.stat.favorite
                         metaText =
                             buildList {
                                 pubDate?.let { Format.pubDateText(it) }.takeIf { !it.isNullOrBlank() }?.let(::add)
                                 viewCount?.let { "${Format.count(it)}观看" }?.let(::add)
                                 likeCount?.let { "${Format.count(it)}赞" }?.let(::add)
+                                coinCount?.let { "${Format.count(it)}投币" }?.let(::add)
                                 favCount?.let { "${Format.count(it)}收藏" }?.let(::add)
                             }.joinToString(" · ")
                                 .trim()
                                 .takeIf { it.isNotBlank() }
                     }
 
-                    val owner = viewData.optJSONObject("owner")
-                    ownerMid = owner?.optLong("mid")?.takeIf { it > 0L } ?: ownerMid
-                    ownerName = owner?.optString("name", "")?.trim()?.takeIf { it.isNotBlank() } ?: ownerName
-                    ownerAvatar = owner?.optString("face", "")?.trim()?.takeIf { it.isNotBlank() } ?: ownerAvatar
+                    val owner = detail.owner
+                    ownerMid = owner?.mid?.takeIf { it > 0L } ?: ownerMid
+                    ownerName = owner?.name?.trim()?.takeIf { it.isNotBlank() } ?: ownerName
+                    ownerAvatar = owner?.avatarUrl?.trim()?.takeIf { it.isNotBlank() } ?: ownerAvatar
 
                     run {
-                        val parsed = parseMultiPagePlaylistFromViewWithUiCards(viewData, bvid = resolvedBvid, aid = resolvedAid)
+                        val parsed = parseMultiPagePlaylistFromDetailWithUiCards(detail, bvid = resolvedBvid, aid = resolvedAid)
                         currentParts = parsed.items
                         currentPartsUiCards = parsed.uiCards
                     }
 
-                    val ugcSeason = viewData.optJSONObject("ugc_season")
-                    currentUgcSeasonTitle = ugcSeason?.optString("title", "")?.trim()?.takeIf { it.isNotBlank() }
+                    val ugcSeason = detail.ugcSeason
+                    currentUgcSeasonTitle = ugcSeason?.title?.trim()?.takeIf { it.isNotBlank() }
                     currentUgcSeasonItems = emptyList()
                     currentUgcSeasonUiCards = emptyList()
                     currentUgcSeasonIndex = null
-                    currentUgcSeasonId = ugcSeason?.optLong("id")?.takeIf { it > 0L }
-                    currentUgcSeasonOwnerMid =
-                        ugcSeason?.optLong("mid")?.takeIf { it > 0L }
-                            ?: ownerMid
+                    currentUgcSeasonId = ugcSeason?.id?.takeIf { it > 0L }
+                    currentUgcSeasonOwnerMid = ugcSeason?.ownerMid?.takeIf { it > 0L } ?: ownerMid
                     if (ugcSeason != null) {
-                        val parsedFromView = parseUgcSeasonPlaylistFromViewWithUiCards(ugcSeason)
+                        val parsedFromView = parseUgcSeasonPlaylistFromDetailWithUiCards(ugcSeason)
                         if (parsedFromView.items.isNotEmpty()) {
                             currentUgcSeasonItems = parsedFromView.items
                             currentUgcSeasonUiCards = parsedFromView.uiCards
                         } else {
-                            val seasonId = ugcSeason.optLong("id").takeIf { it > 0L }
-                            val mid =
-                                ugcSeason.optLong("mid").takeIf { it > 0L }
-                                    ?: ownerMid
+                            val seasonId = ugcSeason.id?.takeIf { it > 0L }
+                            val mid = ugcSeason.ownerMid?.takeIf { it > 0L } ?: ownerMid
                             if (seasonId != null && mid != null) {
-                                val json =
+                                val archivesPage =
                                     withContext(Dispatchers.IO) {
-                                        runCatching { BiliApi.seasonsArchivesList(mid = mid, seasonId = seasonId, pageSize = 200) }.getOrNull()
+                                        runCatching { BiliApi.ugcSeasonArchives(mid = mid, seasonId = seasonId, pageSize = 200) }.getOrNull()
                                     }
-                                if (json != null) {
-                                    val parsedFromApi = parseUgcSeasonPlaylistFromArchivesListWithUiCards(json)
+                                if (archivesPage != null) {
+                                    val parsedFromApi = parseVideoCardsToPlaylistParsed(archivesPage.items, ::defaultVideoCardPlaylistItem)
                                     currentUgcSeasonItems = parsedFromApi.items
                                     currentUgcSeasonUiCards = parsedFromApi.uiCards
                                 }
@@ -501,62 +488,6 @@ class VideoDetailActivity : BaseActivity() {
             }
     }
 
-    private fun parseMultiPagePlaylistFromView(viewData: JSONObject, bvid: String, aid: Long?): List<PlayerPlaylistItem> {
-        val pages = viewData.optJSONArray("pages") ?: return emptyList()
-        if (pages.length() <= 1) return emptyList()
-        val out = ArrayList<PlayerPlaylistItem>(pages.length())
-        for (i in 0 until pages.length()) {
-            val obj = pages.optJSONObject(i) ?: continue
-            val pageCid = obj.optLong("cid").takeIf { it > 0L } ?: continue
-            val page = obj.optInt("page").takeIf { it > 0 } ?: (i + 1)
-            val part = obj.optString("part", "").trim()
-            val title =
-                if (part.isBlank()) {
-                    "P$page"
-                } else {
-                    "P$page $part"
-                }
-            out.add(
-                PlayerPlaylistItem(
-                    bvid = bvid,
-                    cid = pageCid,
-                    aid = aid,
-                    title = title,
-                ),
-            )
-        }
-        return out
-    }
-
-    private fun parseUgcSeasonPlaylistFromView(ugcSeason: JSONObject): List<PlayerPlaylistItem> {
-        val sections = ugcSeason.optJSONArray("sections") ?: return emptyList()
-        val out = ArrayList<PlayerPlaylistItem>(ugcSeason.optInt("ep_count").coerceAtLeast(0))
-        for (i in 0 until sections.length()) {
-            val section = sections.optJSONObject(i) ?: continue
-            val eps = section.optJSONArray("episodes") ?: continue
-            for (j in 0 until eps.length()) {
-                val ep = eps.optJSONObject(j) ?: continue
-                val arc = ep.optJSONObject("arc") ?: JSONObject()
-                val bvid = ep.optString("bvid", "").trim().ifBlank { arc.optString("bvid", "").trim() }
-                if (bvid.isBlank()) continue
-                val cid = ep.optLong("cid").takeIf { it > 0L } ?: arc.optLong("cid").takeIf { it > 0L }
-                val aid = ep.optLong("aid").takeIf { it > 0L } ?: arc.optLong("aid").takeIf { it > 0L }
-                val title =
-                    ep.optString("title", "").trim().takeIf { it.isNotBlank() }
-                        ?: arc.optString("title", "").trim().takeIf { it.isNotBlank() }
-                out.add(
-                    PlayerPlaylistItem(
-                        bvid = bvid,
-                        cid = cid,
-                        aid = aid,
-                        title = title,
-                    ),
-                )
-            }
-        }
-        return out
-    }
-
     private fun pickPlaylistIndexForCurrentMedia(list: List<PlayerPlaylistItem>, bvid: String, aid: Long?, cid: Long?): Int {
         val safeBvid = bvid.trim()
         if (cid != null && cid > 0) {
@@ -572,26 +503,6 @@ class VideoDetailActivity : BaseActivity() {
             if (byBvid >= 0) return byBvid
         }
         return -1
-    }
-
-    private fun parseUgcSeasonPlaylistFromArchivesList(json: JSONObject): List<PlayerPlaylistItem> {
-        val archives = json.optJSONObject("data")?.optJSONArray("archives") ?: return emptyList()
-        val out = ArrayList<PlayerPlaylistItem>(archives.length())
-        for (i in 0 until archives.length()) {
-            val obj = archives.optJSONObject(i) ?: continue
-            val bvid = obj.optString("bvid", "").trim()
-            if (bvid.isBlank()) continue
-            val aid = obj.optLong("aid").takeIf { it > 0L }
-            val title = obj.optString("title", "").trim().takeIf { it.isNotBlank() }
-            out.add(
-                PlayerPlaylistItem(
-                    bvid = bvid,
-                    aid = aid,
-                    title = title,
-                ),
-            )
-        }
-        return out
     }
 
     private fun playCurrentFromHeader() {
@@ -725,9 +636,9 @@ class VideoDetailActivity : BaseActivity() {
             playlistItemFactory = ::defaultVideoCardPlaylistItem,
         ) { pageNum ->
             val safePageNum = pageNum.coerceAtLeast(1)
-            val json = BiliApi.seasonsArchivesList(mid = mid, seasonId = seasonId, pageNum = safePageNum, pageSize = 200)
-            val parsed = parseUgcSeasonPlaylistFromArchivesListWithUiCards(json)
-            val totalCount = parsePlaylistPageTotalCount(json)
+            val archivesPage = BiliApi.ugcSeasonArchives(mid = mid, seasonId = seasonId, pageNum = safePageNum, pageSize = 200)
+            val parsed = parseVideoCardsToPlaylistParsed(archivesPage.items, ::defaultVideoCardPlaylistItem)
+            val totalCount = archivesPage.totalCount
             val hasMore = totalCount?.let { safePageNum * 200 < it } ?: (parsed.uiCards.size >= 200)
             VideoCardPlaylistPage(
                 cards = parsed.uiCards,

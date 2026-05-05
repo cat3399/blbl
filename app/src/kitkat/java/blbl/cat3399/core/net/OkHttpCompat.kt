@@ -5,10 +5,11 @@ import okhttp3.HttpUrl
 import okhttp3.MediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody
 import okhttp3.Response
 import okhttp3.ResponseBody
 import okio.BufferedSink
-import okio.Okio
+import okio.buffer
 import okio.Sink
 
 // OkHttp 3.x (Java-style API) compat shim for kitkat flavor
@@ -27,6 +28,7 @@ fun HttpUrl.urlFragment(): String? = fragment()
 
 fun String.parseHttpUrl(): HttpUrl? = HttpUrl.parse(this)
 fun String.toMediaTypeCompat(): MediaType = MediaType.parse(this)!!
+fun String.toRequestBodyCompat(contentType: MediaType): RequestBody = RequestBody.create(contentType, this)
 
 fun OkHttpClient.evictConnectionPool() = connectionPool().evictAll()
 
@@ -40,4 +42,17 @@ fun Cookie.cookieHttpOnly(): Boolean = httpOnly()
 fun Cookie.cookieHostOnly(): Boolean = hostOnly()
 fun Cookie.cookiePersistent(): Boolean = persistent()
 
-fun Sink.bufferCompat(): BufferedSink = Okio.buffer(this)
+fun Sink.bufferCompat(): BufferedSink = buffer()
+
+// OkHttp 3.x compat: Request.url and Response.code are methods, not properties
+val Request.url get() = url()
+val Request.method get() = method()
+val Response.code get() = code()
+val Response.message get() = message()
+
+// OkHttp 3.x compat: HttpUrl properties are methods
+val HttpUrl.host get() = host()
+val HttpUrl.port get() = port()
+val HttpUrl.encodedPath get() = encodedPath()
+
+

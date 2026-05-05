@@ -542,6 +542,20 @@
                 android:visibility="gone" />
 
             <ImageButton
+                android:id="@+id/btn_sponsor_submit"
+                android:layout_width="?attr/playerOsdButtonTargetSize"
+                android:layout_height="?attr/playerOsdButtonTargetSize"
+                android:layout_marginEnd="?attr/playerOsdGap"
+                android:background="?attr/blblFocusBgRound"
+                android:contentDescription="@string/player_btn_sponsor_submit"
+                android:focusable="true"
+                android:padding="?attr/playerOsdPadSmall"
+                android:scaleType="fitCenter"
+                app:srcCompat="@drawable/ic_player_upload"
+                android:visibility="gone"
+                app:tint="@color/player_button_tint" />
+
+            <ImageButton
                 android:id="@+id/btn_advanced"
                 android:layout_width="?attr/playerOsdButtonTargetSize"
                 android:layout_height="?attr/playerOsdButtonTargetSize"
@@ -678,6 +692,9 @@
         android:layout_marginStart="@dimen/player_seek_hint_margin_start"
         android:layout_marginBottom="@dimen/player_seek_hint_margin_bottom"
         android:background="@color/player_overlay_bg"
+        android:ellipsize="end"
+        android:maxLines="1"
+        android:maxWidth="@dimen/player_seek_hint_max_width"
         android:paddingStart="@dimen/player_seek_hint_padding_h"
         android:paddingEnd="@dimen/player_seek_hint_padding_h"
         android:paddingTop="@dimen/player_seek_hint_padding_v"
@@ -841,6 +858,148 @@
         </com.google.android.material.card.MaterialCardView>
 
     </androidx.constraintlayout.widget.ConstraintLayout>
+
+    <View
+        android:id="@+id/sponsor_submit_scrim"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:background="#99000000"
+        android:clickable="true"
+        android:focusable="false"
+        android:importantForAccessibility="no"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <androidx.constraintlayout.widget.Guideline
+        android:id="@+id/guideline_sponsor_submit_top"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        app:layout_constraintGuide_percent="0.38" />
+
+    <com.google.android.material.card.MaterialCardView
+        android:id="@+id/sponsor_submit_panel"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="24dp"
+        android:layout_marginEnd="24dp"
+        android:layout_marginBottom="4dp"
+        android:clickable="true"
+        android:focusable="false"
+        android:focusableInTouchMode="false"
+        android:visibility="gone"
+        app:cardBackgroundColor="#F20F0F0F"
+        app:cardCornerRadius="16dp"
+        app:cardElevation="10dp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="@id/guideline_sponsor_submit_top"
+        app:layout_constraintVertical_bias="0.25"
+        app:strokeWidth="0dp">
+
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingStart="10dp"
+            android:paddingTop="3dp"
+            android:paddingEnd="10dp"
+            android:paddingBottom="8dp">
+
+            <blbl.cat3399.feature.player.SponsorSubmitThumbnailStripView
+                android:id="@+id/sponsor_submit_thumbnails"
+                android:layout_width="0dp"
+                android:layout_height="@dimen/player_sponsor_submit_thumb_height"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent" />
+
+            <TextView
+                android:id="@+id/tv_sponsor_submit_status"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="16dp"
+                android:ellipsize="end"
+                android:gravity="end"
+                android:maxLines="1"
+                android:textColor="?attr/colorOnSurface"
+                android:textSize="16sp"
+                app:layout_constraintBottom_toBottomOf="@id/sponsor_submit_button_row"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toEndOf="@id/sponsor_submit_button_row"
+                app:layout_constraintTop_toTopOf="@id/sponsor_submit_button_row" />
+
+            <blbl.cat3399.feature.player.SponsorSubmitTimelineView
+                android:id="@+id/sponsor_submit_timeline"
+                android:layout_width="0dp"
+                android:layout_height="@dimen/player_sponsor_submit_timeline_height"
+                android:focusable="true"
+                android:focusableInTouchMode="false"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toBottomOf="@id/sponsor_submit_thumbnails" />
+
+            <LinearLayout
+                android:id="@+id/sponsor_submit_button_row"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:gravity="center"
+                android:orientation="horizontal"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toBottomOf="@id/sponsor_submit_timeline">
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btn_sponsor_submit_upload"
+                    android:layout_width="wrap_content"
+                    android:layout_height="@dimen/player_sponsor_submit_button_height"
+                    android:focusable="true"
+                    android:minWidth="@dimen/player_sponsor_submit_button_min_width"
+                    android:stateListAnimator="@animator/blbl_focus_scale"
+                    android:text="@string/player_sponsor_submit_upload"
+                    android:textAllCaps="false"
+                    android:textSize="17sp"
+                    app:cornerRadius="12dp"
+                    app:strokeColor="?attr/blblFocusStrokeColor"
+                    app:strokeWidth="2dp" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btn_sponsor_submit_delete"
+                    android:layout_width="wrap_content"
+                    android:layout_height="@dimen/player_sponsor_submit_button_height"
+                    android:layout_marginStart="12dp"
+                    android:focusable="true"
+                    android:minWidth="@dimen/player_sponsor_submit_button_min_width"
+                    android:stateListAnimator="@animator/blbl_focus_scale"
+                    android:text="@string/player_sponsor_submit_delete"
+                    android:textAllCaps="false"
+                    android:textSize="17sp"
+                    app:cornerRadius="12dp"
+                    app:strokeColor="?attr/blblFocusStrokeColor"
+                    app:strokeWidth="2dp" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btn_sponsor_submit_close"
+                    android:layout_width="wrap_content"
+                    android:layout_height="@dimen/player_sponsor_submit_button_height"
+                    android:layout_marginStart="12dp"
+                    android:focusable="true"
+                    android:minWidth="@dimen/player_sponsor_submit_button_min_width"
+                    android:stateListAnimator="@animator/blbl_focus_scale"
+                    android:text="@string/player_sponsor_submit_close"
+                    android:textAllCaps="false"
+                    android:textSize="17sp"
+                    app:cornerRadius="12dp"
+                    app:strokeColor="?attr/blblFocusStrokeColor"
+                    app:strokeWidth="2dp" />
+            </LinearLayout>
+        </androidx.constraintlayout.widget.ConstraintLayout>
+    </com.google.android.material.card.MaterialCardView>
 
     <com.google.android.material.card.MaterialCardView
         android:id="@+id/player_info_panel"

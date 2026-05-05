@@ -190,12 +190,13 @@ class SettingsRenderer(
                 listOf(
                     SettingEntry(SettingId.ImageQuality, "图片质量", prefs.imageQuality, null),
                     SettingEntry(SettingId.ThemePreset, "主题", SettingsText.themePresetText(prefs.themePreset), null),
+                    SettingEntry(SettingId.ApiSource, "接口类别", SettingsText.apiSourceText(prefs.apiSource), null),
                     SettingEntry(SettingId.UserAgent, "User-Agent", prefs.userAgent.take(60), null),
                     SettingEntry(SettingId.Ipv4OnlyEnabled, "是否只允许使用IPV4", if (prefs.ipv4OnlyEnabled) "开" else "关", null),
                     SettingEntry(SettingId.GaiaVgate, "风控验证", gaiaVgateStatusText(), "播放被拦截后可在此手动完成人机验证"),
                     SettingEntry(SettingId.ClearCache, "清理缓存", cacheSizeText(), null),
                     SettingEntry(SettingId.ConfigTransfer, "导出/入配置", "打开", null),
-                    SettingEntry(SettingId.ClearLogin, "清除登录", if (BiliClient.cookies.hasSessData()) "已登录" else "未登录", null),
+                    SettingEntry(SettingId.ClearLogin, "清除登录", loginStatusText(), null),
                 )
 
             "页面设置" ->
@@ -211,6 +212,7 @@ class SettingsRenderer(
                     SettingEntry(SettingId.PgcGridSpanCount, "番剧/电视剧每行卡片数量", SettingsText.gridSpanText(prefs.pgcGridSpanCount), null),
                     SettingEntry(SettingId.UiScaleFactor, "界面大小", SettingsText.uiScaleFactorText(prefs.uiScaleFactor), null),
                     SettingEntry(SettingId.FullscreenEnabled, "以全屏模式运行", if (prefs.fullscreenEnabled) "开" else "关", null),
+                    SettingEntry(SettingId.AvoidDisplayCutout, "避开挖孔/圆角区域", if (prefs.avoidDisplayCutout) "开" else "关", null),
                     SettingEntry(SettingId.TabSwitchFollowsFocus, "tab跟随焦点切换", if (prefs.tabSwitchFollowsFocus) "开" else "关", null),
                     SettingEntry(
                         SettingId.MainAutoHideSidebarOnEnterContent,
@@ -498,6 +500,15 @@ class SettingsRenderer(
             tokenOk -> "已通过"
             voucherOk -> "待验证"
             else -> "无"
+        }
+    }
+
+    private fun loginStatusText(): String {
+        val count = BiliClient.accounts.accounts().size
+        return when {
+            count > 1 -> "已登录 ${count} 个帐号"
+            BiliClient.cookies.hasSessData() -> "已登录"
+            else -> "未登录"
         }
     }
 

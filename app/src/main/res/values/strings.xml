@@ -77,6 +77,8 @@
     <string name="label_uid_fmt">UID %1$s</string>
     <string name="label_level_fmt">等级 Lv%1$d</string>
     <string name="label_exp_fmt">经验 %1$s</string>
+    <string name="action_switch_account">切换帐号</string>
+    <string name="action_add_account">添加帐号</string>
     <string name="action_logout">退出登录</string>
 
     <string name="up_tab_archive">投稿</string>
@@ -100,6 +102,10 @@
     <string name="player_list_empty">暂无内容</string>
     <string name="player_btn_comments">评论</string>
     <string name="player_btn_detail">视频详情页</string>
+    <string name="player_btn_sponsor_submit">上传广告片段</string>
+    <string name="player_sponsor_submit_upload">上传</string>
+    <string name="player_sponsor_submit_delete">删除</string>
+    <string name="player_sponsor_submit_close">关闭</string>
     <string name="player_info_intro">简介</string>
     <string name="player_info_recommend_empty">暂无推荐</string>
     <string name="player_info_desc_empty">暂无简介</string>

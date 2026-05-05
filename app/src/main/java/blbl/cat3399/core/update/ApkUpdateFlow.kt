@@ -29,8 +29,21 @@ object ApkUpdateFlow {
         update: ApkUpdater.RemoteUpdate,
         onSkipVersion: (() -> Unit)? = null,
         onDismiss: (() -> Unit)? = null,
-        onUpdate: () -> Unit,
+        onUpdate: (ApkUpdater.RemoteUpdate) -> Unit,
     ): PopupHandle? {
+        val versions = update.versions.ifEmpty { listOf(update) }
+        var selectedIndex = 0
+        var selectedUpdate = versions[selectedIndex]
+        var titleView: TextView? = null
+        var changelogView: TextView? = null
+
+        fun renderSelectedVersion() {
+            selectedUpdate = versions[selectedIndex]
+            val titlePrefix = if (selectedIndex == 0) "发现新版本" else "版本"
+            titleView?.text = "$titlePrefix ${selectedUpdate.versionName}"
+            changelogView?.text = selectedUpdate.displayChangelog
+        }
+
         return AppPopup.custom(
             context = activity,
             title = "发现新版本 ${update.versionName}",
@@ -42,11 +55,31 @@ object ApkUpdateFlow {
                         BiliClient.prefs.autoUpdateIgnoredVersionName = update.versionName
                         onSkipVersion?.invoke()
                     },
+                    PopupAction(role = PopupActionRole.NEUTRAL, text = "上一版", dismissOnClick = false) {
+                        if (selectedIndex >= versions.lastIndex) {
+                            AppToast.show(activity, "已经是最早版本")
+                        } else {
+                            selectedIndex++
+                            renderSelectedVersion()
+                        }
+                    },
+                    PopupAction(role = PopupActionRole.NEUTRAL, text = "下一版", dismissOnClick = false) {
+                        if (selectedIndex <= 0) {
+                            AppToast.show(activity, "已经是最新版本")
+                        } else {
+                            selectedIndex--
+                            renderSelectedVersion()
+                        }
+                    },
                     PopupAction(role = PopupActionRole.POSITIVE, text = "立即更新") {
-                        onUpdate()
+                        onUpdate(selectedUpdate)
                     },
                 ),
             preferredActionRole = PopupActionRole.POSITIVE,
+            onModalAttached = { modalRoot ->
+                titleView = modalRoot.findViewById(R.id.tv_title)
+                renderSelectedVersion()
+            },
             onDismiss = onDismiss,
         ) { dialogContext ->
             val scroll =
@@ -61,7 +94,8 @@ object ApkUpdateFlow {
                     .inflate(R.layout.view_popup_message, scroll, false) as TextView
             tv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f)
             tv.setLineSpacing(2f, 1.05f)
-            tv.text = update.displayChangelog
+            changelogView = tv
+            tv.text = selectedUpdate.displayChangelog
             scroll.addView(tv)
             scroll
         }
@@ -70,6 +104,7 @@ object ApkUpdateFlow {
     fun startDownloadAndInstall(
         activity: ComponentActivity,
         latestVersionHint: String? = null,
+        apkUrl: String? = null,
         onResolved: ((latestVersion: String, isNewer: Boolean) -> Unit)? = null,
     ): Job? {
         if (activeJob?.isActive == true) {
@@ -101,20 +136,20 @@ object ApkUpdateFlow {
                     val latestVersion = latestVersionHint ?: ApkUpdater.fetchLatestUpdate().versionName
                     val isNewer = ApkUpdater.isRemoteNewer(latestVersion, currentVersion)
                     onResolved?.invoke(latestVersion, isNewer)
-                    if (!isNewer) {
+                    if (!isNewer && apkUrl == null) {
                         popup?.dismiss()
                         AppToast.show(activity, "已是最新版（当前：$currentVersion）")
                         return@launch
                     }
 
-                    popup?.updateStatus("准备下载…（最新：$latestVersion）")
+                    popup?.updateStatus("准备下载…（版本：$latestVersion）")
                     popup?.updateProgress(null)
 
                     ApkUpdater.markStarted(now)
                     val apkFile =
                         ApkUpdater.downloadApkToCache(
                             context = activity,
-                            url = ApkUpdater.TEST_APK_URL,
+                            url = apkUrl ?: latestVersionHint?.let(ApkUpdater::apkUrlFor) ?: ApkUpdater.TEST_APK_URL,
                         ) { dlState ->
                             when (dlState) {
                                 ApkUpdater.Progress.Connecting -> {

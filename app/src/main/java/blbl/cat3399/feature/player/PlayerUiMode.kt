@@ -371,6 +371,7 @@ internal object PlayerUiMode {
             TypedValue.COMPLEX_UNIT_PX,
             scaledPxF(R.dimen.player_seek_hint_text_size),
         )
+        binding.tvSeekHint.maxWidth = scaledPx(R.dimen.player_seek_hint_max_width).coerceAtLeast(1)
         val hintPadH = scaledPx(R.dimen.player_seek_hint_padding_h)
         val hintPadV = scaledPx(R.dimen.player_seek_hint_padding_v)
         if (
@@ -509,6 +510,8 @@ internal object PlayerUiMode {
             TypedValue.COMPLEX_UNIT_PX,
             scaledPxF(blbl.cat3399.R.dimen.player_seek_hint_text_size),
         )
+        binding.tvSeekHint.maxWidth =
+            scaledPx(blbl.cat3399.R.dimen.player_seek_hint_max_width).coerceAtLeast(1)
         val hintPadH = scaledPx(blbl.cat3399.R.dimen.player_seek_hint_padding_h)
         val hintPadV = scaledPx(blbl.cat3399.R.dimen.player_seek_hint_padding_v)
         if (

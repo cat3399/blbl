@@ -1,6 +1,7 @@
 package blbl.cat3399.core.prefs
 
 import blbl.cat3399.BuildConfig
+import blbl.cat3399.core.account.AccountSessionStore
 import blbl.cat3399.core.net.CookieStore
 import org.json.JSONObject
 import java.text.SimpleDateFormat
@@ -19,6 +20,7 @@ object AppConfigBackup {
     private const val KEY_PREFS = "prefs"
     private const val KEY_CREDENTIALS = "credentials"
     private const val KEY_COOKIES = "cookies"
+    private const val KEY_ACCOUNTS = "accounts"
 
     private const val KIND = "blbl_config_backup"
 
@@ -38,17 +40,22 @@ object AppConfigBackup {
         internal val configPrefsJson: JSONObject,
         internal val credentialPrefsJson: JSONObject,
         internal val cookiesJson: JSONObject,
+        internal val accountsJson: JSONObject?,
     )
 
     fun prepareExport(
         prefs: AppPrefs,
         cookies: CookieStore,
+        accounts: AccountSessionStore,
         mode: ExportMode,
         nowMs: Long = System.currentTimeMillis(),
     ): PreparedExport {
         // Materialize lazy local ids so backup reflects the current effective local state.
         prefs.deviceBuvid
         prefs.deviceUuid
+        if (mode == ExportMode.CONFIG_WITH_CREDENTIALS) {
+            accounts.saveCurrentSessionAsActive(appPrefs = prefs, cookies = cookies)
+        }
 
         return PreparedExport(
             mode = mode,
@@ -59,6 +66,7 @@ object AppConfigBackup {
                     configPrefsJson = prefs.exportConfigSnapshotJson(),
                     credentialPrefsJson = prefs.exportCredentialsSnapshotJson(),
                     cookiesJson = cookies.exportSnapshotJson(includeExpired = false),
+                    accountsJson = accounts.exportBackupJson(),
                     nowMs = nowMs,
                 ),
         )
@@ -89,6 +97,7 @@ object AppConfigBackup {
             configPrefsJson = config.optJSONObject(KEY_PREFS) ?: error("配置文件缺少 config.prefs 字段"),
             credentialPrefsJson = credentials?.optJSONObject(KEY_PREFS) ?: JSONObject(),
             cookiesJson = credentials?.optJSONObject(KEY_COOKIES) ?: JSONObject(),
+            accountsJson = credentials?.optJSONObject(KEY_ACCOUNTS),
         )
     }
 
@@ -96,11 +105,18 @@ object AppConfigBackup {
         parsed: ParsedBackup,
         prefs: AppPrefs,
         cookies: CookieStore,
+        accounts: AccountSessionStore,
     ) {
         prefs.replaceConfigFromSnapshotJson(parsed.configPrefsJson)
         if (parsed.includesCredentials) {
             prefs.replaceCredentialsFromSnapshotJson(parsed.credentialPrefsJson)
             cookies.replaceAllFromJson(parsed.cookiesJson, sync = true)
+            if (parsed.accountsJson != null) {
+                accounts.replaceAllFromBackupJson(parsed.accountsJson)
+                accounts.loadActiveAccount(appPrefs = prefs, cookies = cookies)
+            } else {
+                accounts.replaceWithCurrentSessionIfPresent(appPrefs = prefs, cookies = cookies)
+            }
         }
     }
 
@@ -123,6 +139,7 @@ object AppConfigBackup {
         configPrefsJson: JSONObject,
         credentialPrefsJson: JSONObject,
         cookiesJson: JSONObject,
+        accountsJson: JSONObject,
         nowMs: Long,
     ): String {
         val root =
@@ -148,7 +165,8 @@ object AppConfigBackup {
                 KEY_CREDENTIALS,
                 JSONObject()
                     .put(KEY_PREFS, credentialPrefsJson)
-                    .put(KEY_COOKIES, cookiesJson),
+                    .put(KEY_COOKIES, cookiesJson)
+                    .put(KEY_ACCOUNTS, accountsJson),
             )
         }
         return root.toString(2)

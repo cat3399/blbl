@@ -6,6 +6,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.media3.common.Player
 import blbl.cat3399.core.api.BiliApi
 import blbl.cat3399.core.api.SponsorBlockApi
+import blbl.cat3399.core.api.video.VideoPlayStream
 import blbl.cat3399.core.log.AppLog
 import blbl.cat3399.core.net.BiliClient
 import blbl.cat3399.feature.player.engine.BlblPlayerEngine
@@ -253,7 +254,7 @@ internal fun PlayerActivity.maybeTickAutoSkipSegments(posMs: Long) {
 }
 
 internal fun PlayerActivity.maybeStartAutoSkipSegments(
-    playJson: JSONObject,
+    playStream: VideoPlayStream,
     bvid: String,
     cid: Long,
     playbackToken: Int,
@@ -265,7 +266,7 @@ internal fun PlayerActivity.maybeStartAutoSkipSegments(
     autoSkipFetchJob?.cancel()
     autoSkipFetchJob = null
 
-    val clipSegments = extractClipInfoSegmentsFromPlayJson(playJson)
+    val clipSegments = extractClipInfoSegmentsFromPlayStream(playStream)
     setAutoSkipSegments(playbackToken, clipSegments)
 
     autoSkipFetchJob =
@@ -287,25 +288,13 @@ internal fun PlayerActivity.maybeStartAutoSkipSegments(
         }
 }
 
-internal fun PlayerActivity.extractClipInfoSegmentsFromPlayJson(playJson: JSONObject): List<SkipSegment> {
-    val data = playJson.optJSONObject("data") ?: playJson.optJSONObject("result") ?: return emptyList()
-    val arr = data.optJSONArray("clip_info_list") ?: data.optJSONArray("clipInfoList") ?: return emptyList()
-    val out = ArrayList<SkipSegment>(arr.length())
-    for (i in 0 until arr.length()) {
-        val obj = arr.optJSONObject(i) ?: continue
-        val clipType = obj.optString("clipType", obj.optString("clip_type", "")).trim()
-        val category =
-            when (clipType) {
-                "CLIP_TYPE_OP" -> "intro"
-                "CLIP_TYPE_ED" -> "outro"
-                else -> "clip"
-            }
-        val startRaw = obj.optDouble("start", Double.NaN)
-        val endRaw = obj.optDouble("end", Double.NaN)
-        if (!startRaw.isFinite() || !endRaw.isFinite()) continue
-        val startMs = normalizeClipTimeToMs(startRaw).coerceAtLeast(0L)
-        val endMs = normalizeClipTimeToMs(endRaw).coerceAtLeast(0L)
+internal fun PlayerActivity.extractClipInfoSegmentsFromPlayStream(playStream: VideoPlayStream): List<SkipSegment> {
+    val out = ArrayList<SkipSegment>(playStream.clipSegments.size)
+    for (segment in playStream.clipSegments) {
+        val startMs = segment.startMs.coerceAtLeast(0L)
+        val endMs = segment.endMs.coerceAtLeast(0L)
         if (endMs <= startMs) continue
+        val category = segment.category.trim().ifBlank { "clip" }
         val id = "pgc:$category:$startMs-$endMs"
         out.add(
             SkipSegment(
@@ -379,11 +368,6 @@ internal fun mergeAutoSkipSegments(
     return merged.values.toList()
 }
 
-internal fun PlayerActivity.normalizeClipTimeToMs(value: Double): Long {
-    // B站 clip_info_list 的 start/end 常见为秒（支持小数），但也可能直接是毫秒。
-    return if (value >= 10_000.0) value.toLong() else (value * 1000.0).toLong()
-}
-
 internal fun PlayerActivity.setAutoSkipSegments(token: Int, segments: List<SkipSegment>) {
     if (token != autoSkipToken) return
     autoSkipSegments = segments.sortedBy { it.startMs }
@@ -391,26 +375,14 @@ internal fun PlayerActivity.setAutoSkipSegments(token: Int, segments: List<SkipS
     trace?.log("skipseg:set", "count=${autoSkipSegments.size}")
 }
 
-internal fun PlayerActivity.extractResumeCandidateFromPlayJson(playJson: JSONObject): ResumeCandidate? {
-    val data = playJson.optJSONObject("data") ?: playJson.optJSONObject("result") ?: return null
-    val time = data.optLong("last_play_time", -1L).takeIf { it > 0 } ?: return null
+internal fun PlayerActivity.extractResumeCandidateFromPlayStream(playStream: VideoPlayStream): ResumeCandidate? {
+    val time = playStream.resume?.rawTime?.takeIf { it > 0 } ?: return null
     val hint =
         when {
             time >= 10_000L -> RawTimeUnitHint.MILLIS_LIKELY
             else -> RawTimeUnitHint.UNKNOWN
         }
     return ResumeCandidate(rawTime = time, rawTimeUnitHint = hint, source = "playurl")
-}
-
-internal fun PlayerActivity.extractResumeCandidateFromPlayerWbiV2(playerJson: JSONObject): ResumeCandidate? {
-    val data = playerJson.optJSONObject("data") ?: return null
-    val time = data.optLong("last_play_time", -1L).takeIf { it > 0 } ?: return null
-    val hint =
-        when {
-            time >= 10_000L -> RawTimeUnitHint.MILLIS_LIKELY
-            else -> RawTimeUnitHint.UNKNOWN
-        }
-    return ResumeCandidate(rawTime = time, rawTimeUnitHint = hint, source = "playerWbiV2")
 }
 
 internal fun PlayerActivity.normalizeResumePositionMs(raw: Long, hint: RawTimeUnitHint, durationMs: Long?): Long? {
@@ -437,7 +409,7 @@ internal fun PlayerActivity.shouldAutoResumeTo(positionMs: Long, durationMs: Lon
 }
 
 internal fun PlayerActivity.maybeScheduleAutoResume(
-    playJson: JSONObject,
+    playStream: VideoPlayStream,
     bvid: String,
     cid: Long,
     playbackToken: Int,
@@ -463,9 +435,8 @@ internal fun PlayerActivity.maybeScheduleAutoResume(
     }
 
     val strictCidMatch = isMultiPagePlaylist(partsListItems, currentBvid)
-    extractResumeCandidateFromPlayJson(playJson)?.let { cand ->
-        val data = playJson.optJSONObject("data") ?: playJson.optJSONObject("result") ?: JSONObject()
-        val lastCid = data.optLong("last_play_cid", -1L).takeIf { it > 0 }
+    extractResumeCandidateFromPlayStream(playStream)?.let { cand ->
+        val lastCid = playStream.resume?.lastCid
         when {
             lastCid != null && lastCid != cid -> Unit
             strictCidMatch && lastCid == null -> Unit
@@ -479,15 +450,20 @@ internal fun PlayerActivity.maybeScheduleAutoResume(
     autoResumeJob?.cancel()
     autoResumeJob =
         lifecycleScope.launch {
-            val playerJson = runCatching { BiliApi.playerWbiV2(bvid = bvid, cid = cid) }.getOrNull() ?: return@launch
+            val playerInfo = runCatching { BiliApi.videoPlayerInfo(bvid = bvid, cid = cid) }.getOrNull() ?: return@launch
             if (!isActive) return@launch
             if (playbackToken != autoResumeToken) return@launch
             if (autoResumeCancelledByUser) return@launch
-            val data = playerJson.optJSONObject("data") ?: JSONObject()
-            val lastCid = data.optLong("last_play_cid", -1L).takeIf { it > 0 }
+            val lastCid = playerInfo.resume?.lastCid?.takeIf { it > 0 }
             if (lastCid != null && lastCid != cid) return@launch
             if (strictCidMatch && lastCid == null) return@launch
-            val cand = extractResumeCandidateFromPlayerWbiV2(playerJson) ?: return@launch
+            val resume = playerInfo.resume?.rawTime?.takeIf { it > 0 } ?: return@launch
+            val hint =
+                when {
+                    resume >= 10_000L -> RawTimeUnitHint.MILLIS_LIKELY
+                    else -> RawTimeUnitHint.UNKNOWN
+                }
+            val cand = ResumeCandidate(rawTime = resume, rawTimeUnitHint = hint, source = "videoPlayerInfo")
             scheduleAutoResume(engine = engine, candidate = cand, playbackToken = playbackToken)
         }
 }

@@ -19,12 +19,14 @@ import blbl.cat3399.core.paging.appliedOrNull
 import blbl.cat3399.core.ui.AppToast
 import blbl.cat3399.core.ui.DpadGridController
 import blbl.cat3399.core.ui.FocusTreeUtils
+import blbl.cat3399.core.ui.GridViewportFillMonitor
 import blbl.cat3399.core.ui.GridSpanPolicy
 import blbl.cat3399.core.ui.TabContentSwitchFocusHost
 import blbl.cat3399.core.ui.UiScale
 import blbl.cat3399.core.ui.postDelayedIfAlive
 import blbl.cat3399.core.ui.postIfAlive
 import blbl.cat3399.core.ui.postIfAttached
+import blbl.cat3399.core.ui.installGridViewportFillMonitor
 import blbl.cat3399.core.ui.requestFocusAdapterPositionReliable
 import blbl.cat3399.core.ui.requestFocusFirstItemOrSelfAfterRefresh
 import blbl.cat3399.databinding.FragmentLiveGridBinding
@@ -54,6 +56,7 @@ class LiveGridFragment : Fragment(), LivePageFocusTarget, RefreshKeyHandler {
     private var pendingFocusFirstCardAfterRefresh: Boolean = false
     private var lastFocusedAdapterPosition: Int? = null
     private var dpadGridController: DpadGridController? = null
+    private var viewportFillMonitor: GridViewportFillMonitor? = null
     private var pendingRestorePosition: Int? = null
     private var pendingRestoreAttemptsLeft: Int = 0
 
@@ -146,6 +149,16 @@ class LiveGridFragment : Fragment(), LivePageFocusTarget, RefreshKeyHandler {
                         isEnabled = { _binding != null && isResumed },
                     ),
             ).also { it.install() }
+        viewportFillMonitor?.release()
+        viewportFillMonitor =
+            binding.recycler.installGridViewportFillMonitor(
+                isEnabled = { _binding != null && isResumed },
+                canLoadMore = {
+                    val s = paging.snapshot()
+                    !s.isLoading && !s.endReached
+                },
+                loadMore = { loadNextPage() },
+            )
 
         binding.swipeRefresh.setOnRefreshListener { resetAndLoad(fromUserRefresh = true) }
     }
@@ -153,6 +166,7 @@ class LiveGridFragment : Fragment(), LivePageFocusTarget, RefreshKeyHandler {
     override fun onResume() {
         super.onResume()
         updateRecyclerSpanCountIfNeeded(force = true)
+        viewportFillMonitor?.scheduleCheck()
         maybeTriggerInitialLoad()
         restoreFocusIfNeeded()
         maybeConsumePendingFocusFirstCard()
@@ -274,11 +288,13 @@ class LiveGridFragment : Fragment(), LivePageFocusTarget, RefreshKeyHandler {
                                     dpadGridController?.unparkFocusAfterDataSetReset()
                                 },
                             )
+                            viewportFillMonitor?.scheduleCheck()
                             return@postIfAlive
                         }
                         restoreFocusIfNeeded()
                         maybeConsumePendingFocusFirstCard()
                         dpadGridController?.consumePendingFocusAfterLoadMore()
+                        viewportFillMonitor?.scheduleCheck()
                     }
                 }
                 AppLog.i(
@@ -330,6 +346,7 @@ class LiveGridFragment : Fragment(), LivePageFocusTarget, RefreshKeyHandler {
         val contentWidthDp = contentWidthPx / dm.density
         val span = autoSpanCountForWidthDp(contentWidthDp)
         if (span != lm.spanCount) lm.spanCount = span
+        viewportFillMonitor?.scheduleCheck()
     }
 
     override fun requestFocusFirstCardFromTab(): Boolean {
@@ -566,6 +583,8 @@ class LiveGridFragment : Fragment(), LivePageFocusTarget, RefreshKeyHandler {
         initialLoadTriggered = false
         dpadGridController?.release()
         dpadGridController = null
+        viewportFillMonitor?.release()
+        viewportFillMonitor = null
         lastSpanCountContentWidthPx = -1
         _binding = null
         super.onDestroyView()

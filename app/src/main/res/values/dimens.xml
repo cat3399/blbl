@@ -52,6 +52,10 @@
     <!-- Player: bottom recommend panel -->
     <dimen name="player_recommend_card_width">260dp</dimen>
     <dimen name="player_recommend_card_margin">6dp</dimen>
+    <dimen name="player_sponsor_submit_thumb_height">220dp</dimen>
+    <dimen name="player_sponsor_submit_timeline_height">62dp</dimen>
+    <dimen name="player_sponsor_submit_button_min_width">124dp</dimen>
+    <dimen name="player_sponsor_submit_button_height">44dp</dimen>
 
     <!-- Video detail: header -->
     <dimen name="video_detail_header_cover_width">480dp</dimen>
@@ -158,6 +162,7 @@
     <dimen name="player_seek_hint_padding_h">14dp</dimen>
     <dimen name="player_seek_hint_padding_v">10dp</dimen>
     <dimen name="player_seek_hint_text_size">22sp</dimen>
+    <dimen name="player_seek_hint_max_width">900dp</dimen>
     <dimen name="player_touch_lock_button_size">48dp</dimen>
     <dimen name="player_touch_lock_button_padding">8dp</dimen>
     <dimen name="player_touch_lock_margin_start">18dp</dimen>

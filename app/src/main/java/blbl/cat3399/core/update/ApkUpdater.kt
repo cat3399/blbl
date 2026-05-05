@@ -1,7 +1,11 @@
 package blbl.cat3399.core.update
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.os.Build
 import androidx.core.content.FileProvider
 import blbl.cat3399.BuildConfig
 import blbl.cat3399.core.net.BiliClient
@@ -11,8 +15,8 @@ import blbl.cat3399.core.net.evictConnectionPool
 import blbl.cat3399.core.net.ipv4OnlyDns
 import blbl.cat3399.core.net.statusCode
 import blbl.cat3399.core.net.statusMessage
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
@@ -84,6 +88,7 @@ object ApkUpdater {
     data class RemoteUpdate(
         val versionName: String,
         val changelog: String,
+        val versions: List<RemoteUpdate> = emptyList(),
     ) {
         val displayChangelog: String
             get() = changelog.ifBlank { "暂无更新日志" }
@@ -140,40 +145,45 @@ object ApkUpdater {
     }
 
     internal fun parseChangelog(raw: String): RemoteUpdate {
+        val versions = parseChangelogVersions(raw)
+        return versions.first().copy(versions = versions)
+    }
+
+    internal fun parseChangelogVersions(raw: String): List<RemoteUpdate> {
         val normalized = raw.replace("\r\n", "\n").replace('\r', '\n').trim()
         check(normalized.isNotBlank()) { "更新日志为空" }
 
         val lines = normalized.lines()
-        val latestHeading =
+        val allHeadings =
             lines.withIndex()
-                .firstNotNullOfOrNull { (index, line) ->
+                .mapNotNull { (index, line) ->
                     parseVersionHeading(line)?.let { heading -> index to heading }
                 }
-                ?: error("未找到版本标题")
+        check(allHeadings.isNotEmpty()) { "未找到版本标题" }
 
-        val (headingIndex, heading) = latestHeading
-        val nextHeadingIndex =
-            lines.withIndex()
-                .drop(headingIndex + 1)
-                .firstOrNull { (_, line) ->
-                    val next = parseVersionHeading(line) ?: return@firstOrNull false
-                    next.level <= heading.level
-                }
-                ?.index
-                ?: lines.size
+        val versionLevel = allHeadings.first().second.level
+        val headings = allHeadings.filter { (_, heading) -> heading.level == versionLevel }
+        return headings.mapIndexed { index, (headingIndex, heading) ->
+            val nextHeadingIndex = headings.getOrNull(index + 1)?.first ?: lines.size
+            val sectionLines =
+                lines.subList(headingIndex + 1, nextHeadingIndex)
+                    .dropLastWhile { it.isBlank() }
+            val changelog =
+                sectionLines
+                    .joinToString("\n")
+                    .trim()
 
-        val sectionLines =
-            lines.subList(headingIndex + 1, nextHeadingIndex)
-                .dropLastWhile { it.isBlank() }
-        val changelog =
-            sectionLines
-                .joinToString("\n")
-                .trim()
+            RemoteUpdate(
+                versionName = heading.versionName,
+                changelog = changelog,
+            )
+        }
+    }
 
-        return RemoteUpdate(
-            versionName = heading.versionName,
-            changelog = changelog,
-        )
+    fun apkUrlFor(versionName: String): String {
+        val cleanVersion = versionName.trim().removePrefix("v")
+        val channel = if (BuildConfig.DEBUG) "debug" else "release"
+        return "https://cat3399.top/blbl/blbl-$cleanVersion-$channel.apk"
     }
 
     private data class VersionHeading(
@@ -263,8 +273,7 @@ object ApkUpdater {
     }
 
     fun installApk(context: Context, apkFile: File) {
-        val authority = "${context.packageName}.fileprovider"
-        val uri = FileProvider.getUriForFile(context, authority, apkFile)
+        val uri = installUriFor(context, apkFile)
         val intent =
             Intent(Intent.ACTION_VIEW).apply {
                 addCategory(Intent.CATEGORY_DEFAULT)
@@ -272,7 +281,38 @@ object ApkUpdater {
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
+        grantInstallerReadPermissions(context, intent, uri)
         context.startActivity(intent)
+    }
+
+    @SuppressLint("SetWorldReadable")
+    private fun installUriFor(context: Context, apkFile: File): Uri {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            val authority = "${context.packageName}.fileprovider"
+            FileProvider.getUriForFile(context, authority, apkFile)
+        } else {
+            apkFile.setReadable(true, false)
+            Uri.fromFile(apkFile)
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun grantInstallerReadPermissions(
+        context: Context,
+        intent: Intent,
+        uri: Uri,
+    ) {
+        if (uri.scheme != "content") return
+
+        val installers =
+            context.packageManager.queryIntentActivities(
+                intent,
+                PackageManager.MATCH_DEFAULT_ONLY,
+            )
+        for (installer in installers) {
+            val packageName = installer.activityInfo?.packageName ?: continue
+            context.grantUriPermission(packageName, uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
     }
 
     private fun formatBytes(bytes: Long): String {

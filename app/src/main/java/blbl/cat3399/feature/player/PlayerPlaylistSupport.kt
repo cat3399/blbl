@@ -1,10 +1,12 @@
 package blbl.cat3399.feature.player
 
-import blbl.cat3399.core.api.BiliApi
+import blbl.cat3399.core.api.video.VideoDetail
+import blbl.cat3399.core.api.video.VideoDetailStat
+import blbl.cat3399.core.api.video.VideoUgcSeason
+import blbl.cat3399.core.api.video.VideoUgcSeasonEpisode
 import blbl.cat3399.core.log.AppLog
 import blbl.cat3399.core.model.VideoCard
 import blbl.cat3399.feature.video.VideoCardVisibilityFilter
-import org.json.JSONObject
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
@@ -133,75 +135,38 @@ internal fun parseVideoCardsToPlaylistParsed(
     return PlaylistParsed(items = items, uiCards = uiCards)
 }
 
-internal fun parseUgcSeasonPlaylistFromViewWithUiCards(ugcSeason: JSONObject): PlaylistParsed {
-    val sections = ugcSeason.optJSONArray("sections") ?: return PlaylistParsed(emptyList(), emptyList())
-    val cap = ugcSeason.optInt("ep_count").coerceAtLeast(0)
+internal fun parseUgcSeasonPlaylistFromDetailWithUiCards(ugcSeason: VideoUgcSeason): PlaylistParsed {
+    val cap = ugcSeason.epCount?.coerceAtLeast(0) ?: 0
     val outItems = ArrayList<PlayerPlaylistItem>(cap)
     val outCards = ArrayList<VideoCard>(cap)
 
-    fun parseDurationSec(obj: JSONObject): Int {
-        val byInt = obj.optInt("duration", 0).takeIf { it > 0 }
-        if (byInt != null) return byInt
-        val text = obj.optString("duration_text", obj.optString("duration", "0:00"))
-        return BiliApi.parseDuration(text)
-    }
-
-    for (i in 0 until sections.length()) {
-        val section = sections.optJSONObject(i) ?: continue
-        val eps = section.optJSONArray("episodes") ?: continue
-        for (j in 0 until eps.length()) {
-            val ep = eps.optJSONObject(j) ?: continue
-            val arc = ep.optJSONObject("arc") ?: JSONObject()
-            val bvid = ep.optString("bvid", "").trim().ifBlank { arc.optString("bvid", "").trim() }
-            if (bvid.isBlank()) continue
-            val cid = ep.optLong("cid").takeIf { it > 0 } ?: arc.optLong("cid").takeIf { it > 0 }
-            val aid = ep.optLong("aid").takeIf { it > 0 } ?: arc.optLong("aid").takeIf { it > 0 }
-            val rawTitle =
-                ep.optString("title", "").trim().takeIf { it.isNotBlank() }
-                    ?: arc.optString("title", "").trim().takeIf { it.isNotBlank() }
-            val title = rawTitle ?: "视频 ${outItems.size + 1}"
+    for (section in ugcSeason.sections) {
+        for (episode in section.episodes) {
+            if (episode.bvid.isBlank()) continue
+            val rawTitle = episode.title?.trim()?.takeIf { it.isNotBlank() }
             outItems.add(
                 PlayerPlaylistItem(
-                    bvid = bvid,
-                    cid = cid,
-                    aid = aid,
+                    bvid = episode.bvid,
+                    cid = episode.cid,
+                    aid = episode.aid,
                     title = rawTitle,
                 ),
             )
 
-            val cover =
-                arc.optString("pic", arc.optString("cover", "")).trim().ifBlank {
-                    ep.optString("cover", ep.optString("pic", "")).trim()
-                }
-            val ownerObj = arc.optJSONObject("owner") ?: ep.optJSONObject("owner") ?: JSONObject()
-            val ownerName = ownerObj.optString("name", "").trim()
-            val ownerFace = ownerObj.optString("face", "").trim().takeIf { it.isNotBlank() }
-            val ownerMid = ownerObj.optLong("mid").takeIf { it > 0 }
-            val statObj = arc.optJSONObject("stat") ?: JSONObject()
-            val view =
-                statObj.optLong("view").takeIf { it > 0 }
-                    ?: statObj.optLong("play").takeIf { it > 0 }
-            val danmaku =
-                statObj.optLong("danmaku").takeIf { it > 0 }
-                    ?: statObj.optLong("dm").takeIf { it > 0 }
-            val pubDate =
-                arc.optLong("pubdate").takeIf { it > 0 }
-                    ?: ep.optLong("pubdate").takeIf { it > 0 }
-
             outCards.add(
                 VideoCard(
-                    bvid = bvid,
-                    cid = cid,
-                    aid = aid,
-                    title = title,
-                    coverUrl = cover,
-                    durationSec = parseDurationSec(arc),
-                    ownerName = ownerName,
-                    ownerFace = ownerFace,
-                    ownerMid = ownerMid,
-                    view = view,
-                    danmaku = danmaku,
-                    pubDate = pubDate,
+                    bvid = episode.bvid,
+                    cid = episode.cid,
+                    aid = episode.aid,
+                    title = rawTitle ?: "视频 ${outItems.size}",
+                    coverUrl = episode.coverUrl.orEmpty(),
+                    durationSec = episode.durationSec ?: 0,
+                    ownerName = episode.owner?.name.orEmpty(),
+                    ownerFace = episode.owner?.avatarUrl,
+                    ownerMid = episode.owner?.mid?.takeIf { it > 0L },
+                    view = statCount(episode.stat, "view"),
+                    danmaku = statCount(episode.stat, "danmaku"),
+                    pubDate = episode.pubDateSec,
                     pubDateText = null,
                 ),
             )
@@ -211,43 +176,16 @@ internal fun parseUgcSeasonPlaylistFromViewWithUiCards(ugcSeason: JSONObject): P
     return PlaylistParsed(items = outItems, uiCards = outCards)
 }
 
-internal fun parseUgcSeasonPlaylistFromView(ugcSeason: JSONObject): List<PlayerPlaylistItem> {
-    return parseUgcSeasonPlaylistFromViewWithUiCards(ugcSeason).items
-}
+internal fun parseMultiPagePlaylistFromDetailWithUiCards(detail: VideoDetail, bvid: String, aid: Long?): PlaylistParsed {
+    if (detail.pages.size <= 1) return PlaylistParsed(emptyList(), emptyList())
 
-internal fun parseMultiPagePlaylistFromViewWithUiCards(viewData: JSONObject, bvid: String, aid: Long?): PlaylistParsed {
-    val pages = viewData.optJSONArray("pages") ?: return PlaylistParsed(emptyList(), emptyList())
-    if (pages.length() <= 1) return PlaylistParsed(emptyList(), emptyList())
+    val outItems = ArrayList<PlayerPlaylistItem>(detail.pages.size)
+    val outCards = ArrayList<VideoCard>(detail.pages.size)
+    val owner = detail.owner
 
-    val outItems = ArrayList<PlayerPlaylistItem>(pages.length())
-    val outCards = ArrayList<VideoCard>(pages.length())
-
-    val cover = viewData.optString("pic", viewData.optString("cover", "")).trim()
-    val ownerObj = viewData.optJSONObject("owner") ?: JSONObject()
-    val ownerName = ownerObj.optString("name", "").trim()
-    val ownerFace = ownerObj.optString("face", "").trim().takeIf { it.isNotBlank() }
-    val ownerMid = ownerObj.optLong("mid").takeIf { it > 0 }
-    val statObj = viewData.optJSONObject("stat") ?: JSONObject()
-    val viewCount =
-        statObj.optLong("view").takeIf { it > 0 }
-            ?: statObj.optLong("play").takeIf { it > 0 }
-    val danmakuCount =
-        statObj.optLong("danmaku").takeIf { it > 0 }
-            ?: statObj.optLong("dm").takeIf { it > 0 }
-    val pubDate = viewData.optLong("pubdate").takeIf { it > 0 }
-
-    fun parseDurationSec(pageObj: JSONObject): Int {
-        val byInt = pageObj.optInt("duration", 0).takeIf { it > 0 }
-        if (byInt != null) return byInt
-        val text = pageObj.optString("duration_text", pageObj.optString("duration", "0:00"))
-        return BiliApi.parseDuration(text)
-    }
-
-    for (i in 0 until pages.length()) {
-        val obj = pages.optJSONObject(i) ?: continue
-        val cid = obj.optLong("cid").takeIf { it > 0 } ?: continue
-        val page = obj.optInt("page").takeIf { it > 0 } ?: (i + 1)
-        val part = obj.optString("part", "").trim()
+    for ((index, pageObj) in detail.pages.withIndex()) {
+        val page = pageObj.page.takeIf { it > 0 } ?: (index + 1)
+        val part = pageObj.title?.trim().orEmpty()
         val title =
             if (part.isBlank()) {
                 "P$page"
@@ -257,7 +195,7 @@ internal fun parseMultiPagePlaylistFromViewWithUiCards(viewData: JSONObject, bvi
         outItems.add(
             PlayerPlaylistItem(
                 bvid = bvid,
-                cid = cid,
+                cid = pageObj.cid,
                 aid = aid,
                 title = title,
             ),
@@ -265,17 +203,17 @@ internal fun parseMultiPagePlaylistFromViewWithUiCards(viewData: JSONObject, bvi
         outCards.add(
             VideoCard(
                 bvid = bvid,
-                cid = cid,
+                cid = pageObj.cid,
                 aid = aid,
                 title = title,
-                coverUrl = cover,
-                durationSec = parseDurationSec(obj),
-                ownerName = ownerName,
-                ownerFace = ownerFace,
-                ownerMid = ownerMid,
-                view = viewCount,
-                danmaku = danmakuCount,
-                pubDate = pubDate,
+                coverUrl = detail.coverUrl.orEmpty(),
+                durationSec = pageObj.durationSec ?: 0,
+                ownerName = owner?.name.orEmpty(),
+                ownerFace = owner?.avatarUrl,
+                ownerMid = owner?.mid?.takeIf { it > 0L },
+                view = statCount(detail.stat, "view"),
+                danmaku = statCount(detail.stat, "danmaku"),
+                pubDate = detail.pubDateSec,
                 pubDateText = null,
             ),
         )
@@ -284,86 +222,12 @@ internal fun parseMultiPagePlaylistFromViewWithUiCards(viewData: JSONObject, bvi
     return PlaylistParsed(items = outItems, uiCards = outCards)
 }
 
-internal fun parseMultiPagePlaylistFromView(viewData: JSONObject, bvid: String, aid: Long?): List<PlayerPlaylistItem> {
-    return parseMultiPagePlaylistFromViewWithUiCards(viewData, bvid = bvid, aid = aid).items
-}
-
-internal fun parseUgcSeasonPlaylistFromArchivesListWithUiCards(json: JSONObject): PlaylistParsed {
-    val archives = json.optJSONObject("data")?.optJSONArray("archives") ?: return PlaylistParsed(emptyList(), emptyList())
-    val outItems = ArrayList<PlayerPlaylistItem>(archives.length())
-    val outCards = ArrayList<VideoCard>(archives.length())
-
-    fun parseDurationSec(obj: JSONObject): Int {
-        val byInt = obj.optInt("duration", 0).takeIf { it > 0 }
-        if (byInt != null) return byInt
-        val text = obj.optString("duration_text", obj.optString("duration", "0:00"))
-        return BiliApi.parseDuration(text)
+private fun statCount(stat: VideoDetailStat, key: String): Long? =
+    when (key) {
+        "view" -> stat.view
+        "danmaku" -> stat.danmaku
+        else -> null
     }
-
-    for (i in 0 until archives.length()) {
-        val obj = archives.optJSONObject(i) ?: continue
-        val bvid = obj.optString("bvid", "").trim()
-        if (bvid.isBlank()) continue
-        val aid = obj.optLong("aid").takeIf { it > 0 }
-        val cid = obj.optLong("cid").takeIf { it > 0 }
-        val title = obj.optString("title", "").trim().takeIf { it.isNotBlank() }
-        val cover = obj.optString("pic", obj.optString("cover", "")).trim()
-
-        val ownerObj = obj.optJSONObject("owner") ?: JSONObject()
-        val ownerName =
-            ownerObj.optString("name", "").trim().ifBlank {
-                obj.optString("author", "").trim()
-            }
-        val ownerFace = ownerObj.optString("face", "").trim().takeIf { it.isNotBlank() }
-        val ownerMid =
-            ownerObj.optLong("mid").takeIf { it > 0 }
-                ?: obj.optLong("mid").takeIf { it > 0 }
-
-        val statObj = obj.optJSONObject("stat") ?: JSONObject()
-        val view =
-            statObj.optLong("view").takeIf { it > 0 }
-                ?: statObj.optLong("play").takeIf { it > 0 }
-        val danmaku =
-            statObj.optLong("danmaku").takeIf { it > 0 }
-                ?: statObj.optLong("dm").takeIf { it > 0 }
-        val pubDate = obj.optLong("pubdate").takeIf { it > 0 }
-
-        outItems.add(
-            PlayerPlaylistItem(
-                bvid = bvid,
-                cid = cid,
-                aid = aid,
-                title = title,
-            ),
-        )
-        outCards.add(
-            VideoCard(
-                bvid = bvid,
-                cid = cid,
-                aid = aid,
-                title = title ?: "视频 ${outItems.size}",
-                coverUrl = cover,
-                durationSec = parseDurationSec(obj),
-                ownerName = ownerName,
-                ownerFace = ownerFace,
-                ownerMid = ownerMid,
-                view = view,
-                danmaku = danmaku,
-                pubDate = pubDate,
-                pubDateText = null,
-            ),
-        )
-    }
-    return PlaylistParsed(items = outItems, uiCards = outCards)
-}
-
-internal fun parseUgcSeasonPlaylistFromArchivesList(json: JSONObject): List<PlayerPlaylistItem> {
-    return parseUgcSeasonPlaylistFromArchivesListWithUiCards(json).items
-}
-
-internal fun parsePlaylistPageTotalCount(json: JSONObject): Int? {
-    return json.optJSONObject("data")?.optJSONObject("page")?.optInt("total", 0)?.takeIf { it > 0 }
-}
 
 internal fun pickPlaylistIndexForCurrentMedia(list: List<PlayerPlaylistItem>, bvid: String, aid: Long?, cid: Long?): Int {
     val safeBvid = bvid.trim()

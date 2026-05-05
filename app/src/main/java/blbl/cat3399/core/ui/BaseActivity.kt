@@ -33,6 +33,10 @@ open class BaseActivity : AppCompatActivity() {
         maybeRecreateOnUiScaleChanged()
     }
 
+    fun reapplyWindowDisplayPolicy() {
+        WindowDisplayPolicy.reapply(this)
+    }
+
     protected open fun shouldRecreateOnUiScaleChange(): Boolean = true
 
     protected open fun shouldApplyThemePreset(): Boolean = true

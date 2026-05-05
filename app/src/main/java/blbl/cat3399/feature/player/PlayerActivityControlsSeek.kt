@@ -51,7 +51,7 @@ internal fun PlayerActivity.toggleControls() {
 }
 
 internal fun PlayerActivity.setControlsVisible(visible: Boolean) {
-    val show = (visible || isSidePanelVisible()) && !isTouchLocked()
+    val show = (visible || isSidePanelVisible() || isSponsorSubmitPanelVisible()) && !isTouchLocked()
     seekOsdHideJob?.cancel()
     seekOsdHideJob = null
     seekOsdToken = 0L
@@ -98,7 +98,7 @@ internal fun PlayerActivity.updateTopBarUi() {
 }
 
 internal fun PlayerActivity.showSeekOsd() {
-    if (isSidePanelVisible()) return
+    if (isSidePanelVisible() || isSponsorSubmitPanelVisible()) return
     if (osdMode == PlayerActivity.OsdMode.Full) {
         // Full OSD already has the progress bar; keep it alive.
         noteUserInteraction()
@@ -120,7 +120,7 @@ internal fun PlayerActivity.showSeekOsd() {
 }
 
 internal fun PlayerActivity.showSeekOsd(posMs: Long, durationMs: Long, bufferedPosMs: Long) {
-    if (isSidePanelVisible()) return
+    if (isSidePanelVisible() || isSponsorSubmitPanelVisible()) return
     val duration = durationMs.coerceAtLeast(0L)
     val pos = posMs.coerceAtLeast(0L)
     val bufPos = bufferedPosMs.coerceAtLeast(0L)
@@ -216,7 +216,7 @@ internal fun PlayerActivity.scheduleHideSeekOsd() {
 
 internal fun PlayerActivity.updatePersistentBottomProgressBarVisibility() {
     val enabled = session.persistentBottomProgressEnabled
-    val showControls = osdMode != PlayerActivity.OsdMode.Hidden || isSidePanelVisible()
+    val showControls = osdMode != PlayerActivity.OsdMode.Hidden || isSidePanelVisible() || isSponsorSubmitPanelVisible()
     val persistentV = if (enabled && !showControls && !transientSeekOsdVisible) View.VISIBLE else View.GONE
     if (binding.progressPersistentBottom.visibility != persistentV) binding.progressPersistentBottom.visibility = persistentV
 
@@ -230,6 +230,7 @@ internal fun PlayerActivity.restartAutoHideTimer() {
     if (isTouchLocked()) return
     if (osdMode != PlayerActivity.OsdMode.Full) return
     if (isSidePanelVisible()) return
+    if (isSponsorSubmitPanelVisible()) return
     if (scrubbing) return
     if (!exo.isPlaying) return
     val token = lastInteractionAtMs
@@ -291,6 +292,7 @@ internal fun PlayerActivity.hasControlsFocus(): Boolean =
     binding.topBar.hasFocus() ||
         binding.cardUpQuick.hasFocus() ||
         binding.bottomBar.hasFocus() ||
+        binding.sponsorSubmitPanel.hasFocus() ||
         binding.playerInfoPanel.hasFocus() ||
         binding.settingsPanel.hasFocus() ||
         binding.commentsPanel.hasFocus()
@@ -328,6 +330,7 @@ internal fun PlayerActivity.focusDownKeyOsdTargetControl() {
             AppPrefs.PLAYER_DOWN_KEY_OSD_FOCUS_COIN -> binding.btnCoin
             AppPrefs.PLAYER_DOWN_KEY_OSD_FOCUS_FAV -> binding.btnFav
             AppPrefs.PLAYER_DOWN_KEY_OSD_FOCUS_LIST_PANEL -> binding.btnListPanel
+            AppPrefs.PLAYER_DOWN_KEY_OSD_FOCUS_SPONSOR_SUBMIT -> binding.btnSponsorSubmit
             AppPrefs.PLAYER_DOWN_KEY_OSD_FOCUS_ADVANCED -> binding.btnAdvanced
             else -> binding.btnPlayPause
         }
@@ -378,6 +381,10 @@ internal fun PlayerActivity.isSeekKey(keyCode: Int): Boolean {
         KeyEvent.KEYCODE_DPAD_RIGHT,
         KeyEvent.KEYCODE_MEDIA_REWIND,
         KeyEvent.KEYCODE_MEDIA_FAST_FORWARD,
+        KeyEvent.KEYCODE_BUTTON_L1,
+        KeyEvent.KEYCODE_BUTTON_L2,
+        KeyEvent.KEYCODE_BUTTON_R1,
+        KeyEvent.KEYCODE_BUTTON_R2,
         -> true
 
         else -> false
@@ -564,9 +571,14 @@ internal fun PlayerActivity.startHoldScrubSeek(engine: BlblPlayerEngine, directi
 
     val tickMs = PlayerActivity.HOLD_SCRUB_TICK_MS
     val stepMs =
-        fixedStepMs?.coerceAtLeast(1L)
-            ?: holdScrubStepMs(durationMs = duration, tickMs = tickMs).coerceAtLeast(1L)
-    val deltaMs = stepMs * direction.toLong()
+        fixedStepMs
+            ?.let {
+                (it.coerceAtLeast(1L).toDouble() * tickMs.toDouble() / PlayerActivity.HOLD_SCRUB_FIXED_STEP_BASE_TICK_MS)
+                    .roundToInt()
+                    .toLong()
+            }
+            ?: holdScrubStepMs(durationMs = duration, tickMs = tickMs)
+    val deltaMs = stepMs.coerceAtLeast(1L) * direction.toLong()
     holdSeekJob =
         lifecycleScope.launch {
             while (isActive) {
@@ -677,7 +689,11 @@ internal fun PlayerActivity.resolveSeekUiBufferedPositionMs(
     return buffered
 }
 
-internal fun PlayerActivity.showSeekHint(text: String, hold: Boolean) {
+internal fun PlayerActivity.showSeekHint(
+    text: String,
+    hold: Boolean,
+    hideDelayMs: Long = PlayerActivity.SEEK_HINT_HIDE_DELAY_MS,
+) {
     // Auto-next preview hint has the highest priority: while it's visible, ignore any other hint requests.
     // This keeps the UX stable in the last 2 seconds (no flicker from volume/brightness/shortcuts/etc).
     if (autoNextHintVisible) {
@@ -687,10 +703,10 @@ internal fun PlayerActivity.showSeekHint(text: String, hold: Boolean) {
     binding.tvSeekHint.text = text
     binding.tvSeekHint.visibility = View.VISIBLE
     seekHintJob?.cancel()
-    if (!hold) scheduleHideSeekHint()
+    if (!hold) scheduleHideSeekHint(hideDelayMs)
 }
 
-internal fun PlayerActivity.scheduleHideSeekHint() {
+internal fun PlayerActivity.scheduleHideSeekHint(hideDelayMs: Long = PlayerActivity.SEEK_HINT_HIDE_DELAY_MS) {
     // Keep the auto-next hint visible until:
     // - user cancels (BACK), or
     // - playback ends and we transition.
@@ -698,7 +714,7 @@ internal fun PlayerActivity.scheduleHideSeekHint() {
     seekHintJob?.cancel()
     seekHintJob =
         lifecycleScope.launch {
-            delay(PlayerActivity.SEEK_HINT_HIDE_DELAY_MS)
+            delay(hideDelayMs)
             binding.tvSeekHint.visibility = View.GONE
         }
 }
@@ -722,6 +738,13 @@ internal fun PlayerActivity.isInteractionKey(keyCode: Int): Boolean {
         KeyEvent.KEYCODE_NUMPAD_ENTER,
         KeyEvent.KEYCODE_SPACE,
         KeyEvent.KEYCODE_BACK,
+        KeyEvent.KEYCODE_ESCAPE,
+        KeyEvent.KEYCODE_BUTTON_A,
+        KeyEvent.KEYCODE_BUTTON_B,
+        KeyEvent.KEYCODE_BUTTON_L1,
+        KeyEvent.KEYCODE_BUTTON_L2,
+        KeyEvent.KEYCODE_BUTTON_R1,
+        KeyEvent.KEYCODE_BUTTON_R2,
         KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,
         KeyEvent.KEYCODE_MEDIA_PLAY,
         KeyEvent.KEYCODE_MEDIA_PAUSE,

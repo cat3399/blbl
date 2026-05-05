@@ -9,6 +9,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.ViewGroup.MarginLayoutParams
 import android.view.ViewTreeObserver
+import android.widget.TextView
 import androidx.activity.OnBackPressedCallback
 import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.lifecycle.Lifecycle
@@ -21,6 +22,7 @@ import androidx.recyclerview.widget.StaggeredGridLayoutManager
 import androidx.recyclerview.widget.SimpleItemAnimator
 import blbl.cat3399.BuildConfig
 import blbl.cat3399.R
+import blbl.cat3399.core.account.AccountSessionStore
 import blbl.cat3399.core.api.BiliApi
 import blbl.cat3399.core.log.AppLog
 import blbl.cat3399.core.log.CrashTracker
@@ -54,6 +56,11 @@ import java.lang.ref.WeakReference
 import java.util.Locale
 
 class MainActivity : BaseActivity(), SidebarFocusHost {
+    private enum class UserInfoOverlayMode {
+        PROFILE,
+        ACCOUNT_SWITCH,
+    }
+
     private lateinit var binding: ActivityMainBinding
     private lateinit var navAdapter: SidebarNavAdapter
     private var needForceInitialSidebarFocus: Boolean = false
@@ -75,6 +82,7 @@ class MainActivity : BaseActivity(), SidebarFocusHost {
     private lateinit var userInfoOverlay: DialogUserInfoBinding
     private val userInfoReturnFocus = FocusReturn()
     private var userInfoLoadJob: Job? = null
+    private var userInfoOverlayMode: UserInfoOverlayMode = UserInfoOverlayMode.PROFILE
     private var isSidebarExpanded: Boolean = true
     private var pendingSidebarCollapseAfterMainFocus: Boolean = false
     private var pendingSidebarCollapseToken: Int = 0
@@ -204,9 +212,15 @@ class MainActivity : BaseActivity(), SidebarFocusHost {
         forceInitialSidebarFocusIfNeeded()
         ensureInitialFocus()
         refreshSidebarUser()
+        if (isUserInfoOverlayVisible()) {
+            if (userInfoOverlayMode == UserInfoOverlayMode.ACCOUNT_SWITCH) {
+                showAccountSwitchPanel(requestFocus = false)
+            } else {
+                loadUserInfo()
+            }
+        }
         showLastCrashPromptIfNeeded()
         showIjkKernelUpdatePromptIfNeeded()
-        maybeStartAutoUpdateCheck()
         showAutoUpdatePromptIfReady()
     }
 
@@ -448,6 +462,8 @@ class MainActivity : BaseActivity(), SidebarFocusHost {
         userInfoOverlay.btnFollower.setOnClickListener {
             AppToast.show(this, "粉丝列表未实现")
         }
+        userInfoOverlay.btnSwitchAccount.setOnClickListener { showAccountSwitchPanel() }
+        userInfoOverlay.btnAddAccount.setOnClickListener { openQrLogin() }
         userInfoOverlay.btnLogout.setOnClickListener { showLogoutConfirm() }
 
         val invalidateOverlay = View.OnFocusChangeListener { _, _ ->
@@ -456,6 +472,8 @@ class MainActivity : BaseActivity(), SidebarFocusHost {
         }
         userInfoOverlay.btnFollowing.onFocusChangeListener = invalidateOverlay
         userInfoOverlay.btnFollower.onFocusChangeListener = invalidateOverlay
+        userInfoOverlay.btnSwitchAccount.onFocusChangeListener = invalidateOverlay
+        userInfoOverlay.btnAddAccount.onFocusChangeListener = invalidateOverlay
         userInfoOverlay.btnLogout.onFocusChangeListener = invalidateOverlay
     }
 
@@ -486,18 +504,107 @@ class MainActivity : BaseActivity(), SidebarFocusHost {
         binding.mainContainer.descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
 
         userInfoOverlay.root.visibility = View.VISIBLE
-        resetUserInfoUi()
-        loadUserInfo()
+        showProfilePanel(requestFocus = false)
 
         userInfoOverlay.root.post {
             userInfoOverlay.btnFollowing.requestFocus()
         }
     }
 
+    private fun showProfilePanel(requestFocus: Boolean = true) {
+        userInfoOverlayMode = UserInfoOverlayMode.PROFILE
+        userInfoOverlay.profileStatsRow.visibility = View.VISIBLE
+        userInfoOverlay.profileExpRow.visibility = View.VISIBLE
+        userInfoOverlay.btnSwitchAccount.visibility = View.VISIBLE
+        userInfoOverlay.btnLogout.visibility = View.VISIBLE
+        userInfoOverlay.accountSwitchPanel.visibility = View.GONE
+        userInfoOverlay.accountList.removeAllViews()
+        resetUserInfoUi()
+        loadUserInfo()
+        if (requestFocus) {
+            userInfoOverlay.btnFollowing.post { userInfoOverlay.btnFollowing.requestFocus() }
+        }
+    }
+
+    private fun showAccountSwitchPanel(requestFocus: Boolean = true) {
+        userInfoOverlayMode = UserInfoOverlayMode.ACCOUNT_SWITCH
+        userInfoLoadJob?.cancel()
+        userInfoLoadJob = null
+        BiliClient.accounts.saveCurrentSessionAsActive(
+            appPrefs = BiliClient.prefs,
+            cookies = BiliClient.cookies,
+        )
+        userInfoOverlay.profileStatsRow.visibility = View.GONE
+        userInfoOverlay.profileExpRow.visibility = View.GONE
+        userInfoOverlay.progressExp.visibility = View.GONE
+        userInfoOverlay.btnSwitchAccount.visibility = View.GONE
+        userInfoOverlay.btnLogout.visibility = View.GONE
+        userInfoOverlay.pbLoading.visibility = View.GONE
+        userInfoOverlay.accountSwitchPanel.visibility = View.VISIBLE
+        renderAccountSwitchRows()
+        if (requestFocus) {
+            val first = userInfoOverlay.accountList.getChildAt(0) ?: userInfoOverlay.btnAddAccount
+            first.post { first.requestFocus() }
+        }
+    }
+
+    private fun renderAccountSwitchRows() {
+        val list = userInfoOverlay.accountList
+        list.removeAllViews()
+        val accounts = BiliClient.accounts.accounts()
+        for (account in accounts) {
+            val row = buildAccountSwitchRow(account)
+            list.addView(row)
+        }
+    }
+
+    private fun buildAccountSwitchRow(account: AccountSessionStore.AccountSummary): TextView {
+        val row =
+            layoutInflater.inflate(
+                R.layout.item_account_switch_row,
+                userInfoOverlay.accountList,
+                false,
+            ) as TextView
+        row.text = accountSwitchRowText(account)
+        row.onFocusChangeListener =
+            View.OnFocusChangeListener { _, _ ->
+                userInfoOverlay.card.invalidate()
+                userInfoOverlay.root.invalidate()
+            }
+        row.setOnClickListener {
+            if (account.isActive) {
+                showProfilePanel()
+                return@setOnClickListener
+            }
+            val switched =
+                BiliClient.accounts.switchToAccount(
+                    accountId = account.id,
+                    appPrefs = BiliClient.prefs,
+                    cookies = BiliClient.cookies,
+                )
+            if (switched == null) {
+                AppToast.show(this, "帐号不存在")
+                showAccountSwitchPanel()
+                return@setOnClickListener
+            }
+            AppToast.show(this, "已切换：${switched.name}")
+            syncSidebarNavState()
+            refreshSidebarUser()
+            showProfilePanel()
+        }
+        return row
+    }
+
+    private fun accountSwitchRowText(account: AccountSessionStore.AccountSummary): String {
+        val suffix = if (account.isActive) "（当前）" else ""
+        return account.name + suffix
+    }
+
     private fun hideUserInfoOverlay() {
         if (!isUserInfoOverlayVisible()) return
         userInfoLoadJob?.cancel()
         userInfoLoadJob = null
+        userInfoOverlayMode = UserInfoOverlayMode.PROFILE
         userInfoOverlay.root.visibility = View.GONE
 
         binding.sidebar.descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
@@ -535,6 +642,13 @@ class MainActivity : BaseActivity(), SidebarFocusHost {
                     val mid = data?.optLong("mid") ?: 0L
                     val name = data?.optString("uname", "").orEmpty()
                     val avatarUrl = data?.optString("face")?.takeIf { it.isNotBlank() }
+                    BiliClient.accounts.saveCurrentSessionAsActive(
+                        appPrefs = BiliClient.prefs,
+                        cookies = BiliClient.cookies,
+                        name = name,
+                        avatarUrl = avatarUrl,
+                        mid = mid,
+                    )
 
                     val coins = parseCoins(data)
                     val levelInfo = data?.optJSONObject("level_info")
@@ -575,16 +689,27 @@ class MainActivity : BaseActivity(), SidebarFocusHost {
     }
 
     private fun showLogoutConfirm() {
+        val accountCount = BiliClient.accounts.accounts().size
         AppPopup.confirm(
             context = this,
             title = "退出登录",
-            message = "将清除 Cookie（SESSDATA 等），需要重新登录。确定继续吗？",
+            message =
+                if (accountCount > 1) {
+                    "将移除当前帐号，并自动切换到其他已保存帐号。确定继续吗？"
+                } else {
+                    "将清除当前登录状态，需要重新登录。确定继续吗？"
+                },
             positiveText = "确定退出",
             negativeText = "取消",
             onPositive = {
-                BiliClient.clearLoginSession()
-                AppToast.show(this, "已退出登录")
+                val next =
+                    BiliClient.accounts.removeActiveAccountAndActivateNext(
+                        appPrefs = BiliClient.prefs,
+                        cookies = BiliClient.cookies,
+                    )
+                AppToast.show(this, next?.let { "已退出当前帐号，已切换：${it.name}" } ?: "已退出登录")
                 hideUserInfoOverlay()
+                syncSidebarNavState()
                 refreshSidebarUser()
             },
         )
@@ -887,10 +1012,11 @@ class MainActivity : BaseActivity(), SidebarFocusHost {
                 onDismiss = {
                     autoUpdatePromptPopup = null
                 },
-            ) {
+            ) { selectedUpdate ->
                 ApkUpdateFlow.startDownloadAndInstall(
                     activity = this,
-                    latestVersionHint = update.versionName,
+                    latestVersionHint = selectedUpdate.versionName,
+                    apkUrl = ApkUpdater.apkUrlFor(selectedUpdate.versionName),
                 )
             }
     }
@@ -907,7 +1033,11 @@ class MainActivity : BaseActivity(), SidebarFocusHost {
                 val data = nav.optJSONObject("data")
                 val isLogin = data?.optBoolean("isLogin") ?: false
                 val avatarUrl = data?.optString("face")?.takeIf { it.isNotBlank() }
-                if (isLogin) showLoggedIn(avatarUrl) else showLoggedOut()
+                if (isLogin) {
+                    showLoggedIn(avatarUrl)
+                } else {
+                    showLoggedOut()
+                }
             }.onFailure {
                 AppLog.w("MainActivity", "refreshSidebarUser failed", it)
             }

@@ -21,6 +21,8 @@ object CategoryZones {
             Zone("生活", 160),
             Zone("美食", 211),
             Zone("动物圈", 217),
+            Zone("鬼畜", 119),
+            Zone("时尚", 155),
             Zone("资讯", 202),
             Zone("娱乐", 5),
             Zone("影视", 181),

@@ -14,7 +14,10 @@ import androidx.recyclerview.widget.SimpleItemAnimator
 import blbl.cat3399.R
 import blbl.cat3399.core.api.BiliApi
 import blbl.cat3399.core.api.BiliApiException
+import blbl.cat3399.core.api.video.VideoCollectionKind
+import blbl.cat3399.core.api.video.VideoCollectionSection
 import blbl.cat3399.core.log.AppLog
+import blbl.cat3399.core.model.VideoCard
 import blbl.cat3399.core.net.BiliClient
 import blbl.cat3399.core.tv.RemoteKeys
 import blbl.cat3399.core.ui.ActivityStackLimiter
@@ -48,11 +51,7 @@ import com.google.android.material.R as MaterialR
 import com.google.android.material.appbar.AppBarLayout
 import com.google.android.material.tabs.TabLayout
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import org.json.JSONArray
-import org.json.JSONObject
 
 class UpDetailActivity : BaseActivity() {
     private lateinit var binding: ActivityUpDetailBinding
@@ -754,18 +753,41 @@ class UpDetailActivity : BaseActivity() {
 
     private data class SectionArchivesParsedPage(
         val totalCount: Int?,
-        val videos: List<blbl.cat3399.core.model.VideoCard>,
+        val videos: List<VideoCard>,
     )
 
-    private fun parseSectionArchivesPage(json: JSONObject, ownerFallback: String): SectionArchivesParsedPage {
-        val data = json.optJSONObject("data") ?: JSONObject()
-        val total = data.optJSONObject("page")?.optInt("total", 0)?.takeIf { it > 0 }
-        val archives = data.optJSONArray("archives") ?: JSONArray()
-        val videos = parseVideoCardsFromArchives(archives, ownerFallback = ownerFallback)
-        return SectionArchivesParsedPage(totalCount = total, videos = videos)
+    private fun List<VideoCard>.withOwnerFallback(ownerFallback: String): List<VideoCard> {
+        if (ownerFallback.isBlank()) return this
+        return map { card ->
+            if (card.ownerName.isBlank()) card.copy(ownerName = ownerFallback) else card
+        }
     }
 
-    private fun appendVideosToSectionInMemory(sectionStableId: String, videos: List<blbl.cat3399.core.model.VideoCard>): UpDetailSection? {
+    private fun VideoCollectionSection.toUpDetailSection(ownerFallback: String): UpDetailSection =
+        UpDetailSection(
+            kind =
+                when (kind) {
+                    VideoCollectionKind.SEASON -> UpDetailSectionKind.SEASON
+                    VideoCollectionKind.SERIES -> UpDetailSectionKind.SERIES
+                },
+            id = id,
+            title = title,
+            totalCount = totalCount,
+            videos = items.withOwnerFallback(ownerFallback),
+        )
+
+    private fun sectionArchivesPage(
+        total: Int,
+        videos: List<VideoCard>,
+        ownerFallback: String,
+    ): SectionArchivesParsedPage {
+        return SectionArchivesParsedPage(
+            totalCount = total.takeIf { it > 0 },
+            videos = videos.withOwnerFallback(ownerFallback),
+        )
+    }
+
+    private fun appendVideosToSectionInMemory(sectionStableId: String, videos: List<VideoCard>): UpDetailSection? {
         if (videos.isEmpty()) return null
         val idx = seasonsSeriesSections.indexOfFirst { it.stableId == sectionStableId }
         if (idx < 0) return null
@@ -783,38 +805,39 @@ class UpDetailActivity : BaseActivity() {
         val ownerFallback = binding.tvName.text?.toString().orEmpty().trim()
         lifecycleScope.launch {
             try {
-                val json =
-                    when (section.kind) {
-                        UpDetailSectionKind.SEASON ->
-                            BiliApi.seasonsArchivesList(
-                                mid = mid,
-                                seasonId = section.id,
-                                pageNum = targetPage,
-                                pageSize = 30,
-                                sortReverse = false,
-                            )
-
-                        UpDetailSectionKind.SERIES ->
-                            BiliApi.seriesArchives(
-                                mid = mid,
-                                seriesId = section.id,
-                                pageNum = targetPage,
-                                pageSize = 20,
-                                sort = "desc",
-                                onlyNormal = true,
-                            )
-                    }
-                if (token != seasonsSeriesRequestToken) return@launch
-
-                val code = json.optInt("code", 0)
-                if (code != 0) {
-                    val msg = json.optString("message", json.optString("msg", "")).ifBlank { "加载失败" }
-                    throw BiliApiException(apiCode = code, apiMessage = msg)
-                }
-
                 val parsed =
-                    withContext(Dispatchers.Default) {
-                        parseSectionArchivesPage(json, ownerFallback = ownerFallback)
+                    when (section.kind) {
+                        UpDetailSectionKind.SEASON -> {
+                            val page =
+                                BiliApi.ugcSeasonArchives(
+                                    mid = mid,
+                                    seasonId = section.id,
+                                    pageNum = targetPage,
+                                    pageSize = 30,
+                                    sortReverse = false,
+                                )
+                            SectionArchivesParsedPage(
+                                totalCount = page.totalCount,
+                                videos = page.items.withOwnerFallback(ownerFallback),
+                            )
+                        }
+
+                        UpDetailSectionKind.SERIES -> {
+                            val page =
+                                BiliApi.seriesArchives(
+                                    mid = mid,
+                                    seriesId = section.id,
+                                    pageNum = targetPage,
+                                    pageSize = 20,
+                                    sort = "desc",
+                                    onlyNormal = true,
+                                )
+                            sectionArchivesPage(
+                                total = page.total,
+                                videos = page.items,
+                                ownerFallback = ownerFallback,
+                            )
+                        }
                     }
                 if (token != seasonsSeriesRequestToken) return@launch
 
@@ -864,11 +887,6 @@ class UpDetailActivity : BaseActivity() {
         }
     }
 
-    private data class SeasonsSeriesParsedPage(
-        val totalPages: Int,
-        val sections: List<UpDetailSection>,
-    )
-
     private fun loadMoreSeasonsSeries(isRefresh: Boolean = false) {
         if (seasonsSeriesIsLoadingMore || seasonsSeriesEndReached) return
         val token = seasonsSeriesRequestToken
@@ -877,19 +895,7 @@ class UpDetailActivity : BaseActivity() {
         val ownerFallback = binding.tvName.text?.toString().orEmpty().trim()
         lifecycleScope.launch {
             try {
-                val json = BiliApi.seasonsSeriesList(mid = mid, pageNum = targetPage, pageSize = 10)
-                if (token != seasonsSeriesRequestToken) return@launch
-
-                val code = json.optInt("code", 0)
-                if (code != 0) {
-                    val msg = json.optString("message", json.optString("msg", "")).ifBlank { "加载失败" }
-                    throw BiliApiException(apiCode = code, apiMessage = msg)
-                }
-
-                val parsed =
-                    withContext(Dispatchers.Default) {
-                        parseSeasonsSeriesPage(json, ownerFallback = ownerFallback)
-                    }
+                val parsed = BiliApi.collectionSections(mid = mid, pageNum = targetPage, pageSize = 10)
                 if (token != seasonsSeriesRequestToken) return@launch
 
                 val hasAny = parsed.sections.isNotEmpty()
@@ -901,7 +907,8 @@ class UpDetailActivity : BaseActivity() {
                     }
 
                 val inserted = ArrayList<UpDetailSection>(parsed.sections.size)
-                for (section in parsed.sections) {
+                for (apiSection in parsed.sections) {
+                    val section = apiSection.toUpDetailSection(ownerFallback = ownerFallback)
                     if (!loadedSectionStableIds.add(section.stableId)) continue
                     seasonsSeriesSections.add(section)
                     inserted.add(section)
@@ -928,115 +935,6 @@ class UpDetailActivity : BaseActivity() {
                 seasonsSeriesIsLoadingMore = false
             }
         }
-    }
-
-    private fun parseSeasonsSeriesPage(json: JSONObject, ownerFallback: String): SeasonsSeriesParsedPage {
-        val itemsLists =
-            json.optJSONObject("data")
-                ?.optJSONObject("items_lists")
-                ?: JSONObject()
-        val pageObj = itemsLists.optJSONObject("page") ?: JSONObject()
-        val totalPages = pageObj.optInt("total", 0).coerceAtLeast(0)
-        val seasons = itemsLists.optJSONArray("seasons_list") ?: JSONArray()
-        val series = itemsLists.optJSONArray("series_list") ?: JSONArray()
-
-        fun parseSectionsArray(arr: JSONArray, kind: UpDetailSectionKind): List<UpDetailSection> {
-            val out = ArrayList<UpDetailSection>(arr.length())
-            for (i in 0 until arr.length()) {
-                val obj = arr.optJSONObject(i) ?: continue
-                val meta = obj.optJSONObject("meta") ?: JSONObject()
-                val id =
-                    when (kind) {
-                        UpDetailSectionKind.SEASON -> meta.optLong("season_id").takeIf { it > 0 }
-                        UpDetailSectionKind.SERIES -> meta.optLong("series_id").takeIf { it > 0 }
-                    } ?: continue
-                val title = meta.optString("name", "").trim().takeIf { it.isNotBlank() } ?: continue
-                val total = meta.optInt("total", 0).takeIf { it > 0 }
-                val archives = obj.optJSONArray("archives") ?: JSONArray()
-                val videos = parseVideoCardsFromArchives(archives, ownerFallback = ownerFallback)
-                if (videos.isEmpty()) continue
-                out.add(
-                    UpDetailSection(
-                        kind = kind,
-                        id = id,
-                        title = title,
-                        totalCount = total,
-                        videos = videos,
-                    ),
-                )
-            }
-            return out
-        }
-
-        return SeasonsSeriesParsedPage(
-            totalPages = totalPages,
-            sections =
-                buildList {
-                    addAll(parseSectionsArray(seasons, kind = UpDetailSectionKind.SEASON))
-                    addAll(parseSectionsArray(series, kind = UpDetailSectionKind.SERIES))
-                },
-        )
-    }
-
-    private fun parseVideoCardsFromArchives(arr: JSONArray, ownerFallback: String): List<blbl.cat3399.core.model.VideoCard> {
-        val out = ArrayList<blbl.cat3399.core.model.VideoCard>(arr.length())
-
-        fun parseDurationSec(obj: JSONObject): Int {
-            val byInt = obj.optInt("duration", 0).takeIf { it > 0 }
-            if (byInt != null) return byInt
-            val text = obj.optString("duration_text", obj.optString("duration", "0:00"))
-            return BiliApi.parseDuration(text)
-        }
-
-        for (i in 0 until arr.length()) {
-            val obj = arr.optJSONObject(i) ?: continue
-            val bvid = obj.optString("bvid", "").trim()
-            if (bvid.isBlank()) continue
-            val aid = obj.optLong("aid").takeIf { it > 0 }
-            val cid = obj.optLong("cid").takeIf { it > 0 }
-            val title = obj.optString("title", "").trim().ifBlank { "视频 ${i + 1}" }
-            val cover = obj.optString("pic", obj.optString("cover", "")).trim()
-
-            val ownerObj = obj.optJSONObject("owner") ?: JSONObject()
-            val ownerName =
-                ownerObj.optString("name", "").trim().ifBlank {
-                    obj.optString("author", "").trim()
-                }.ifBlank {
-                    ownerFallback
-                }
-            val ownerFace = ownerObj.optString("face", "").trim().takeIf { it.isNotBlank() }
-            val ownerMid =
-                ownerObj.optLong("mid").takeIf { it > 0 }
-                    ?: obj.optLong("mid").takeIf { it > 0 }
-
-            val statObj = obj.optJSONObject("stat") ?: JSONObject()
-            val view =
-                statObj.optLong("view").takeIf { it > 0 }
-                    ?: statObj.optLong("play").takeIf { it > 0 }
-            val danmaku =
-                statObj.optLong("danmaku").takeIf { it > 0 }
-                    ?: statObj.optLong("dm").takeIf { it > 0 }
-            val pubDate = obj.optLong("pubdate").takeIf { it > 0 }
-
-            out.add(
-                blbl.cat3399.core.model.VideoCard(
-                    bvid = bvid,
-                    cid = cid,
-                    aid = aid,
-                    title = title,
-                    coverUrl = cover,
-                    durationSec = parseDurationSec(obj),
-                    ownerName = ownerName,
-                    ownerFace = ownerFace,
-                    ownerMid = ownerMid,
-                    view = view,
-                    danmaku = danmaku,
-                    pubDate = pubDate,
-                    pubDateText = null,
-                ),
-            )
-        }
-        return out
     }
 
     private fun onFollowClicked() {
@@ -1286,7 +1184,7 @@ class UpDetailActivity : BaseActivity() {
 
     private fun buildSectionPlaylistContinuation(
         section: UpDetailSection,
-        cards: List<blbl.cat3399.core.model.VideoCard>,
+        cards: List<VideoCard>,
     ): PlayerPlaylistContinuation? {
         val state = sectionPagingStates[section.stableId] ?: return null
         val pageSize = if (section.kind == UpDetailSectionKind.SEASON) 30 else 20
@@ -1298,28 +1196,40 @@ class UpDetailActivity : BaseActivity() {
             playlistItemFactory = ::defaultVideoCardPlaylistItem,
         ) { pageNum ->
             val safePageNum = pageNum.coerceAtLeast(1)
-            val json =
+            val parsedPage =
                 when (section.kind) {
-                    UpDetailSectionKind.SEASON ->
-                        BiliApi.seasonsArchivesList(
-                            mid = mid,
-                            seasonId = section.id,
-                            pageNum = safePageNum,
-                            pageSize = pageSize,
-                            sortReverse = false,
+                    UpDetailSectionKind.SEASON -> {
+                        val page =
+                            BiliApi.ugcSeasonArchives(
+                                mid = mid,
+                                seasonId = section.id,
+                                pageNum = safePageNum,
+                                pageSize = pageSize,
+                                sortReverse = false,
+                            )
+                        SectionArchivesParsedPage(
+                            totalCount = page.totalCount,
+                            videos = page.items.withOwnerFallback(ownerFallback),
                         )
+                    }
 
-                    UpDetailSectionKind.SERIES ->
-                        BiliApi.seriesArchives(
-                            mid = mid,
-                            seriesId = section.id,
-                            pageNum = safePageNum,
-                            pageSize = pageSize,
-                            sort = "desc",
-                            onlyNormal = true,
+                    UpDetailSectionKind.SERIES -> {
+                        val page =
+                            BiliApi.seriesArchives(
+                                mid = mid,
+                                seriesId = section.id,
+                                pageNum = safePageNum,
+                                pageSize = pageSize,
+                                sort = "desc",
+                                onlyNormal = true,
+                            )
+                        sectionArchivesPage(
+                            total = page.total,
+                            videos = page.items,
+                            ownerFallback = ownerFallback,
                         )
+                    }
                 }
-            val parsedPage = parseSectionArchivesPage(json, ownerFallback = ownerFallback)
             val totalCount = parsedPage.totalCount ?: state.totalCount
             val hasMore =
                 totalCount?.let { safePageNum * pageSize < it }

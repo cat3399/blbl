@@ -1,0 +1,96 @@
+name: 功能需求
+description: 提出你希望新增或调整的功能
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ### ⚠️ 提交前请阅读
+        感谢你提交需求！**本项目不处理【未登录状态】下的问题或需求**（例如未登录时希望显示某些数据、调整某些行为等）。请确保你的需求是在**已登录**状态下的正常使用场景。
+
+        提需求前请先仔细查看应用内设置项，避免提交已经实现或可以通过现有设置完成的功能。
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: 前置确认
+      options:
+        - label: 我确认当前处于**已登录**状态，且需求针对登录后的正常使用场景。
+          required: true
+        - label: 我已经仔细查看过应用内设置项，确认该功能目前没有提供，或现有设置无法满足需求。
+          required: true
+        - label: 我确认这个需求不应改变已有的默认风格、默认交互或默认行为；如确实需要差异化体验，应通过新增设置项实现，并保持默认体验不变。
+          required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: 1. 当前版本
+      description: 请填写你正在使用的应用版本号。
+      placeholder: 例如：v0.1.17 或 最新源码编译
+    validations:
+      required: true
+
+  - type: textarea
+    id: requirement
+    attributes:
+      label: 2. 你希望新增或调整什么功能？
+      description: 请清楚描述你想要的功能、入口、使用场景，以及现有功能为什么不能满足。
+      placeholder: |
+        我希望在...
+        当前只能...
+        这个需求主要用于...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 3. 你期望它如何工作？
+      description: 请描述理想状态下的交互流程、显示效果、默认行为，以及是否需要新增设置项。
+      placeholder: |
+        期望效果：
+        默认行为是否保持不变：
+        如果需要设置项，建议名称/默认值：
+    validations:
+      required: true
+
+  - type: textarea
+    id: references
+    attributes:
+      label: 4. 参考示例
+      description: 最好提供参考截图、视频、链接、其他应用的行为，或更具体的操作示例，帮助理解需求边界。
+      placeholder: |
+        参考应用/页面：
+        参考截图或链接：
+        可以接受的实现方式：
+    validations:
+      required: false
+
+  - type: input
+    id: device
+    attributes:
+      label: 5. 设备信息
+      description: 请提供你主要使用该功能的设备型号和系统版本。
+      placeholder: 例如：Pixel 7 / Android 14
+    validations:
+      required: true
+
+  - type: textarea
+    id: ui-impact
+    attributes:
+      label: 6. (可选) 样式/UI 或交互影响补充
+      description: |
+        **如果需求涉及 UI 样式、布局、焦点、遥控器操作或默认交互，请补充此项：**
+        1. 请说明现有默认风格是否必须保持不变。
+        2. 请提供屏幕参数（路径：设置 -> 关于设备 -> 屏幕）。
+        3. 将参考截图或示意图拖拽或粘贴到下方文本框中。
+      placeholder: |
+        默认风格是否保持不变：
+        屏幕分辨率：
+        DPI：
+
+        在此处粘贴图片...
+    validations:
+      required: false

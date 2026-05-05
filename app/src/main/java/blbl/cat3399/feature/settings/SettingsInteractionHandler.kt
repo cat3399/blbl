@@ -210,7 +210,7 @@ class SettingsInteractionHandler(
             val tv =
                 LayoutInflater.from(dialogContext)
                     .inflate(R.layout.view_popup_message, null, false) as TextView
-            tv.text = "可导出当前配置，也可选包含当前登录状态；导入时会按文件内容整包覆盖。"
+            tv.text = "可导出当前配置，也可选包含已保存帐号和登录状态；导入时会按文件内容整包覆盖。"
             tv
         }
     }
@@ -304,7 +304,7 @@ class SettingsInteractionHandler(
     private fun showImportConfigConfirmDialog(parsed: AppConfigBackup.ParsedBackup) {
         val message =
             if (parsed.includesCredentials) {
-                "该文件包含登录状态部分。\n导入后将覆盖当前配置和登录状态，并重启应用。"
+                "该文件包含登录状态部分。\n导入后将覆盖当前配置、已保存帐号和登录状态，并重启应用。"
             } else {
                 "该文件仅包含配置部分。\n导入后只覆盖当前配置，保留当前登录状态，并重启应用。"
             }
@@ -329,7 +329,12 @@ class SettingsInteractionHandler(
                 failureLogMessage = "apply config failed",
                 failureToastPrefix = "导入失败",
                 work = {
-                    AppConfigBackup.apply(parsed, prefs = BiliClient.prefs, cookies = BiliClient.cookies)
+                    AppConfigBackup.apply(
+                        parsed,
+                        prefs = BiliClient.prefs,
+                        cookies = BiliClient.cookies,
+                        accounts = BiliClient.accounts,
+                    )
                 },
             ) {
                 evictNetworkConnections()
@@ -342,6 +347,7 @@ class SettingsInteractionHandler(
         return AppConfigBackup.prepareExport(
             prefs = BiliClient.prefs,
             cookies = BiliClient.cookies,
+            accounts = BiliClient.accounts,
             mode = mode,
         )
     }
@@ -700,6 +706,36 @@ class SettingsInteractionHandler(
                 }
             }
 
+            SettingId.ApiSource -> {
+                val options =
+                    listOf(
+                        blbl.cat3399.core.prefs.AppPrefs.API_SOURCE_WEB to "Web",
+                        blbl.cat3399.core.prefs.AppPrefs.API_SOURCE_APP to "App",
+                    )
+                showChoiceDialog(
+                    title = "接口类别",
+                    items = options.map { it.second },
+                    current = SettingsText.apiSourceText(prefs.apiSource),
+                ) { selected ->
+                    val key = options.firstOrNull { it.second == selected }?.first
+                        ?: blbl.cat3399.core.prefs.AppPrefs.API_SOURCE_WEB
+                    if (key == blbl.cat3399.core.prefs.AppPrefs.API_SOURCE_APP &&
+                        prefs.appAuthSession?.accessKey.isNullOrBlank()
+                    ) {
+                        AppToast.show(activity, "首次使用 App 接口需要重新登录")
+                        return@showChoiceDialog
+                    }
+                    if (prefs.apiSource == key) {
+                        AppToast.show(activity, "接口类别：$selected")
+                        return@showChoiceDialog
+                    }
+                    prefs.apiSource = key
+                    evictNetworkConnections()
+                    AppToast.show(activity, "接口类别：$selected")
+                    renderer.refreshSection(entry.id)
+                }
+            }
+
             SettingId.UserAgent -> showUserAgentDialog(state.currentSectionIndex, entry.id)
             SettingId.Ipv4OnlyEnabled -> {
                 prefs.ipv4OnlyEnabled = !prefs.ipv4OnlyEnabled
@@ -735,6 +771,13 @@ class SettingsInteractionHandler(
                 prefs.fullscreenEnabled = !prefs.fullscreenEnabled
                 Immersive.apply(activity, prefs.fullscreenEnabled)
                 AppToast.show(activity, "全屏：${if (prefs.fullscreenEnabled) "开" else "关"}")
+                renderer.refreshSection(entry.id)
+            }
+
+            SettingId.AvoidDisplayCutout -> {
+                prefs.avoidDisplayCutout = !prefs.avoidDisplayCutout
+                activity.reapplyWindowDisplayPolicy()
+                AppToast.show(activity, "避开挖孔/圆角区域：${if (prefs.avoidDisplayCutout) "开" else "关"}")
                 renderer.refreshSection(entry.id)
             }
 
@@ -1437,6 +1480,7 @@ class SettingsInteractionHandler(
                         blbl.cat3399.core.prefs.AppPrefs.PLAYER_DOWN_KEY_OSD_FOCUS_COIN to "投币",
                         blbl.cat3399.core.prefs.AppPrefs.PLAYER_DOWN_KEY_OSD_FOCUS_FAV to "收藏",
                         blbl.cat3399.core.prefs.AppPrefs.PLAYER_DOWN_KEY_OSD_FOCUS_LIST_PANEL to "列表面板",
+                        blbl.cat3399.core.prefs.AppPrefs.PLAYER_DOWN_KEY_OSD_FOCUS_SPONSOR_SUBMIT to "上传广告片段",
                         blbl.cat3399.core.prefs.AppPrefs.PLAYER_DOWN_KEY_OSD_FOCUS_ADVANCED to "更多设置",
                     )
                 showChoiceDialog(
@@ -1526,8 +1570,8 @@ class SettingsInteractionHandler(
                     }
 
                     is TestUpdateCheckState.UpdateAvailable -> {
-                        ApkUpdateFlow.showUpdatePrompt(activity, checkState.update) {
-                            startTestUpdateDownload(checkState.latestVersion)
+                        ApkUpdateFlow.showUpdatePrompt(activity, checkState.update) { selectedUpdate ->
+                            startTestUpdateDownload(selectedUpdate.versionName)
                         }
                     }
 
@@ -1569,6 +1613,7 @@ class SettingsInteractionHandler(
     private fun evictNetworkConnections() {
         runCatching { BiliClient.apiOkHttp.evictConnectionPool() }
         runCatching { BiliClient.cdnOkHttp.evictConnectionPool() }
+        runCatching { BiliClient.appCdnOkHttp.evictConnectionPool() }
         runCatching { ApkUpdater.evictConnections() }
     }
 
@@ -1649,6 +1694,7 @@ class SettingsInteractionHandler(
                 blbl.cat3399.core.prefs.AppPrefs.PLAYER_OSD_BTN_COIN to "投币",
                 blbl.cat3399.core.prefs.AppPrefs.PLAYER_OSD_BTN_FAV to "收藏",
                 blbl.cat3399.core.prefs.AppPrefs.PLAYER_OSD_BTN_LIST_PANEL to "列表",
+                blbl.cat3399.core.prefs.AppPrefs.PLAYER_OSD_BTN_SPONSOR_SUBMIT to "上传广告片段",
                 blbl.cat3399.core.prefs.AppPrefs.PLAYER_OSD_BTN_ADVANCED to "更多设置",
             )
         val keys = options.map { it.first }
@@ -2517,13 +2563,16 @@ class SettingsInteractionHandler(
         AppPopup.confirm(
             context = activity,
             title = "清除登录",
-            message = "将清除 Cookie（SESSDATA 等），需要重新登录。确定继续吗？",
+            message = "将清除所有已保存帐号和当前登录状态，需要重新登录。确定继续吗？",
             positiveText = "确定清除",
             negativeText = "取消",
             cancelable = true,
             onPositive = {
-                BiliClient.clearLoginSession()
-                AppToast.show(activity, "已清除 Cookie")
+                BiliClient.accounts.clearAllAccountsAndCurrentSession(
+                    appPrefs = BiliClient.prefs,
+                    cookies = BiliClient.cookies,
+                )
+                AppToast.show(activity, "已清除登录状态")
                 renderer.showSection(sectionIndex, focusId = focusId)
             },
         )
@@ -2659,8 +2708,8 @@ class SettingsInteractionHandler(
                         }
                     state.testUpdateCheckedAtMs = System.currentTimeMillis()
                     if (promptIfUpdate && state.testUpdateCheckState is TestUpdateCheckState.UpdateAvailable) {
-                        ApkUpdateFlow.showUpdatePrompt(activity, update) {
-                            startTestUpdateDownload(update.versionName)
+                        ApkUpdateFlow.showUpdatePrompt(activity, update) { selectedUpdate ->
+                            startTestUpdateDownload(selectedUpdate.versionName)
                         }
                     }
                 } catch (_: CancellationException) {
@@ -2683,19 +2732,9 @@ class SettingsInteractionHandler(
             ApkUpdateFlow.startDownloadAndInstall(
                 activity = activity,
                 latestVersionHint = latestVersionHint,
+                apkUrl = latestVersionHint?.let(ApkUpdater::apkUrlFor),
             ) { latestVersion, isNewer ->
-                val changelog = (state.testUpdateCheckState as? TestUpdateCheckState.UpdateAvailable)?.update?.changelog ?: ""
-                state.testUpdateCheckState =
-                    if (isNewer) {
-                        TestUpdateCheckState.UpdateAvailable(
-                            ApkUpdater.RemoteUpdate(
-                                versionName = latestVersion,
-                                changelog = changelog,
-                            ),
-                        )
-                    } else {
-                        TestUpdateCheckState.Latest(latestVersion)
-                    }
+                if (!isNewer && latestVersionHint == null) state.testUpdateCheckState = TestUpdateCheckState.Latest(latestVersion)
                 state.testUpdateCheckedAtMs = System.currentTimeMillis()
                 renderer.refreshAboutSectionKeepPosition()
             }

@@ -20,7 +20,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.json.JSONObject
 
 internal data class PlayerUpQuickOwner(
     val mid: Long = 0L,
@@ -84,8 +83,8 @@ internal class PlayerUpQuickCardController(
         updateUi()
     }
 
-    fun applyFollowStateFromView(viewData: JSONObject) {
-        followed = parseUpFollowStateFromViewData(viewData)
+    fun applyFollowState(initialFollowed: Boolean?) {
+        followed = initialFollowed
         updateUi()
         refreshFollowStateIfNeeded(force = false)
     }
@@ -246,8 +245,8 @@ internal fun PlayerActivity.setUpQuickCardOwner(
     upQuickCard.setOwner(mid = mid, name = name, avatar = avatar, followed = followed)
 }
 
-internal fun PlayerActivity.applyUpFollowStateFromView(viewData: JSONObject) {
-    upQuickCard.applyFollowStateFromView(viewData)
+internal fun PlayerActivity.applyUpFollowState(initialFollowed: Boolean?) {
+    upQuickCard.applyFollowState(initialFollowed)
 }
 
 internal fun PlayerActivity.refreshUpFollowStateIfNeeded(force: Boolean) {
@@ -268,26 +267,4 @@ internal fun PlayerActivity.updateUpQuickCardUi() {
 
 internal fun PlayerActivity.releaseUpQuickCardJobs() {
     upQuickCard.release()
-}
-
-private fun parseUpFollowStateFromViewData(viewData: JSONObject): Boolean? {
-    val owner = viewData.optJSONObject("owner")
-    val reqUser = viewData.optJSONObject("req_user")
-
-    val ownerAttention = owner?.optInt("attention", -1) ?: -1
-    if (ownerAttention >= 0) return ownerAttention == 1
-
-    val reqAttention = reqUser?.optInt("attention", -1) ?: -1
-    if (reqAttention >= 0) return reqAttention == 1
-
-    val reqFollow = reqUser?.optInt("follow", -1) ?: -1
-    if (reqFollow >= 0) return reqFollow == 1
-
-    val reqFollowStatus = reqUser?.optInt("follow_status", -1) ?: -1
-    if (reqFollowStatus >= 0) return reqFollowStatus > 0
-
-    val relationStatus = owner?.optJSONObject("relation")?.optInt("status", -1) ?: -1
-    if (relationStatus >= 0) return relationStatus > 0
-
-    return null
 }

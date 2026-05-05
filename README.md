@@ -39,7 +39,7 @@
 ## 技术栈
 
 - Kotlin + AndroidX + ViewBinding
-- Media3(ExoPlayer)
+- Media3(ExoPlayer)/[Ijkplayer](https://github.com/cat3399/ijkplayer)
 - OkHttp
 - Protobuf-lite
 - Material / RecyclerView / ViewPager2
@@ -83,16 +83,12 @@
 - `RELEASE_KEY_ALIAS`
 - `RELEASE_KEY_PASSWORD`
 
-## TODO 
-
-- 完善操作逻辑
-- 统一样式大小计算规则
-
 ## 感谢
 
 - https://github.com/SocialSisterYi/bilibili-API-collect B站API收集整理
 - https://github.com/xiaye13579/BBLL 优秀的页面设计和操作逻辑，本项目绝大部分页面和操作逻辑都是抄袭BBLL🥰
 - https://github.com/bggRGjQaUbCoE/PiliPlus 部分关键功能参考了Piliplus的逻辑
+- https://github.com/debugly/ijkplayer 感谢debugly大佬移植的ijkplayer
 - 开源第三方B站客户端
 - 群友们的详细测试与反馈
 
