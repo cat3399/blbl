@@ -2,6 +2,7 @@ package blbl.cat3399.core.net
 
 import android.content.Context
 import android.os.Build
+import blbl.cat3399.core.account.AccountSessionStore
 import blbl.cat3399.core.log.AppLog
 import blbl.cat3399.core.prefs.AppPrefs
 import kotlinx.coroutines.Dispatchers
@@ -10,6 +11,7 @@ import okhttp3.CookieJar
 import okhttp3.FormBody
 import okhttp3.HttpUrl
 import okhttp3.OkHttpClient
+import okhttp3.Protocol
 import okhttp3.Request
 import okhttp3.RequestBody
 import okhttp3.Response
@@ -26,6 +28,7 @@ object BiliClient {
     private const val BASE = "https://api.bilibili.com"
     private const val HDR_SKIP_ORIGIN = "X-Blbl-Skip-Origin"
     private const val LOG_HTTP_REQUESTS = false
+    internal const val APP_CDN_USER_AGENT = "Bilibili Freedoooooom/MarkII"
 
     private val NO_COOKIES = object : CookieJar {
         override fun saveFromResponse(url: HttpUrl, cookies: List<okhttp3.Cookie>) {}
@@ -33,6 +36,8 @@ object BiliClient {
     }
 
     lateinit var prefs: AppPrefs
+        private set
+    lateinit var accounts: AccountSessionStore
         private set
     lateinit var cookies: CookieStore
         private set
@@ -42,6 +47,9 @@ object BiliClient {
     private lateinit var apiOkHttpNoCookies: OkHttpClient
 
     lateinit var cdnOkHttp: OkHttpClient
+        private set
+
+    lateinit var appCdnOkHttp: OkHttpClient
         private set
 
     data class StringResponse(
@@ -58,6 +66,7 @@ object BiliClient {
 
     fun init(context: Context) {
         prefs = AppPrefs(context.applicationContext)
+        accounts = AccountSessionStore(context.applicationContext)
         cookies = CookieStore(context.applicationContext)
         val dns = ipv4OnlyDns { prefs.ipv4OnlyEnabled }
         val baseBuilder = OkHttpClient.Builder()
@@ -113,16 +122,41 @@ object BiliClient {
             }
             .build()
 
+        appCdnOkHttp = baseClient.newBuilder()
+            .cookieJar(CookieJar.NO_COOKIES)
+            .protocols(listOf(Protocol.HTTP_1_1))
+            .addInterceptor { chain ->
+                val original = chain.request()
+                val defaultPort = if (original.url.isHttps) 443 else 80
+                val hostHeader =
+                    if (original.url.port == defaultPort) {
+                        original.url.host
+                    } else {
+                        "${original.url.host}:${original.url.port}"
+                    }
+                val req =
+                    original
+                        .newBuilder()
+                        .header("User-Agent", APP_CDN_USER_AGENT)
+                        .header("Accept-Encoding", "identity")
+                        .header("Host", hostHeader)
+                        .header("Connection", "Keep-Alive")
+                        .build()
+                val start = System.nanoTime()
+                val res = chain.proceed(req)
+                val costMs = (System.nanoTime() - start) / 1_000_000
+                if (LOG_HTTP_REQUESTS) {
+                    AppLog.d(TAG, "APP CDN ${req.method} ${req.url.host}${req.url.encodedPath} -> ${res.code} (${costMs}ms)")
+                }
+                res
+            }
+            .build()
+
         AppLog.i(TAG, "init ua=${prefs.userAgent.take(48)} cookiesSess=${cookies.hasSessData()}")
     }
 
     fun clearLoginSession() {
-        cookies.clearAll()
-        prefs.webRefreshToken = null
-        prefs.webCookieRefreshCheckedEpochDay = -1L
-        prefs.biliTicketCheckedEpochDay = -1L
-        prefs.gaiaVgateVVoucher = null
-        prefs.gaiaVgateVVoucherSavedAtMs = -1L
+        accounts.clearAllAccountsAndCurrentSession(appPrefs = prefs, cookies = cookies)
     }
 
     private fun clientFor(url: String, noCookies: Boolean = false): OkHttpClient {

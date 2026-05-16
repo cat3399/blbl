@@ -35,6 +35,7 @@ internal fun PlayerActivity.applyOsdButtonsVisibility() {
     binding.btnCoin.visibility = if (enabled.contains(AppPrefs.PLAYER_OSD_BTN_COIN)) View.VISIBLE else View.GONE
     binding.btnFav.visibility = if (enabled.contains(AppPrefs.PLAYER_OSD_BTN_FAV)) View.VISIBLE else View.GONE
     binding.btnListPanel.visibility = if (enabled.contains(AppPrefs.PLAYER_OSD_BTN_LIST_PANEL)) View.VISIBLE else View.GONE
+    binding.btnSponsorSubmit.visibility = if (enabled.contains(AppPrefs.PLAYER_OSD_BTN_SPONSOR_SUBMIT)) View.VISIBLE else View.GONE
     binding.btnAdvanced.visibility = if (enabled.contains(AppPrefs.PLAYER_OSD_BTN_ADVANCED)) View.VISIBLE else View.GONE
     if (binding.btnLike.visibility != View.VISIBLE) cancelLikeButtonHoldGesture(resetTriggered = true)
 
@@ -396,7 +397,6 @@ internal fun PlayerActivity.updateUpButton() {
     val alpha = if (enabled) 1.0f else 0.35f
     binding.btnUp.isEnabled = enabled
     binding.btnUp.alpha = alpha
-    updateUpQuickCardUi()
 }
 
 internal fun PlayerActivity.pickRecommendedVideo(items: List<VideoCard>, excludeBvid: String): VideoCard? {
@@ -423,6 +423,7 @@ internal fun PlayerActivity.playRecommendedNext(userInitiated: Boolean) {
             aidExtra = null,
             initialTitle = cachedPicked.title.takeIf { it.isNotBlank() },
             startedFromList = PlayerVideoListKind.RECOMMEND,
+            showTitleHint = userInitiated,
         )
         return
     }
@@ -443,6 +444,7 @@ internal fun PlayerActivity.playRecommendedNext(userInitiated: Boolean) {
                     aidExtra = null,
                     initialTitle = picked.title.takeIf { it.isNotBlank() },
                     startedFromList = PlayerVideoListKind.RECOMMEND,
+                    showTitleHint = userInitiated,
                 )
             } else {
                 if (userInitiated) AppToast.show(this@playRecommendedNext, "暂无推荐视频")
@@ -479,6 +481,7 @@ internal fun PlayerActivity.playRecommendedNext(userInitiated: Boolean) {
                     aidExtra = null,
                     initialTitle = picked.title.takeIf { it.isNotBlank() },
                     startedFromList = PlayerVideoListKind.RECOMMEND,
+                    showTitleHint = userInitiated,
                 )
             } catch (t: Throwable) {
                 if (t is CancellationException) return@launch
@@ -533,12 +536,12 @@ internal fun PlayerActivity.playNext(userInitiated: Boolean) {
     }
     val next = pageListIndex + 1
     if (next in list.indices) {
-        playPageListIndex(next)
+        playPageListIndex(next, showTitleHint = userInitiated)
         return
     }
     ensurePlaylistIndexLoaded(kind = PlayerVideoListKind.PAGE, index = next) { available ->
         if (available) {
-            playPageListIndex(next)
+            playPageListIndex(next, showTitleHint = userInitiated)
             return@ensurePlaylistIndexLoaded
         }
         if (userInitiated) AppToast.show(this, "无下一个视频，已退出播放器")
@@ -557,7 +560,7 @@ internal fun PlayerActivity.playPrev(userInitiated: Boolean) {
         if (userInitiated) AppToast.show(this, "已是第一个视频")
         return
     }
-    playPageListIndex(prev)
+    playPageListIndex(prev, showTitleHint = userInitiated)
 }
 
 internal fun PlayerActivity.playPartsNext(userInitiated: Boolean) {
@@ -569,12 +572,12 @@ internal fun PlayerActivity.playPartsNext(userInitiated: Boolean) {
     }
     val next = partsListIndex + 1
     if (next in list.indices) {
-        playPartsListIndex(next)
+        playPartsListIndex(next, showTitleHint = userInitiated)
         return
     }
     ensurePlaylistIndexLoaded(kind = PlayerVideoListKind.PARTS, index = next) { available ->
         if (available) {
-            playPartsListIndex(next)
+            playPartsListIndex(next, showTitleHint = userInitiated)
             return@ensurePlaylistIndexLoaded
         }
         if (userInitiated) AppToast.show(this, "无下一个视频，已退出播放器")
@@ -587,13 +590,13 @@ internal fun PlayerActivity.playPartsNextThenRecommended(userInitiated: Boolean)
     if (list.isNotEmpty() && partsListIndex in list.indices) {
         val next = partsListIndex + 1
         if (next in list.indices) {
-            playPartsListIndex(next)
+            playPartsListIndex(next, showTitleHint = userInitiated)
             return
         }
         if (hasMorePlaylistItems(PlayerVideoListKind.PARTS)) {
             ensurePlaylistIndexLoaded(kind = PlayerVideoListKind.PARTS, index = next) { available ->
                 if (available) {
-                    playPartsListIndex(next)
+                    playPartsListIndex(next, showTitleHint = userInitiated)
                 } else {
                     playRecommendedNext(userInitiated = userInitiated)
                 }
@@ -615,10 +618,10 @@ internal fun PlayerActivity.playPartsPrev(userInitiated: Boolean) {
         if (userInitiated) AppToast.show(this, "已是第一个视频")
         return
     }
-    playPartsListIndex(prev)
+    playPartsListIndex(prev, showTitleHint = userInitiated)
 }
 
-internal fun PlayerActivity.playPageListIndex(index: Int) {
+internal fun PlayerActivity.playPageListIndex(index: Int, showTitleHint: Boolean = false) {
     val list = pageListItems
     val item = list.getOrNull(index) ?: return
     if (item.bvid.isBlank() && (item.aid ?: 0L) <= 0L) return
@@ -643,10 +646,11 @@ internal fun PlayerActivity.playPageListIndex(index: Int) {
         seasonIdExtra = item.seasonId?.takeIf { it > 0 },
         initialTitle = item.title,
         startedFromList = PlayerVideoListKind.PAGE,
+        showTitleHint = showTitleHint,
     )
 }
 
-internal fun PlayerActivity.playPartsListIndex(index: Int) {
+internal fun PlayerActivity.playPartsListIndex(index: Int, showTitleHint: Boolean = false) {
     val list = partsListItems
     val item = list.getOrNull(index) ?: return
     if (item.bvid.isBlank() && (item.aid ?: 0L) <= 0L) return
@@ -670,5 +674,6 @@ internal fun PlayerActivity.playPartsListIndex(index: Int) {
         seasonIdExtra = item.seasonId?.takeIf { it > 0 },
         initialTitle = item.title,
         startedFromList = PlayerVideoListKind.PARTS,
+        showTitleHint = showTitleHint,
     )
 }

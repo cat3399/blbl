@@ -3,23 +3,19 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="?attr/colorBackground">
+    android:background="?attr/blblPageBackdrop">
 
     <blbl.cat3399.core.ui.UserScaleTabLayout
         android:id="@+id/tab_layout"
         style="@style/Widget.Blbl.TabLayout"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:background="?attr/colorBackground"
+        android:background="@android:color/transparent"
         android:focusable="false"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent"
-        app:tabBackground="?attr/blblFocusBgRound"
-        app:tabIndicatorColor="?attr/blblAccent"
-        app:tabMode="scrollable"
-        app:tabSelectedTextColor="?attr/colorOnSurface"
-        app:tabTextColor="?android:attr/textColorSecondary" />
+        app:tabMode="scrollable" />
 
     <androidx.viewpager2.widget.ViewPager2
         android:id="@+id/view_pager"

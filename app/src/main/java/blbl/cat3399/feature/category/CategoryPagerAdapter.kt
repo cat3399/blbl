@@ -25,4 +25,8 @@ class CategoryPagerAdapter(
             VideoGridFragment.newRegion(zone.tid)
         }
     }
+
+    override fun getItemId(position: Int): Long = CategoryZones.stableKeyFor(zones[position]).hashCode().toLong()
+
+    override fun containsItem(itemId: Long): Boolean = zones.any { CategoryZones.stableKeyFor(it).hashCode().toLong() == itemId }
 }

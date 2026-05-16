@@ -21,8 +21,10 @@
         android:layout_height="wrap_content"
         android:ellipsize="end"
         android:maxLines="1"
-        android:paddingHorizontal="@dimen/search_suggest_padding_h"
-        android:paddingVertical="@dimen/search_suggest_padding_v"
+        android:paddingStart="@dimen/search_suggest_padding_h"
+        android:paddingEnd="@dimen/search_suggest_padding_h"
+        android:paddingTop="@dimen/search_suggest_padding_v"
+        android:paddingBottom="@dimen/search_suggest_padding_v"
         android:text="suggest"
         android:textColor="?attr/colorOnSurface"
         android:textSize="@dimen/search_suggest_text_size" />

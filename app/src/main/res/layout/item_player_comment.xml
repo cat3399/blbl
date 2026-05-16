@@ -7,7 +7,7 @@
     android:clickable="true"
     android:focusable="true"
     android:stateListAnimator="@animator/blbl_focus_scale"
-    app:cardBackgroundColor="?attr/colorSurface"
+    app:cardBackgroundColor="@android:color/black"
     app:cardCornerRadius="@dimen/player_comment_item_corner_radius"
     app:strokeColor="?attr/blblFocusStrokeColor"
     app:strokeWidth="@dimen/player_comment_item_stroke_width">
@@ -66,26 +66,59 @@
             android:gravity="center"
             android:includeFontPadding="false"
             android:minWidth="@dimen/player_comment_up_badge_min_width"
-            android:paddingHorizontal="@dimen/player_comment_up_badge_padding_h"
+            android:paddingStart="@dimen/player_comment_up_badge_padding_h"
+            android:paddingEnd="@dimen/player_comment_up_badge_padding_h"
             android:text="UP"
             android:textColor="@color/blbl_blue"
             android:textSize="@dimen/player_comment_up_badge_text_size"
             android:textStyle="bold"
             android:visibility="gone"
             app:layout_constraintBaseline_toBaselineOf="@id/tv_user"
-            app:layout_constraintEnd_toStartOf="@id/tv_time"
+            app:layout_constraintEnd_toStartOf="@id/row_header_meta"
             app:layout_constraintStart_toEndOf="@id/tv_user" />
 
-        <TextView
-            android:id="@+id/tv_time"
+        <LinearLayout
+            android:id="@+id/row_header_meta"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:ellipsize="end"
-            android:maxLines="1"
-            android:textColor="?android:attr/textColorSecondary"
-            android:textSize="@dimen/player_comment_time_text_size"
+            android:baselineAligned="true"
+            android:baselineAlignedChildIndex="0"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
             app:layout_constraintBaseline_toBaselineOf="@id/tv_user"
-            app:layout_constraintEnd_toEndOf="parent" />
+            app:layout_constraintEnd_toEndOf="parent">
+
+            <TextView
+                android:id="@+id/tv_time"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:textColor="?android:attr/textColorSecondary"
+                android:textSize="@dimen/player_comment_time_text_size" />
+
+            <ImageView
+                android:id="@+id/iv_like"
+                android:layout_width="@dimen/player_comment_like_icon_size"
+                android:layout_height="@dimen/player_comment_like_icon_size"
+                android:layout_marginStart="@dimen/player_comment_like_icon_margin_start"
+                android:contentDescription="@null"
+                android:importantForAccessibility="no"
+                app:srcCompat="@drawable/ic_action_like"
+                app:tint="?android:attr/textColorSecondary" />
+
+            <TextView
+                android:id="@+id/tv_like"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="@dimen/player_comment_like_count_margin_start"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:textColor="?android:attr/textColorSecondary"
+                android:textSize="@dimen/player_comment_meta_text_size"
+                android:visibility="gone" />
+
+        </LinearLayout>
 
         <TextView
             android:id="@+id/tv_message"
@@ -201,16 +234,6 @@
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintStart_toStartOf="@id/tv_user"
             app:layout_constraintTop_toBottomOf="@id/row_reply_preview">
-
-            <TextView
-                android:id="@+id/tv_like"
-                android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:ellipsize="end"
-            android:maxLines="1"
-            android:textColor="?android:attr/textColorSecondary"
-            android:textSize="@dimen/player_comment_meta_text_size"
-            android:visibility="gone" />
 
             <TextView
                 android:id="@+id/tv_reply"

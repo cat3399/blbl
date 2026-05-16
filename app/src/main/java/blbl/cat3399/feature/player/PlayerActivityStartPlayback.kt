@@ -5,6 +5,8 @@ import android.net.Uri
 import android.view.View
 import androidx.lifecycle.lifecycleScope
 import blbl.cat3399.core.api.BiliApi
+import blbl.cat3399.core.api.video.VideoDetail
+import blbl.cat3399.core.api.video.VideoPlayStream
 import blbl.cat3399.core.ui.AppToast
 import blbl.cat3399.core.log.AppLog
 import blbl.cat3399.core.model.BangumiEpisode
@@ -24,7 +26,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
-import org.json.JSONObject
 import blbl.cat3399.core.api.BiliApiException
 import blbl.cat3399.core.prefs.AppPrefs
 import kotlinx.coroutines.withContext
@@ -32,6 +33,29 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 private const val RISK_CONTROL_USER_HINT = "当前账号可能被风控,请尽量联系开发者!"
 private val riskControlUserHintShown = AtomicBoolean(false)
+
+internal data class VodPageDuration(
+    val cid: Long,
+    val durationSec: Long,
+)
+
+internal fun resolveCurrentVodDurationMs(
+    viewDurationSec: Long?,
+    pageDurations: List<VodPageDuration>,
+    cid: Long,
+): Long? {
+    val pageDuration =
+        cid.takeIf { it > 0L }?.let { safeCid ->
+            pageDurations.firstOrNull { it.cid == safeCid }?.durationSec
+        }?.takeIf { it > 0L }
+    if (pageDuration != null) return pageDuration * 1000L
+
+    val onlyPageDuration = pageDurations.singleOrNull()?.durationSec?.takeIf { it > 0L }
+    if (onlyPageDuration != null) return onlyPageDuration * 1000L
+
+    if (pageDurations.size > 1) return null
+    return viewDurationSec?.takeIf { it > 0L }?.times(1000L)
+}
 
 private suspend fun <T> runSuspendCatchingNonCancellation(block: suspend () -> T): Result<T> =
     try {
@@ -57,6 +81,34 @@ private fun PlayerActivity.finishAfterStartPlaybackFailure(throwable: Throwable)
     if (!isFinishing) finish()
 }
 
+private fun resolveCurrentVodDurationMsFromDetail(detail: VideoDetail, cid: Long): Long? {
+    val pageDurations =
+        detail.pages.mapNotNull { page ->
+            val durationSec = page.durationSec?.toLong()?.takeIf { it > 0L } ?: return@mapNotNull null
+            VodPageDuration(cid = page.cid, durationSec = durationSec)
+        }
+    val viewDurationSec = detail.durationSec?.takeIf { it > 0L }
+    return resolveCurrentVodDurationMs(
+        viewDurationSec = viewDurationSec,
+        pageDurations = pageDurations,
+        cid = cid,
+    )
+}
+
+private fun PlayerActivity.showPlaybackTitleHintIfFullscreen(rawTitle: String?): Boolean {
+    if (osdMode != PlayerActivity.OsdMode.Hidden) return false
+    val fallbackTitle =
+        binding.tvTitle.text
+            ?.toString()
+            ?.trim()
+            ?.takeIf { it.isNotBlank() && it != "-" }
+            ?: currentMainTitle?.trim()?.takeIf { it.isNotBlank() && it != "-" }
+            ?: return false
+    val title = formatAutoNextHintTitle(rawTitle, fallbackTitle = fallbackTitle)
+    showSeekHint("正在播放 $title", hold = false, hideDelayMs = PlayerActivity.PLAYBACK_TITLE_HINT_HIDE_DELAY_MS)
+    return true
+}
+
 internal fun PlayerActivity.resetPlaybackStateForNewMedia(
     engine: BlblPlayerEngine,
     preservePartsList: Boolean,
@@ -78,17 +130,7 @@ internal fun PlayerActivity.resetPlaybackStateForNewMedia(
     subtitleAvailable = false
     subtitleConfig = null
     subtitleItems = emptyList()
-    currentUpMid = 0L
-    currentUpName = null
-    currentUpAvatar = null
-    currentUpFollowed = null
-    upFollowActionInFlight = false
-    upFollowActionJob?.cancel()
-    upFollowActionJob = null
-    upFollowStateJob?.cancel()
-    upFollowStateJob = null
-    upFollowStateToken++
-    updateUpQuickCardUi()
+    setUpQuickCardOwner(mid = 0L, name = null, avatar = null, followed = null)
     danmakuShield = null
     cancelDanmakuLoading(reason = "new_media")
     danmakuLoadedSegments.clear()
@@ -168,6 +210,7 @@ internal fun PlayerActivity.resetPlaybackStateForNewMedia(
     binding.commentsPanel.visibility = View.GONE
     binding.playerInfoPanel.visibility = View.GONE
     hideBottomCardPanel(restoreFocus = false, dismissTarget = null)
+    hideSponsorSubmitPanel(restorePlayback = false)
     menuRevealedPanelSessionActive = false
     binding.recyclerComments.visibility = View.VISIBLE
     binding.recyclerCommentThread.visibility = View.GONE
@@ -196,6 +239,7 @@ internal fun PlayerActivity.startPlayback(
     seasonIdExtra: Long? = null,
     initialTitle: String?,
     startedFromList: PlayerVideoListKind? = null,
+    showTitleHint: Boolean = false,
 ) {
     val engine = player ?: return
     val pendingSeekMs = pendingStartPositionMs
@@ -269,6 +313,10 @@ internal fun PlayerActivity.startPlayback(
         preservePartsList = startFromList == PlayerVideoListKind.PARTS,
     )
     updateTopTitleUi(placeholder = initialTitle)
+    var titleHintShown = false
+    if (showTitleHint) {
+        titleHintShown = showPlaybackTitleHintIfFullscreen(initialTitle)
+    }
 
     updatePlaylistControls()
     maybeWarmUpAutoNextTarget()
@@ -286,20 +334,20 @@ internal fun PlayerActivity.startPlayback(
             val startupJobs = mutableListOf<Job>()
             try {
                 trace?.log("view:start")
-                val viewJson =
+                val detailJob =
                     async(Dispatchers.IO) {
                         runCatching {
                             if (safeBvid.isNotBlank()) {
-                                BiliApi.view(safeBvid)
+                                BiliApi.videoDetail(safeBvid)
                             } else {
-                                BiliApi.view(safeAid ?: 0L)
+                                BiliApi.videoDetail(safeAid ?: 0L)
                             }
                         }.getOrNull()
                     }
-                val viewData = viewJson.await()?.optJSONObject("data") ?: JSONObject()
+                val detail = detailJob.await() ?: error("view detail missing")
                 trace?.log("view:done")
 
-                val bangumiRedirect = parseBangumiRedirectUrl(viewData.optString("redirect_url", ""))
+                val bangumiRedirect = parseBangumiRedirectUrl(detail.redirectUrl.orEmpty())
                 val isAlreadyPgc =
                     currentEpId != null ||
                         pageListSource?.trim().orEmpty().startsWith("Bangumi:")
@@ -321,31 +369,36 @@ internal fun PlayerActivity.startPlayback(
                     return@launch
                 }
 
-                val title = viewData.optString("title", "").trim()
-                if (title.isNotBlank()) currentMainTitle = title
+                detail.title?.trim()?.takeIf { it.isNotBlank() }?.let { currentMainTitle = it }
                 updateTopTitleUi(placeholder = initialTitle)
-                currentViewDurationMs = viewData.optLong("duration", -1L).takeIf { it > 0 }?.times(1000L)
-                applyUpInfo(viewData)
-                applyTitleMeta(viewData)
-                applyPlayerInfoViewData(viewData)
+                if (showTitleHint && !titleHintShown) {
+                    titleHintShown = showPlaybackTitleHintIfFullscreen(initialTitle ?: currentMainTitle)
+                }
+                applyUpInfo(detail)
+                applyTitleMeta(detail)
+                applyPlayerInfoVideoDetail(detail)
 
                 val resolvedBvid =
-                    viewData.optString("bvid", "").trim().takeIf { it.isNotBlank() }
+                    detail.bvid.trim().takeIf { it.isNotBlank() }
                         ?: safeBvid
                 if (resolvedBvid.isNotBlank()) currentBvid = resolvedBvid
 
-                val cid = cidExtra ?: viewData.optLong("cid").takeIf { it > 0 } ?: error("cid missing")
-                val aid = viewData.optLong("aid").takeIf { it > 0 }
+                val cid = cidExtra ?: detail.cid?.takeIf { it > 0 } ?: error("cid missing")
+                val aid = detail.aid?.takeIf { it > 0 }
                 currentAid = currentAid ?: aid ?: safeAid
                 currentCid = cid
+                currentViewDurationMs = resolveCurrentVodDurationMsFromDetail(detail = detail, cid = cid)
                 refreshActionButtonStatesFromServer(bvid = resolvedBvid, aid = currentAid)
                 if (isCommentsPanelVisible() && !isCommentThreadVisible()) ensureCommentsLoaded()
                 AppLog.i("Player", "start bvid=$resolvedBvid cid=$cid")
-                trace?.log("cid:resolved", "cid=$cid aid=${aid ?: -1}")
+                trace?.log("cid:resolved", "cid=$cid aid=${aid ?: -1} duration=${currentViewDurationMs ?: -1}ms")
 
                 if (startFromList != PlayerVideoListKind.PARTS || partsListItems.isEmpty() || partsListIndex !in partsListItems.indices) {
-                    refreshPartsListFromView(viewData, bvid = resolvedBvid)
+                    refreshPartsListFromDetail(detail, bvid = resolvedBvid)
                     updateTopTitleUi(placeholder = initialTitle)
+                    if (showTitleHint && !titleHintShown) {
+                        titleHintShown = showPlaybackTitleHintIfFullscreen(initialTitle ?: currentMainTitle)
+                    }
                 }
                 if (startFromList == PlayerVideoListKind.PAGE) {
                     updatePageListIndexForCurrentMedia(bvid = resolvedBvid, aid = currentAid, cid = cid)
@@ -355,7 +408,7 @@ internal fun PlayerActivity.startPlayback(
                 syncPlayerInfoPanelVisibility()
 
                 requestOnlineWatchingText(bvid = resolvedBvid, cid = cid)
-                applyPerVideoPreferredQn(viewData, cid = cid)
+                applyPerVideoPreferredQn(detail, cid = cid)
 
                 val playJob =
                     async {
@@ -388,7 +441,7 @@ internal fun PlayerActivity.startPlayback(
                         async(Dispatchers.IO) {
                             trace?.log("videoShot:start")
                             runCatching {
-                                BiliApi.getWebVideoShot(
+                                BiliApi.videoShot(
                                     bvid = resolvedBvid,
                                     cid = cid,
                                     needJsonArrayIndex = true,
@@ -412,7 +465,7 @@ internal fun PlayerActivity.startPlayback(
                     if (subtitleSupported) {
                         async(Dispatchers.IO) {
                             trace?.log("subtitle:start")
-                            prepareSubtitleConfig(viewData, resolvedBvid, cid, trace)
+                            prepareSubtitleConfig(detail, resolvedBvid, cid, trace)
                                 .also { trace?.log("subtitle:done", "ok=${it != null}") }
                         }
                             .also(startupJobs::add)
@@ -421,12 +474,16 @@ internal fun PlayerActivity.startPlayback(
                     }
 
                 trace?.log("playurl:await")
-                val (playJson, playable) = playJob.await().getOrThrow()
+                val (playStream, playable) = playJob.await().getOrThrow()
                 trace?.log("playurl:awaitDone")
-                showRiskControlBypassHintIfNeeded(playJson)
-                lastAvailableQns = parseDashVideoQnList(playJson)
-                lastAvailableAudioIds = parseDashAudioIdList(playJson, constraints = playbackConstraints)
-                logPlayUrlTrackSummary(source = "start", playJson = playJson, constraints = playbackConstraints)
+                playStream.durationMs?.let { durationMs ->
+                    currentViewDurationMs = durationMs
+                    trace?.log("duration:playurl", "duration=${durationMs}ms")
+                }
+                showRiskControlBypassHintIfNeeded(playStream)
+                lastAvailableQns = parseDashVideoQnList(playStream)
+                lastAvailableAudioIds = parseDashAudioIdList(playStream, constraints = playbackConstraints)
+                logPlayUrlTrackSummary(source = "start", stream = playStream, constraints = playbackConstraints)
                 if (subtitleSupported) {
                     trace?.log("subtitle:await")
                     subtitleConfig = subJob?.await()
@@ -449,13 +506,6 @@ internal fun PlayerActivity.startPlayback(
                 }
                 when (playable) {
                     is Playable.Dash -> {
-                        if (engine.kind == PlayerEngineKind.IjkPlayer) {
-                            if (playable.videoTrackInfo.segmentBase == null || playable.audioTrackInfo.segmentBase == null) {
-                                startupJobs.forEach { it.cancel() }
-                                AppToast.showLong(this@startPlayback, "IjkPlayer 播放 DASH 需要 segment_base（initialization/index_range），当前流缺失，请切回 ExoPlayer")
-                                return@launch
-                            }
-                        }
                         lastPickedDash = playable
                         debug.cdnHost = runCatching { Uri.parse(playable.videoUrl).host }.getOrNull()
                         logPickedPlayable(source = "start", playable = playable)
@@ -494,13 +544,13 @@ internal fun PlayerActivity.startPlayback(
                 }
                 updateSubtitleButton()
                 maybeScheduleAutoResume(
-                    playJson = playJson,
+                    playStream = playStream,
                     bvid = resolvedBvid,
                     cid = cid,
                     playbackToken = autoResumeToken,
                 )
                 maybeStartAutoSkipSegments(
-                    playJson = playJson,
+                    playStream = playStream,
                     bvid = resolvedBvid,
                     cid = cid,
                     playbackToken = autoSkipToken,
@@ -535,9 +585,9 @@ internal fun PlayerActivity.updatePageListIndexForCurrentMedia(
     pageListToken?.let { PlayerPlaylistStore.updateIndex(it, pageListIndex) }
 }
 
-internal suspend fun PlayerActivity.refreshPartsListFromView(viewData: JSONObject, bvid: String) {
+internal suspend fun PlayerActivity.refreshPartsListFromDetail(detail: VideoDetail, bvid: String) {
     val safeBvid = bvid.trim()
-    val aid = currentAid ?: viewData.optLong("aid").takeIf { it > 0 }
+    val aid = currentAid ?: detail.aid?.takeIf { it > 0 }
     val cid = currentCid.takeIf { it > 0 }
     partsListLoadMoreJob?.cancel()
     partsListLoadMoreJob = null
@@ -585,7 +635,7 @@ internal suspend fun PlayerActivity.refreshPartsListFromView(viewData: JSONObjec
 
     if (safeBvid.isBlank()) return
 
-    val parsedMulti = parseMultiPagePlaylistFromViewWithUiCards(viewData, bvid = safeBvid, aid = aid)
+    val parsedMulti = parseMultiPagePlaylistFromDetailWithUiCards(detail, bvid = safeBvid, aid = aid)
     if (parsedMulti.items.size > 1) {
         val idx = pickPlaylistIndexForCurrentMedia(parsedMulti.items, bvid = safeBvid, aid = aid, cid = cid)
         val safeIndex = idx.takeIf { it in parsedMulti.items.indices } ?: 0
@@ -593,14 +643,12 @@ internal suspend fun PlayerActivity.refreshPartsListFromView(viewData: JSONObjec
         return
     }
 
-    val ugcSeason = viewData.optJSONObject("ugc_season") ?: return
-    val seasonId = ugcSeason.optLong("id").takeIf { it > 0 } ?: return
-    val totalFromView = ugcSeason.optInt("ep_count").takeIf { it > 0 }
-    val mid =
-        ugcSeason.optLong("mid").takeIf { it > 0 }
-            ?: viewData.optJSONObject("owner")?.optLong("mid")?.takeIf { it > 0 }
+    val ugcSeason = detail.ugcSeason ?: return
+    val seasonId = ugcSeason.id?.takeIf { it > 0 } ?: return
+    val totalFromView = ugcSeason.epCount?.takeIf { it > 0 }
+    val mid = ugcSeason.ownerMid?.takeIf { it > 0 }
 
-    val parsedFromView = parseUgcSeasonPlaylistFromViewWithUiCards(ugcSeason)
+    val parsedFromView = parseUgcSeasonPlaylistFromDetailWithUiCards(ugcSeason)
     val idxFromView = pickPlaylistIndexForCurrentMedia(parsedFromView.items, bvid = safeBvid, aid = aid, cid = cid)
     if (idxFromView >= 0) {
         val continuation =
@@ -620,15 +668,15 @@ internal suspend fun PlayerActivity.refreshPartsListFromView(viewData: JSONObjec
 
     val safeMid = mid ?: return
 
-    val json =
+    val archivesPage =
         withContext(Dispatchers.IO) {
-            runCatching { BiliApi.seasonsArchivesList(mid = safeMid, seasonId = seasonId, pageSize = 200) }.getOrNull()
+            runCatching { BiliApi.ugcSeasonArchives(mid = safeMid, seasonId = seasonId, pageSize = 200) }.getOrNull()
         } ?: return
 
-    val parsedFromApi = parseUgcSeasonPlaylistFromArchivesListWithUiCards(json)
+    val parsedFromApi = parseVideoCardsToPlaylistParsed(archivesPage.items, ::videoCardToPlaylistItem)
     val idxFromApi = pickPlaylistIndexForCurrentMedia(parsedFromApi.items, bvid = safeBvid, aid = aid, cid = cid)
     if (idxFromApi >= 0) {
-        val totalFromApi = parsePlaylistPageTotalCount(json)
+        val totalFromApi = archivesPage.totalCount
         val continuation =
             buildUgcSeasonPartsContinuation(
                 seedCards = parsedFromApi.uiCards,
@@ -662,9 +710,9 @@ private fun PlayerActivity.buildUgcSeasonPartsContinuation(
         },
     ) { pageNum ->
         val safePageNum = pageNum.coerceAtLeast(1)
-        val json = BiliApi.seasonsArchivesList(mid = mid, seasonId = seasonId, pageNum = safePageNum, pageSize = 200)
-        val parsed = parseUgcSeasonPlaylistFromArchivesListWithUiCards(json)
-        val totalCount = parsePlaylistPageTotalCount(json)
+        val archivesPage = BiliApi.ugcSeasonArchives(mid = mid, seasonId = seasonId, pageNum = safePageNum, pageSize = 200)
+        val parsed = parseVideoCardsToPlaylistParsed(archivesPage.items, ::videoCardToPlaylistItem)
+        val totalCount = archivesPage.totalCount
         val hasNext = totalCount?.let { safePageNum * 200 < it } ?: (parsed.uiCards.size >= 200)
         VideoCardPlaylistPage(
             cards = parsed.uiCards,
@@ -674,6 +722,14 @@ private fun PlayerActivity.buildUgcSeasonPartsContinuation(
         )
     }
 }
+
+private fun videoCardToPlaylistItem(card: VideoCard): PlayerPlaylistItem =
+    PlayerPlaylistItem(
+        bvid = card.bvid,
+        cid = card.cid,
+        aid = card.aid,
+        title = card.title,
+    )
 
 private fun PlayerActivity.tryApplyPgcPartsListFromBangumiPageList(
     requestBvid: String,
@@ -973,24 +1029,14 @@ internal fun PlayerActivity.handlePlaybackEnded(engine: BlblPlayerEngine) {
     }
 }
 
-internal fun PlayerActivity.applyPerVideoPreferredQn(viewData: JSONObject, cid: Long) {
+internal fun PlayerActivity.applyPerVideoPreferredQn(detail: VideoDetail, cid: Long) {
     val prefs = BiliClient.prefs
 
-    var dim: JSONObject? = null
-    val pages = viewData.optJSONArray("pages")
-    if (pages != null) {
-        for (i in 0 until pages.length()) {
-            val page = pages.optJSONObject(i) ?: continue
-            if (page.optLong("cid") != cid) continue
-            dim = page.optJSONObject("dimension")
-            if (dim != null) break
-        }
-    }
-    dim = dim ?: viewData.optJSONObject("dimension")
+    val dim = detail.pages.firstOrNull { it.cid == cid }?.dimension ?: detail.dimension
 
-    val width = dim?.optInt("width", 0) ?: 0
-    val height = dim?.optInt("height", 0) ?: 0
-    val rotate = dim?.optInt("rotate", 0) ?: 0
+    val width = dim?.width ?: 0
+    val height = dim?.height ?: 0
+    val rotate = dim?.rotate ?: 0
     val (effectiveW, effectiveH) =
         if (rotate == 1) {
             height to width
@@ -1013,8 +1059,8 @@ internal fun PlayerActivity.handlePlayUrlErrorIfNeeded(t: Throwable): Boolean {
     return true
 }
 
-internal fun PlayerActivity.showRiskControlBypassHintIfNeeded(playJson: JSONObject) {
-    if (!playJson.optBoolean("__blbl_risk_control_bypassed", false)) return
+internal fun PlayerActivity.showRiskControlBypassHintIfNeeded(stream: VideoPlayStream) {
+    if (stream.riskControl?.bypassed != true) return
     showRiskControlUserHintOnce()
 }
 

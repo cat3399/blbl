@@ -1,5 +1,6 @@
 package blbl.cat3399.feature.my
 
+import android.content.Intent
 import android.os.Bundle
 import android.os.SystemClock
 import android.view.LayoutInflater
@@ -12,6 +13,8 @@ import androidx.recyclerview.widget.RecyclerView
 import androidx.recyclerview.widget.SimpleItemAnimator
 import blbl.cat3399.core.api.BiliApi
 import blbl.cat3399.core.log.AppLog
+import blbl.cat3399.core.model.HistoryEntry
+import blbl.cat3399.core.model.LiveRoomCard
 import blbl.cat3399.core.model.VideoCard
 import blbl.cat3399.core.net.BiliClient
 import blbl.cat3399.core.paging.PagedGridStateMachine
@@ -19,30 +22,37 @@ import blbl.cat3399.core.paging.appliedOrNull
 import blbl.cat3399.core.ui.AppToast
 import blbl.cat3399.core.ui.DpadGridController
 import blbl.cat3399.core.ui.FocusTreeUtils
+import blbl.cat3399.core.ui.GridViewportFillMonitor
+import blbl.cat3399.core.ui.installGridViewportFillMonitor
 import blbl.cat3399.core.ui.postIfAlive
+import blbl.cat3399.core.ui.requestFocusAdapterPositionReliable
 import blbl.cat3399.core.ui.requestFocusFirstItemOrSelfAfterRefresh
 import blbl.cat3399.databinding.FragmentVideoGridBinding
 import blbl.cat3399.feature.following.openUpDetailFromVideoCard
+import blbl.cat3399.feature.live.LivePlayerActivity
 import blbl.cat3399.feature.player.PlayerActivity
 import blbl.cat3399.feature.player.VideoCardPlaylistPage
 import blbl.cat3399.feature.video.VideoCardActionController
-import blbl.cat3399.feature.video.VideoCardAdapter
 import blbl.cat3399.feature.video.VideoCardDismissBehavior
 import blbl.cat3399.feature.video.VideoCardVisibilityFilter
 import blbl.cat3399.feature.video.buildPagedVideoCardPlaybackHandle
 import blbl.cat3399.feature.video.historyVideoCardPlaylistItem
 import blbl.cat3399.feature.video.openVideoDetailFromPlaybackHandle
 import blbl.cat3399.feature.video.openVideoFromPlaybackHandle
-import blbl.cat3399.feature.video.removeVideoCardAndRestoreFocus
 import blbl.cat3399.ui.RefreshKeyHandler
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 class MyHistoryFragment : Fragment(), MyTabSwitchFocusTarget, RefreshKeyHandler {
+    private enum class RefreshPresentation {
+        ResetToServerOrder,
+        PreserveCurrentOrder,
+    }
+
     private var _binding: FragmentVideoGridBinding? = null
     private val binding get() = _binding!!
 
-    private lateinit var adapter: VideoCardAdapter
+    private lateinit var adapter: HistoryAdapter
 
     private val loadedKeys = HashSet<String>()
     private val paging = PagedGridStateMachine<BiliApi.HistoryCursor?>(initialKey = null)
@@ -51,6 +61,7 @@ class MyHistoryFragment : Fragment(), MyTabSwitchFocusTarget, RefreshKeyHandler 
     private var pendingFocusFirstItemFromTabSwitch: Boolean = false
     private var pendingFocusFirstItemAfterRefresh: Boolean = false
     private var dpadGridController: DpadGridController? = null
+    private var viewportFillMonitor: GridViewportFillMonitor? = null
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         _binding = FragmentVideoGridBinding.inflate(inflater, container, false)
@@ -65,19 +76,15 @@ class MyHistoryFragment : Fragment(), MyTabSwitchFocusTarget, RefreshKeyHandler 
                     context = requireContext(),
                     scope = viewLifecycleOwner.lifecycleScope,
                     dismissBehavior = VideoCardDismissBehavior.DeleteHistory,
-                    onOpenDetail = { _, pos -> openDetail(pos) },
+                    onOpenDetail = { card, pos -> openDetail(adapter.videoPosition(card) ?: pos) },
                     onOpenUp = { card -> openUpDetailFromVideoCard(card) },
                     onCardRemoved = { stableKey ->
-                        _binding?.recycler?.removeVideoCardAndRestoreFocus(
-                            adapter = adapter,
-                            stableKey = stableKey,
-                            isAlive = { _binding != null && isResumed },
-                        )
+                        removeHistoryEntryAndRestoreFocus(stableKey)
                     },
                 )
             adapter =
-                VideoCardAdapter(
-                    onClick = { _, pos ->
+                HistoryAdapter(
+                    onVideoClick = { _, pos ->
                         requireContext().openVideoFromPlaybackHandle(
                             playbackHandle = historyPlaybackHandle(),
                             position = pos,
@@ -93,10 +100,7 @@ class MyHistoryFragment : Fragment(), MyTabSwitchFocusTarget, RefreshKeyHandler 
                             },
                         )
                     },
-                    onLongClick = { card, _ ->
-                        openUpDetailFromVideoCard(card)
-                        true
-                    },
+                    onLiveClick = ::openLive,
                     actionDelegate = actionController,
                 )
         }
@@ -150,6 +154,16 @@ class MyHistoryFragment : Fragment(), MyTabSwitchFocusTarget, RefreshKeyHandler 
                         enableCenterLongPressToLongClick = true,
                     ),
             ).also { it.install() }
+        viewportFillMonitor?.release()
+        viewportFillMonitor =
+            binding.recycler.installGridViewportFillMonitor(
+                isEnabled = { _binding != null && isResumed },
+                canLoadMore = {
+                    val s = paging.snapshot()
+                    !s.isLoading && !s.endReached
+                },
+                loadMore = { loadNextPage() },
+            )
         binding.swipeRefresh.setOnRefreshListener {
             pendingFocusFirstItemAfterRefresh = true
             dpadGridController?.parkFocusForDataSetReset()
@@ -160,6 +174,7 @@ class MyHistoryFragment : Fragment(), MyTabSwitchFocusTarget, RefreshKeyHandler 
     override fun onResume() {
         super.onResume()
         (binding.recycler.layoutManager as? GridLayoutManager)?.spanCount = spanCountForWidth(resources)
+        viewportFillMonitor?.scheduleCheck()
         maybeTriggerInitialLoad()
         silentRefreshForProgressDataSource()
         maybeConsumePendingFocusFirstItemFromTabSwitch()
@@ -248,15 +263,22 @@ class MyHistoryFragment : Fragment(), MyTabSwitchFocusTarget, RefreshKeyHandler 
         paging.reset()
         loadedKeys.clear()
         dpadGridController?.clearPendingFocusAfterLoadMore()
-        loadNextPage(isRefresh = true)
+        loadNextPage(
+            isRefresh = true,
+            refreshPresentation = RefreshPresentation.PreserveCurrentOrder,
+        )
     }
 
     private data class FetchedPage(
-        val items: List<VideoCard>,
+        val items: List<HistoryEntry>,
         val nextCursor: BiliApi.HistoryCursor?,
     )
 
-    private fun loadNextPage(isRefresh: Boolean = false) {
+    private fun loadNextPage(
+        isRefresh: Boolean = false,
+        refreshPresentation: RefreshPresentation = RefreshPresentation.ResetToServerOrder,
+    ) {
+        val preserveCurrentOrderRefresh = isRefresh && refreshPresentation == RefreshPresentation.PreserveCurrentOrder
         val startSnap = paging.snapshot()
         if (startSnap.isLoading || startSnap.endReached) return
         val startGen = startSnap.generation
@@ -278,7 +300,7 @@ class MyHistoryFragment : Fragment(), MyTabSwitchFocusTarget, RefreshKeyHandler 
                                     )
 
                                 val nextCursor = page.cursor
-                                val filtered = VideoCardVisibilityFilter.filterVisibleFresh(page.items, loadedKeys)
+                                val filtered = filterFreshHistoryEntries(page.items)
                                 if (filtered.isNotEmpty() || nextCursor == null || nextCursor == c || page.items.isEmpty()) {
                                     fetchedPage = FetchedPage(items = filtered, nextCursor = nextCursor)
                                 } else {
@@ -299,7 +321,11 @@ class MyHistoryFragment : Fragment(), MyTabSwitchFocusTarget, RefreshKeyHandler 
                 val applied = result.appliedOrNull() ?: return@launch
                 if (applied.items.isEmpty()) {
                     if (applied.isRefresh) {
-                        adapter.submit(emptyList())
+                        if (preserveCurrentOrderRefresh) {
+                            resetLoadedKeysFromAdapter()
+                        } else {
+                            adapter.submit(emptyList())
+                        }
                     }
                     if (applied.isRefresh && pendingFocusFirstItemAfterRefresh) {
                         pendingFocusFirstItemAfterRefresh = false
@@ -315,8 +341,18 @@ class MyHistoryFragment : Fragment(), MyTabSwitchFocusTarget, RefreshKeyHandler 
                     }
                     return@launch
                 }
-                applied.items.forEach { loadedKeys.add(it.stableKey()) }
-                if (applied.isRefresh) adapter.submit(applied.items) else adapter.append(applied.items)
+                if (applied.isRefresh) {
+                    if (preserveCurrentOrderRefresh) {
+                        adapter.updateExistingEntriesPreservingOrder(applied.items)
+                        resetLoadedKeysFromAdapter()
+                    } else {
+                        applied.items.forEach { loadedKeys.add(it.stableKey()) }
+                        adapter.submit(applied.items)
+                    }
+                } else {
+                    applied.items.forEach { loadedKeys.add(it.stableKey()) }
+                    adapter.append(applied.items)
+                }
                 _binding?.recycler?.postIfAlive(isAlive = { _binding != null }) {
                     if (pendingFocusFirstItemAfterRefresh && applied.isRefresh) {
                         pendingFocusFirstItemAfterRefresh = false
@@ -327,14 +363,17 @@ class MyHistoryFragment : Fragment(), MyTabSwitchFocusTarget, RefreshKeyHandler 
                             smoothScroll = false,
                             isAlive = isUiAlive,
                         )
+                        viewportFillMonitor?.scheduleCheck()
                         return@postIfAlive
                     }
                     maybeConsumePendingFocusFirstItemFromTabSwitch()
                     dpadGridController?.consumePendingFocusAfterLoadMore()
+                    viewportFillMonitor?.scheduleCheck()
                 }
 
             } catch (t: Throwable) {
                 if (t is CancellationException) throw t
+                if (preserveCurrentOrderRefresh) resetLoadedKeysFromAdapter()
                 AppLog.e("MyHistory", "load failed", t)
                 context?.let { AppToast.show(it, "加载失败，可查看 Logcat(标签 BLBL)") }
             } finally {
@@ -343,10 +382,17 @@ class MyHistoryFragment : Fragment(), MyTabSwitchFocusTarget, RefreshKeyHandler 
         }
     }
 
+    private fun resetLoadedKeysFromAdapter() {
+        loadedKeys.clear()
+        loadedKeys.addAll(adapter.stableKeysSnapshot())
+    }
+
     override fun onDestroyView() {
         initialLoadTriggered = false
         dpadGridController?.release()
         dpadGridController = null
+        viewportFillMonitor?.release()
+        viewportFillMonitor = null
         _binding = null
         super.onDestroyView()
     }
@@ -355,10 +401,58 @@ class MyHistoryFragment : Fragment(), MyTabSwitchFocusTarget, RefreshKeyHandler 
         requireContext().openVideoDetailFromPlaybackHandle(historyPlaybackHandle(), position)
     }
 
+    private fun openLive(room: LiveRoomCard) {
+        if (!room.isLive) {
+            AppToast.show(requireContext(), "直播未开播")
+            return
+        }
+        startActivity(
+            Intent(requireContext(), LivePlayerActivity::class.java)
+                .putExtra(LivePlayerActivity.EXTRA_ROOM_ID, room.roomId)
+                .putExtra(LivePlayerActivity.EXTRA_TITLE, room.title)
+                .putExtra(LivePlayerActivity.EXTRA_UNAME, room.uname),
+        )
+    }
+
+    private fun filterFreshHistoryEntries(entries: List<HistoryEntry>): List<HistoryEntry> {
+        if (entries.isEmpty()) return emptyList()
+        val seen = HashSet<String>(entries.size)
+        return entries.filter { entry ->
+            val stableKey = entry.stableKey()
+            if (loadedKeys.contains(stableKey)) return@filter false
+            if (!seen.add(stableKey)) return@filter false
+            if (entry is HistoryEntry.Video && VideoCardVisibilityFilter.filterVisible(listOf(entry.card)).isEmpty()) {
+                return@filter false
+            }
+            true
+        }
+    }
+
+    private fun removeHistoryEntryAndRestoreFocus(stableKey: String) {
+        val recycler = _binding?.recycler ?: return
+        val removedIndex = adapter.removeByStableKey(stableKey)
+        if (removedIndex < 0) return
+
+        recycler.postIfAlive(isAlive = { _binding != null && isResumed }) {
+            val itemCount = adapter.itemCount
+            if (itemCount <= 0) {
+                recycler.requestFocus()
+                return@postIfAlive
+            }
+
+            recycler.requestFocusAdapterPositionReliable(
+                position = removedIndex.coerceIn(0, itemCount - 1),
+                smoothScroll = false,
+                isAlive = { _binding != null && isResumed },
+                onFocused = {},
+            )
+        }
+    }
+
     private fun historyPlaybackHandle() =
         buildPagedVideoCardPlaybackHandle(
             source = "MyHistory",
-            cardsProvider = adapter::snapshot,
+            cardsProvider = adapter::videoSnapshot,
             nextCursorProvider = { paging.snapshot().nextKey },
             hasMoreProvider = { !paging.snapshot().endReached },
             playlistItemFactory = ::historyVideoCardPlaylistItem,
@@ -372,10 +466,12 @@ class MyHistoryFragment : Fragment(), MyTabSwitchFocusTarget, RefreshKeyHandler 
                 )
             val nextCursor = page.cursor
             VideoCardPlaylistPage(
-                cards = page.items,
+                cards = page.items.videoCards(),
                 nextCursor = nextCursor,
                 hasMore = nextCursor != null,
                 canAdvance = nextCursor != null && nextCursor != cursor && page.items.isNotEmpty(),
             )
         }
+
+    private fun List<HistoryEntry>.videoCards(): List<VideoCard> = mapNotNull { (it as? HistoryEntry.Video)?.card }
 }

@@ -14,6 +14,10 @@
         <item name="blblAccentContainer">@color/blbl_accent_violet_container</item>
         <item name="blblAccentWeak">@color/blbl_accent_violet_weak</item>
         <item name="blblAccentPressed">@color/blbl_accent_violet_pressed</item>
+        <item name="blblPageBackdrop">?attr/colorBackground</item>
+        <item name="blblDialogSurface">?attr/colorSurface</item>
+        <item name="blblOnPageBackdrop">?attr/colorOnSurface</item>
+        <item name="blblOnPageBackdropSecondary">?android:attr/textColorSecondary</item>
 
         <item name="colorSecondary">?attr/blblAccent</item>
         <item name="colorOnSecondary">@android:color/white</item>
@@ -43,6 +47,9 @@
         <item name="blblContentBackground">?attr/colorBackground</item>
         <item name="colorSurface">@color/blbl_surface</item>
         <item name="colorOnSurface">@color/blbl_text</item>
+        <item name="blblDialogSurface">@color/blbl_surface</item>
+        <item name="blblOnPageBackdrop">@color/blbl_text</item>
+        <item name="blblOnPageBackdropSecondary">@color/blbl_text_secondary</item>
 
         <item name="android:statusBarColor">@color/blbl_bg</item>
         <item name="android:navigationBarColor">@color/blbl_bg</item>
@@ -61,6 +68,9 @@
         <item name="blblContentBackground">?attr/colorSurface</item>
         <item name="colorSurface">@color/blbl_surface_tv_pink</item>
         <item name="colorOnSurface">@color/blbl_text_tv_pink</item>
+        <item name="blblDialogSurface">@color/blbl_surface_tv_pink</item>
+        <item name="blblOnPageBackdrop">@color/blbl_text_tv_pink</item>
+        <item name="blblOnPageBackdropSecondary">@color/blbl_text_secondary_tv_pink</item>
 
         <item name="android:statusBarColor">@color/blbl_bg_tv_pink</item>
         <item name="android:navigationBarColor">@color/blbl_bg_tv_pink</item>
@@ -73,6 +83,27 @@
         <item name="blblFocusListSelectorRound">@drawable/blbl_focus_list_selector_round_tv_pink</item>
         <item name="blblFocusStrokeColor">@color/blbl_focus_stroke_tv_pink</item>
         <item name="blblFocusStrokeFocusOnlyColor">@color/blbl_focus_stroke_focus_only_tv_pink</item>
+    </style>
+
+    <style name="Theme.Blbl.Base.TvPinkIllustration" parent="Theme.Blbl.Base.PinkLight">
+        <item name="android:colorBackground">@color/blbl_bg_classic</item>
+        <item name="colorBackground">@color/blbl_bg_classic</item>
+        <item name="blblPageBackdrop">@drawable/bg_tv_pink_illustration_backdrop</item>
+        <item name="blblContentBackground">@color/blbl_content_bg_classic</item>
+        <item name="colorSurface">@color/blbl_surface_classic</item>
+        <item name="colorOnSurface">@color/blbl_text_classic</item>
+        <item name="blblDialogSurface">@color/blbl_dialog_surface_classic</item>
+        <item name="blblOnPageBackdrop">@color/blbl_on_page_backdrop_classic</item>
+        <item name="blblOnPageBackdropSecondary">@color/blbl_on_page_backdrop_secondary_classic</item>
+        <item name="android:statusBarColor">@color/blbl_bg_classic</item>
+        <item name="android:navigationBarColor">@color/blbl_bg_classic</item>
+        <item name="android:windowBackground">@drawable/bg_launcher_window</item>
+        <item name="android:textColorPrimary">@color/blbl_text_classic</item>
+        <item name="android:textColorSecondary">@color/blbl_text_secondary_classic</item>
+        <item name="blblAccent">@color/blbl_accent_classic</item>
+        <item name="blblAccentContainer">@color/blbl_accent_classic_container</item>
+        <item name="blblAccentWeak">@color/blbl_accent_classic_weak</item>
+        <item name="blblAccentPressed">@color/blbl_accent_classic_pressed</item>
     </style>
 
     <!-- Player is frozen for this iteration: keep existing blue focus/active states. -->
@@ -101,6 +132,14 @@
         <item name="blblAccentContainer">@color/blbl_accent_tv_pink_container</item>
         <item name="blblAccentWeak">@color/blbl_accent_tv_pink_weak</item>
         <item name="blblAccentPressed">@color/blbl_accent_tv_pink_pressed</item>
+        <item name="android:windowBackground">@drawable/bg_launcher_window</item>
+    </style>
+
+    <style name="Theme.Blbl.Launcher.TvPinkIllustration" parent="Theme.Blbl.Base.TvPinkIllustration">
+        <item name="blblAccent">@color/blbl_accent_classic</item>
+        <item name="blblAccentContainer">@color/blbl_accent_classic_container</item>
+        <item name="blblAccentWeak">@color/blbl_accent_classic_weak</item>
+        <item name="blblAccentPressed">@color/blbl_accent_classic_pressed</item>
         <item name="android:windowBackground">@drawable/bg_launcher_window</item>
     </style>
 </resources>

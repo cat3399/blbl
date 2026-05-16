@@ -21,9 +21,10 @@
         android:layout_height="wrap_content"
         android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:paddingHorizontal="@dimen/search_hot_padding_h"
-        android:paddingVertical="@dimen/search_hot_padding_v">
-
+        android:paddingStart="@dimen/search_hot_padding_h"
+        android:paddingEnd="@dimen/search_hot_padding_h"
+        android:paddingTop="@dimen/search_hot_padding_v"
+        android:paddingBottom="@dimen/search_hot_padding_v">
         <ImageView
             android:id="@+id/iv_icon"
             android:layout_width="@dimen/search_hot_icon_size"

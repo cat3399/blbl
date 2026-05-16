@@ -1,7 +1,5 @@
 package blbl.cat3399.feature.settings
 
-import android.media.MediaCodecInfo
-import android.media.MediaCodecList
 import android.os.Build
 import android.view.KeyEvent
 import android.view.View
@@ -15,7 +13,7 @@ import blbl.cat3399.core.ui.FocusTreeUtils
 import blbl.cat3399.databinding.ActivitySettingsBinding
 import blbl.cat3399.core.util.DeviceAbi
 import blbl.cat3399.feature.player.AudioBalanceLevel
-import java.util.Locale
+import blbl.cat3399.feature.player.engine.IjkPlayerPlugin
 
 class SettingsRenderer(
     private val activity: SettingsActivity,
@@ -27,7 +25,7 @@ class SettingsRenderer(
     private val onSectionShown: (String) -> Unit,
 ) {
     private var focusListener: android.view.ViewTreeObserver.OnGlobalFocusChangeListener? = null
-    private val deviceCodecSupportValue: String by lazy { detectHardDecoderSupportValue() }
+    private val deviceCodecSupportValue: String by lazy { SettingsText.hardDecoderSupportText() }
 
     fun installFocusListener() {
         if (focusListener != null) return
@@ -192,12 +190,13 @@ class SettingsRenderer(
                 listOf(
                     SettingEntry(SettingId.ImageQuality, "图片质量", prefs.imageQuality, null),
                     SettingEntry(SettingId.ThemePreset, "主题", SettingsText.themePresetText(prefs.themePreset), null),
+                    SettingEntry(SettingId.ApiSource, "接口类别", SettingsText.apiSourceText(prefs.apiSource), null),
                     SettingEntry(SettingId.UserAgent, "User-Agent", prefs.userAgent.take(60), null),
                     SettingEntry(SettingId.Ipv4OnlyEnabled, "是否只允许使用IPV4", if (prefs.ipv4OnlyEnabled) "开" else "关", null),
                     SettingEntry(SettingId.GaiaVgate, "风控验证", gaiaVgateStatusText(), "播放被拦截后可在此手动完成人机验证"),
                     SettingEntry(SettingId.ClearCache, "清理缓存", cacheSizeText(), null),
                     SettingEntry(SettingId.ConfigTransfer, "导出/入配置", "打开", null),
-                    SettingEntry(SettingId.ClearLogin, "清除登录", if (BiliClient.cookies.hasSessData()) "已登录" else "未登录", null),
+                    SettingEntry(SettingId.ClearLogin, "清除登录", loginStatusText(), null),
                 )
 
             "页面设置" ->
@@ -213,6 +212,7 @@ class SettingsRenderer(
                     SettingEntry(SettingId.PgcGridSpanCount, "番剧/电视剧每行卡片数量", SettingsText.gridSpanText(prefs.pgcGridSpanCount), null),
                     SettingEntry(SettingId.UiScaleFactor, "界面大小", SettingsText.uiScaleFactorText(prefs.uiScaleFactor), null),
                     SettingEntry(SettingId.FullscreenEnabled, "以全屏模式运行", if (prefs.fullscreenEnabled) "开" else "关", null),
+                    SettingEntry(SettingId.AvoidDisplayCutout, "避开挖孔/圆角区域", if (prefs.avoidDisplayCutout) "开" else "关", null),
                     SettingEntry(SettingId.TabSwitchFollowsFocus, "tab跟随焦点切换", if (prefs.tabSwitchFollowsFocus) "开" else "关", null),
                     SettingEntry(
                         SettingId.MainAutoHideSidebarOnEnterContent,
@@ -251,6 +251,30 @@ class SettingsRenderer(
                         SettingsText.followingListOrderText(prefs.followingListOrder),
                         null,
                     ),
+                    SettingEntry(
+                        SettingId.MainHomeVisibleTabs,
+                        "主页显示页面",
+                        SettingsText.mainHomeVisibleTabsText(activity, prefs.mainHomeVisibleTabs),
+                        null,
+                    ),
+                    SettingEntry(
+                        SettingId.MainCategoryVisibleTabs,
+                        "分类页显示页面",
+                        SettingsText.mainCategoryVisibleTabsText(prefs.mainCategoryVisibleTabs),
+                        null,
+                    ),
+                    SettingEntry(
+                        SettingId.MainLiveVisibleTabs,
+                        "直播页显示页面",
+                        SettingsText.mainLiveVisibleTabsText(prefs.mainLiveVisibleTabs),
+                        null,
+                    ),
+                    SettingEntry(
+                        SettingId.MainMyVisibleTabs,
+                        "我的页显示页面",
+                        SettingsText.mainMyVisibleTabsText(activity, prefs.mainMyVisibleTabs),
+                        null,
+                    ),
                 )
 
             "播放设置" ->
@@ -277,6 +301,18 @@ class SettingsRenderer(
                         null,
                     ),
                     SettingEntry(SettingId.PlayerHoldSeekMode, "长按快进模式", SettingsText.holdSeekModeText(prefs.playerHoldSeekMode), null),
+                    SettingEntry(
+                        SettingId.PlayerHoldScrubTraverseSeconds,
+                        "拖完整个视频所需时间",
+                        SettingsText.seekStepSecondsText(prefs.playerHoldScrubTraverseSeconds),
+                        null,
+                    ),
+                    SettingEntry(
+                        SettingId.PlayerHoldScrubFixedStepSeconds,
+                        "固定时间拖动进度条间隔",
+                        SettingsText.seekStepSecondsText(prefs.playerHoldScrubFixedStepSeconds),
+                        null,
+                    ),
                     SettingEntry(SettingId.PlayerAutoResumeEnabled, "自动跳到上次播放位置", if (prefs.playerAutoResumeEnabled) "开" else "关", null),
                     SettingEntry(
                         SettingId.PlayerAutoSkipSegmentsEnabled,
@@ -315,6 +351,7 @@ class SettingsRenderer(
                     SettingEntry(SettingId.SubtitleEnabledDefault, "默认开启字幕", if (prefs.subtitleEnabledDefault) "开" else "关", null),
                     SettingEntry(SettingId.PlayerPreferredCodec, "视频编码", prefs.playerPreferredCodec, null),
                     SettingEntry(SettingId.PlayerOsdButtons, "OSD按钮显示", SettingsText.playerOsdButtonsText(prefs.playerOsdButtons), null),
+                    SettingEntry(SettingId.PlayerUpQuickCardEnabled, "UP关注卡片", if (prefs.playerUpQuickCardEnabled) "开" else "关", null),
                     SettingEntry(SettingId.PlayerDoubleBackToExit, "按两次退出键才退出播放器", if (prefs.playerDoubleBackToExit) "开" else "关", null),
                     SettingEntry(
                         SettingId.PlayerDownKeyOsdFocusTarget,
@@ -413,7 +450,14 @@ class SettingsRenderer(
                     SettingEntry(SettingId.QqGroup, "QQ交流群", SettingsConstants.QQ_GROUP, null),
                     SettingEntry(SettingId.LogTag, "日志标签", "BLBL", "用于 Logcat 过滤"),
                     SettingEntry(SettingId.ExportLogs, "导出日志", "保存文件", null),
-                    SettingEntry(SettingId.UploadLogs, "上传日志", "点击上传", "打包并上传日志zip到开发者（含设备/版本等元数据）"),
+                    SettingEntry(SettingId.UploadLogs, "上传日志", "点击上传", "打包并上传日志zip到开发者（含设备/版本/非登录配置元数据）"),
+                    playerKernelEntry(),
+                    SettingEntry(
+                        SettingId.AutoUpdateCheckEnabled,
+                        "自动检查更新",
+                        if (prefs.autoUpdateCheckEnabled) "开" else "关",
+                        "启动时后台检查，有新版本才提示",
+                    ),
                     aboutUpdateEntry(),
                 )
 
@@ -431,55 +475,21 @@ class SettingsRenderer(
         }
     }
 
-    private fun detectHardDecoderSupportValue(): String {
-        val support = runCatching { queryHardDecoderSupport() }.getOrNull() ?: return "-"
-        return "H264 ${markSupport(support.h264)} / H265 ${markSupport(support.h265)} / AV1 ${markSupport(support.av1)}"
-    }
+    private fun playerKernelEntry(): SettingEntry {
+        return when (IjkPlayerPlugin.status(activity)) {
+            IjkPlayerPlugin.InstallStatus.Unsupported ->
+                SettingEntry(SettingId.PlayerKernelCheck, "播放器内核检测", "不支持", null)
 
-    private fun markSupport(supported: Boolean): String = if (supported) "✓" else "✗"
+            IjkPlayerPlugin.InstallStatus.NotInstalled ->
+                SettingEntry(SettingId.PlayerKernelCheck, "播放器内核检测", "未安装", null)
 
-    private fun queryHardDecoderSupport(): HardDecoderSupport {
-        if (Build.VERSION.SDK_INT < 21) {
-            return HardDecoderSupport(h264 = false, h265 = false, av1 = false)
+            IjkPlayerPlugin.InstallStatus.NeedsUpdate ->
+                SettingEntry(SettingId.PlayerKernelCheck, "播放器内核检测", "需要更新", null)
+
+            IjkPlayerPlugin.InstallStatus.Installed ->
+                SettingEntry(SettingId.PlayerKernelCheck, "播放器内核检测", "已就绪", null)
         }
-        var h264 = false
-        var h265 = false
-        var av1 = false
-        for (codecInfo in MediaCodecList(MediaCodecList.ALL_CODECS).codecInfos) {
-            if (codecInfo.isEncoder) continue
-            if (!isHardwareDecoder(codecInfo)) continue
-            for (mime in codecInfo.supportedTypes) {
-                when (mime.lowercase(Locale.US)) {
-                    "video/avc" -> h264 = true
-                    "video/hevc" -> h265 = true
-                    "video/av01", "video/av1" -> av1 = true
-                }
-            }
-            if (h264 && h265 && av1) break
-        }
-        return HardDecoderSupport(h264 = h264, h265 = h265, av1 = av1)
     }
-
-    private fun isHardwareDecoder(codecInfo: MediaCodecInfo): Boolean {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            if (codecInfo.isAlias) return false
-            return codecInfo.isHardwareAccelerated
-        }
-        val name = codecInfo.name.lowercase(Locale.US)
-        if (name.startsWith("omx.google.")) return false
-        if (name.startsWith("c2.android.")) return false
-        if (name.startsWith("c2.google.")) return false
-        if (name.contains(".sw.")) return false
-        if (name.contains("software")) return false
-        if (name.contains("ffmpeg")) return false
-        return true
-    }
-
-    private data class HardDecoderSupport(
-        val h264: Boolean,
-        val h265: Boolean,
-        val av1: Boolean,
-    )
 
     private fun gaiaVgateStatusText(): String {
         val now = System.currentTimeMillis()
@@ -490,6 +500,15 @@ class SettingsRenderer(
             tokenOk -> "已通过"
             voucherOk -> "待验证"
             else -> "无"
+        }
+    }
+
+    private fun loginStatusText(): String {
+        val count = BiliClient.accounts.accounts().size
+        return when {
+            count > 1 -> "已登录 ${count} 个帐号"
+            BiliClient.cookies.hasSessData() -> "已登录"
+            else -> "未登录"
         }
     }
 
@@ -504,7 +523,7 @@ class SettingsRenderer(
         val defaultDesc = "检查新版本并下载安装"
         return when (val checkState = state.testUpdateCheckState) {
             TestUpdateCheckState.Idle -> SettingEntry(SettingId.CheckUpdate, title, "点击检查", defaultDesc)
-            TestUpdateCheckState.Checking -> SettingEntry(SettingId.CheckUpdate, title, "检查中…", "正在获取最新版本号…")
+            TestUpdateCheckState.Checking -> SettingEntry(SettingId.CheckUpdate, title, "检查中…", "正在获取更新日志…")
 
             is TestUpdateCheckState.Latest ->
                 SettingEntry(

@@ -8,6 +8,7 @@ import androidx.recyclerview.widget.RecyclerView
 import blbl.cat3399.R
 import blbl.cat3399.core.api.BiliApi
 import blbl.cat3399.core.api.BiliApiException
+import blbl.cat3399.core.net.BiliClient
 import blbl.cat3399.core.note.NoteImageRepository
 import blbl.cat3399.core.ui.AppToast
 import blbl.cat3399.core.ui.DpadGridController
@@ -31,7 +32,8 @@ internal fun PlayerActivity.isCommentThreadVisible(): Boolean = binding.recycler
 
 internal fun PlayerActivity.isSidePanelVisible(): Boolean = isSettingsPanelVisible() || isCommentsPanelVisible()
 
-internal fun PlayerActivity.isOverlayPanelVisible(): Boolean = isSidePanelVisible() || isBottomCardPanelVisible()
+internal fun PlayerActivity.isOverlayPanelVisible(): Boolean =
+    isSidePanelVisible() || isBottomCardPanelVisible() || isSponsorSubmitPanelVisible()
 
 internal fun PlayerActivity.onOverlayPanelShown(openedFromMenuKey: Boolean) {
     when {
@@ -52,6 +54,18 @@ internal fun PlayerActivity.onLastOverlayPanelDismissed(dismissTarget: PlayerAct
 internal fun PlayerActivity.initSidePanels() {
     binding.chipCommentSortHot.setOnClickListener { applyCommentSort(COMMENT_SORT_HOT) }
     binding.chipCommentSortNew.setOnClickListener { applyCommentSort(COMMENT_SORT_NEW) }
+    fun switchCommentSortOnFocus(sort: Int) {
+        if (!isCommentsPanelVisible()) return
+        if (isCommentThreadVisible()) return
+        if (!BiliClient.prefs.tabSwitchFollowsFocus) return
+        applyCommentSort(sort)
+    }
+    binding.chipCommentSortHot.setOnFocusChangeListener { _, hasFocus ->
+        if (hasFocus) switchCommentSortOnFocus(COMMENT_SORT_HOT)
+    }
+    binding.chipCommentSortNew.setOnFocusChangeListener { _, hasFocus ->
+        if (hasFocus) switchCommentSortOnFocus(COMMENT_SORT_NEW)
+    }
     updateCommentSortUi()
 
     val pool = RecyclerView.RecycledViewPool()

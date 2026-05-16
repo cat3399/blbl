@@ -17,9 +17,11 @@ import blbl.cat3399.core.ui.AppToast
 import blbl.cat3399.core.ui.BackButtonSizingHelper
 import blbl.cat3399.core.ui.DpadGridController
 import blbl.cat3399.core.ui.FocusTreeUtils
+import blbl.cat3399.core.ui.GridViewportFillMonitor
 import blbl.cat3399.core.ui.GridSpanPolicy
 import blbl.cat3399.core.ui.UiScale
 import blbl.cat3399.core.ui.postIfAlive
+import blbl.cat3399.core.ui.installGridViewportFillMonitor
 import blbl.cat3399.databinding.FragmentLiveAreaDetailBinding
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
@@ -46,6 +48,7 @@ class LiveAreaDetailFragment : Fragment() {
     private var pendingRestoreRoomId: Long? = null
     private var pendingRestorePositionHint: Int? = null
     private var dpadGridController: DpadGridController? = null
+    private var viewportFillMonitor: GridViewportFillMonitor? = null
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         _binding = FragmentLiveAreaDetailBinding.inflate(inflater, container, false)
@@ -142,6 +145,13 @@ class LiveAreaDetailFragment : Fragment() {
                         isEnabled = { _binding != null && isResumed },
                     ),
             ).also { it.install() }
+        viewportFillMonitor?.release()
+        viewportFillMonitor =
+            binding.recycler.installGridViewportFillMonitor(
+                isEnabled = { _binding != null && isResumed },
+                canLoadMore = { !isLoadingMore && !endReached },
+                loadMore = { loadNextPage() },
+            )
 
         binding.swipeRefresh.setOnRefreshListener { resetAndLoad() }
 
@@ -154,6 +164,8 @@ class LiveAreaDetailFragment : Fragment() {
     override fun onDestroyView() {
         dpadGridController?.release()
         dpadGridController = null
+        viewportFillMonitor?.release()
+        viewportFillMonitor = null
         _binding = null
         super.onDestroyView()
     }
@@ -162,6 +174,7 @@ class LiveAreaDetailFragment : Fragment() {
         super.onResume()
         applyBackButtonSizing()
         updateRecyclerSpanCountIfNeeded(force = true)
+        viewportFillMonitor?.scheduleCheck()
         maybeTriggerInitialLoad()
         // Make sure focus stays within this detail page on return.
         val b = _binding ?: return
@@ -254,6 +267,7 @@ class LiveAreaDetailFragment : Fragment() {
         val contentWidthDp = contentWidthPx / dm.density
         val span = autoSpanCountForWidthDp(contentWidthDp)
         if (span != lm.spanCount) lm.spanCount = span
+        viewportFillMonitor?.scheduleCheck()
     }
 
     private fun resetAndLoad() {
@@ -322,6 +336,7 @@ class LiveAreaDetailFragment : Fragment() {
             } finally {
                 if (isRefresh && token == requestToken) _binding?.swipeRefresh?.isRefreshing = false
                 isLoadingMore = false
+                viewportFillMonitor?.scheduleCheck()
             }
         }
     }

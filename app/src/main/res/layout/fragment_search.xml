@@ -3,7 +3,7 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="?attr/colorBackground">
+    android:background="?attr/blblPageBackdrop">
 
     <ImageView
         android:id="@+id/iv_search"
@@ -13,7 +13,7 @@
         android:layout_marginTop="12dp"
         android:contentDescription="@string/tab_search"
         app:srcCompat="@drawable/ic_nav_search"
-        app:tint="?android:attr/textColorSecondary"
+        app:tint="?attr/blblOnPageBackdropSecondary"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
@@ -30,10 +30,12 @@
         android:imeOptions="actionSearch"
         android:inputType="text"
         android:maxLines="1"
-        android:paddingHorizontal="12dp"
-        android:paddingVertical="2dp"
-        android:textColor="?attr/colorOnSurface"
-        android:textColorHint="?android:attr/textColorSecondary"
+        android:paddingStart="12dp"
+        android:paddingEnd="12dp"
+        android:paddingTop="2dp"
+        android:paddingBottom="2dp"
+        android:textColor="?attr/blblOnPageBackdrop"
+        android:textColorHint="?attr/blblOnPageBackdropSecondary"
         android:textSize="22sp"
         android:textStyle="bold"
         app:layout_constraintBottom_toBottomOf="@id/iv_search"
@@ -243,15 +245,11 @@
             android:layout_height="wrap_content"
             android:layout_marginStart="16dp"
             android:layout_marginEnd="12dp"
-            android:background="?attr/colorBackground"
+            android:background="@android:color/transparent"
             android:focusable="false"
             app:layout_constraintEnd_toStartOf="@id/btn_sort"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toTopOf="parent"
-            app:tabBackground="?attr/blblFocusBgRound"
-            app:tabIndicatorColor="?attr/blblAccent"
-            app:tabSelectedTextColor="?attr/colorOnSurface"
-            app:tabTextColor="?android:attr/textColorSecondary" />
+            app:layout_constraintTop_toTopOf="parent" />
 
         <com.google.android.material.card.MaterialCardView
             android:id="@+id/btn_sort"
@@ -274,8 +272,8 @@
                 android:layout_height="match_parent"
                 android:gravity="center"
                 android:orientation="horizontal"
-                android:paddingHorizontal="12dp">
-
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp">
                 <ImageView
                     android:layout_width="18dp"
                     android:layout_height="18dp"
@@ -324,7 +322,7 @@
             android:focusable="true"
             android:focusableInTouchMode="true"
             android:text="@string/search_unsupported"
-            android:textColor="?android:attr/textColorSecondary"
+            android:textColor="?attr/blblOnPageBackdropSecondary"
             android:textSize="16sp"
             android:visibility="gone"
             app:layout_constraintEnd_toEndOf="parent"

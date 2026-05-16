@@ -29,17 +29,21 @@ object ThemePresets {
         }
 
         val preset =
-            runCatching { BiliClient.prefs.themePreset }
-                .getOrNull()
-                ?.trim()
-                ?.takeIf { it.isNotBlank() }
-                ?: AppPrefs.THEME_PRESET_DEFAULT
+            AppPrefs.normalizeThemePreset(
+                runCatching { BiliClient.prefs.themePreset }.getOrNull(),
+            )
 
         return when (preset) {
             AppPrefs.THEME_PRESET_TV_PINK ->
                 Spec(
                     baseThemeRes = R.style.Theme_Blbl_Base_PinkLight,
                     overlayRes = R.style.ThemeOverlay_Blbl_Accent_TvPink,
+                )
+
+            AppPrefs.THEME_PRESET_TV_PINK_ILLUSTRATION ->
+                Spec(
+                    baseThemeRes = R.style.Theme_Blbl_Base_TvPinkIllustration,
+                    overlayRes = R.style.ThemeOverlay_Blbl_Accent_Classic,
                 )
 
             else ->

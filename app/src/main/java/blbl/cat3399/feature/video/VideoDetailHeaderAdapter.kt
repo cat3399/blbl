@@ -1,5 +1,7 @@
 package blbl.cat3399.feature.video
 
+import android.text.Layout
+import android.text.StaticLayout
 import android.view.LayoutInflater
 import android.view.ViewGroup
 import androidx.core.content.ContextCompat
@@ -17,6 +19,8 @@ import blbl.cat3399.databinding.ItemVideoDetailHeaderBinding
 import blbl.cat3399.feature.player.HoldToTriggerController
 import com.google.android.material.chip.Chip
 import java.lang.ref.WeakReference
+
+private const val DESC_COLLAPSED_TEXT_LINES = 4
 
 class VideoDetailHeaderAdapter(
     private val onPlayClick: () -> Unit,
@@ -41,6 +45,8 @@ class VideoDetailHeaderAdapter(
     private var title: String? = null
     private var metaText: String? = null
     private var desc: String? = null
+    private var descKey: String? = null
+    private var descExpanded: Boolean = false
     private var coverUrl: String? = null
     private var accessBadgeText: String? = null
     private var usePosterCover: Boolean = false
@@ -127,6 +133,12 @@ class VideoDetailHeaderAdapter(
         seasonScrollToStart: Boolean = false,
         recommendHeaderText: String?,
     ) {
+        val nextDescKey = desc?.trim()?.takeIf { it.isNotBlank() }
+        if (nextDescKey != descKey) {
+            descKey = nextDescKey
+            descExpanded = false
+        }
+
         this.title = title
         this.metaText = metaText
         this.desc = desc
@@ -188,6 +200,14 @@ class VideoDetailHeaderAdapter(
             onSeasonOrderClick = onSeasonOrderClick,
             onPartCardClick = onPartCardClick,
             onSeasonCardClick = onSeasonCardClick,
+            onDescExpandClick = {
+                if (descExpanded) {
+                    false
+                } else {
+                    descExpanded = true
+                    true
+                }
+            },
         )
     }
 
@@ -196,6 +216,7 @@ class VideoDetailHeaderAdapter(
             title = title,
             metaText = metaText,
             desc = desc,
+            descExpanded = descExpanded,
             coverUrl = coverUrl,
             accessBadgeText = accessBadgeText,
             usePosterCover = usePosterCover,
@@ -255,10 +276,12 @@ class VideoDetailHeaderAdapter(
         private val onSeasonOrderClick: () -> Unit,
         private val onPartCardClick: (card: VideoCard, index: Int) -> Unit,
         private val onSeasonCardClick: (card: VideoCard, index: Int) -> Unit,
+        private val onDescExpandClick: () -> Boolean,
     ) : RecyclerView.ViewHolder(binding.root) {
         private var partsSelectedKey: String? = null
         private var seasonSelectedKey: String? = null
         private var lastTagsKey: String? = null
+        private var lastDescLayoutKey: String? = null
 
         private val partsAdapter =
             VideoCardAdapter(
@@ -297,6 +320,13 @@ class VideoDetailHeaderAdapter(
                 val tab = (binding.cardTab.tag as? String)?.trim().orEmpty()
                 if (tab.isNotBlank()) onTabClick(tab)
             }
+            binding.layoutDesc.setOnClickListener {
+                if (onDescExpandClick()) {
+                    applyDescExpanded(expanded = true)
+                    binding.layoutDesc.requestFocus()
+                    binding.root.requestLayout()
+                }
+            }
 
             binding.cardUp.setOnFocusChangeListener { _, hasFocus ->
                 if (hasFocus) onUpCardFocused?.invoke()
@@ -332,6 +362,7 @@ class VideoDetailHeaderAdapter(
             title: String?,
             metaText: String?,
             desc: String?,
+            descExpanded: Boolean,
             coverUrl: String?,
             accessBadgeText: String?,
             usePosterCover: Boolean,
@@ -395,8 +426,7 @@ class VideoDetailHeaderAdapter(
                 ImageLoader.loadInto(binding.ivUpAvatar, ImageUrl.avatar(upAvatar))
             }
 
-            val safeDesc = desc?.trim().takeIf { !it.isNullOrBlank() }
-            binding.tvDesc.text = safeDesc ?: "暂无简介"
+            bindDesc(desc = desc, expanded = descExpanded)
 
             bindTags(tags)
 
@@ -507,6 +537,55 @@ class VideoDetailHeaderAdapter(
 
         fun cancelTransientUi() {
             likeHoldController.cancel(resetTriggered = true)
+        }
+
+        private fun bindDesc(desc: String?, expanded: Boolean) {
+            val safeDesc = desc?.trim().takeIf { !it.isNullOrBlank() }
+            binding.tvDesc.text = safeDesc ?: "暂无简介"
+            lastDescLayoutKey = safeDesc
+            applyDescFocusable(expandable = false)
+            applyDescExpanded(expanded = false, expandable = false)
+            if (safeDesc == null) return
+
+            binding.layoutDesc.post {
+                if (lastDescLayoutKey != safeDesc) return@post
+                val expandable = descLineCount(safeDesc) > DESC_COLLAPSED_TEXT_LINES
+                applyDescFocusable(expandable = expandable)
+                applyDescExpanded(expanded = expanded && expandable, expandable = expandable)
+            }
+        }
+
+        private fun applyDescFocusable(expandable: Boolean) {
+            binding.layoutDesc.isFocusable = expandable
+            binding.layoutDesc.isClickable = expandable
+        }
+
+        private fun applyDescExpanded(expanded: Boolean, expandable: Boolean = true) {
+            if (expanded) {
+                binding.tvDesc.maxLines = Int.MAX_VALUE
+                binding.tvDescMoreIndicator.isVisible = false
+            } else {
+                binding.tvDesc.maxLines = DESC_COLLAPSED_TEXT_LINES
+                binding.tvDescMoreIndicator.isVisible = expandable
+            }
+        }
+
+        private fun descLineCount(text: CharSequence): Int {
+            val textWidth =
+                (binding.tvDesc.width - binding.tvDesc.compoundPaddingLeft - binding.tvDesc.compoundPaddingRight)
+                    .takeIf { it > 0 }
+                    ?: (binding.layoutDesc.width - binding.layoutDesc.paddingLeft - binding.layoutDesc.paddingRight)
+            if (textWidth <= 0) return 0
+            @Suppress("DEPRECATION")
+            return StaticLayout(
+                text,
+                binding.tvDesc.paint,
+                textWidth,
+                Layout.Alignment.ALIGN_NORMAL,
+                binding.tvDesc.lineSpacingMultiplier,
+                binding.tvDesc.lineSpacingExtra,
+                binding.tvDesc.includeFontPadding,
+            ).lineCount
         }
 
         private fun bindTags(tags: List<VideoTag>) {

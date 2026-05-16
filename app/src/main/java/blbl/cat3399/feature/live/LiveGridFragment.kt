@@ -19,12 +19,14 @@ import blbl.cat3399.core.paging.appliedOrNull
 import blbl.cat3399.core.ui.AppToast
 import blbl.cat3399.core.ui.DpadGridController
 import blbl.cat3399.core.ui.FocusTreeUtils
+import blbl.cat3399.core.ui.GridViewportFillMonitor
 import blbl.cat3399.core.ui.GridSpanPolicy
 import blbl.cat3399.core.ui.TabContentSwitchFocusHost
 import blbl.cat3399.core.ui.UiScale
 import blbl.cat3399.core.ui.postDelayedIfAlive
 import blbl.cat3399.core.ui.postIfAlive
 import blbl.cat3399.core.ui.postIfAttached
+import blbl.cat3399.core.ui.installGridViewportFillMonitor
 import blbl.cat3399.core.ui.requestFocusAdapterPositionReliable
 import blbl.cat3399.core.ui.requestFocusFirstItemOrSelfAfterRefresh
 import blbl.cat3399.databinding.FragmentLiveGridBinding
@@ -43,6 +45,7 @@ class LiveGridFragment : Fragment(), LivePageFocusTarget, RefreshKeyHandler {
 
     private val source: String by lazy { requireArguments().getString(ARG_SOURCE) ?: SRC_RECOMMEND }
     private val enableTabFocus: Boolean by lazy { requireArguments().getBoolean(ARG_ENABLE_TAB_FOCUS, true) }
+    private val searchKeyword: String by lazy { requireArguments().getString(ARG_SEARCH_KEYWORD).orEmpty().trim() }
 
     private val loadedRoomIds = HashSet<Long>()
     private val paging = PagedGridStateMachine(initialKey = 1)
@@ -53,6 +56,7 @@ class LiveGridFragment : Fragment(), LivePageFocusTarget, RefreshKeyHandler {
     private var pendingFocusFirstCardAfterRefresh: Boolean = false
     private var lastFocusedAdapterPosition: Int? = null
     private var dpadGridController: DpadGridController? = null
+    private var viewportFillMonitor: GridViewportFillMonitor? = null
     private var pendingRestorePosition: Int? = null
     private var pendingRestoreAttemptsLeft: Int = 0
 
@@ -145,6 +149,16 @@ class LiveGridFragment : Fragment(), LivePageFocusTarget, RefreshKeyHandler {
                         isEnabled = { _binding != null && isResumed },
                     ),
             ).also { it.install() }
+        viewportFillMonitor?.release()
+        viewportFillMonitor =
+            binding.recycler.installGridViewportFillMonitor(
+                isEnabled = { _binding != null && isResumed },
+                canLoadMore = {
+                    val s = paging.snapshot()
+                    !s.isLoading && !s.endReached
+                },
+                loadMore = { loadNextPage() },
+            )
 
         binding.swipeRefresh.setOnRefreshListener { resetAndLoad(fromUserRefresh = true) }
     }
@@ -152,6 +166,7 @@ class LiveGridFragment : Fragment(), LivePageFocusTarget, RefreshKeyHandler {
     override fun onResume() {
         super.onResume()
         updateRecyclerSpanCountIfNeeded(force = true)
+        viewportFillMonitor?.scheduleCheck()
         maybeTriggerInitialLoad()
         restoreFocusIfNeeded()
         maybeConsumePendingFocusFirstCard()
@@ -214,6 +229,18 @@ class LiveGridFragment : Fragment(), LivePageFocusTarget, RefreshKeyHandler {
                                     val res = BiliApi.liveFollowing(page = page, pageSize = 10)
                                     FetchedPage(items = res.items, hasMore = res.hasMore)
                                 }
+                                SRC_SEARCH -> {
+                                    val keyword = searchKeyword
+                                    if (keyword.isBlank()) {
+                                        FetchedPage(items = emptyList(), hasMore = false)
+                                    } else {
+                                        val res = BiliApi.searchLiveRoom(keyword = keyword, page = page, order = "online")
+                                        FetchedPage(
+                                            items = res.items,
+                                            hasMore = res.items.isNotEmpty() && (res.pages <= 0 || res.page < res.pages),
+                                        )
+                                    }
+                                }
                                 else -> FetchedPage(items = BiliApi.liveRecommend(page = page), hasMore = null)
                             }
                         },
@@ -227,6 +254,7 @@ class LiveGridFragment : Fragment(), LivePageFocusTarget, RefreshKeyHandler {
                             val endReached =
                                 when (source) {
                                     SRC_FOLLOWING -> fetched.hasMore == false
+                                    SRC_SEARCH -> fetched.hasMore == false
                                     else -> fetched.items.isEmpty() || (filtered.isEmpty() && page >= 8)
                                 }
                             PagedGridStateMachine.Update(
@@ -239,9 +267,7 @@ class LiveGridFragment : Fragment(), LivePageFocusTarget, RefreshKeyHandler {
 
                 val applied = result.appliedOrNull() ?: return@launch
                 applied.items.forEach { loadedRoomIds.add(it.roomId) }
-                if (applied.items.isNotEmpty()) {
-                    if (applied.isRefresh) adapter.submit(applied.items) else adapter.append(applied.items)
-                }
+                if (applied.isRefresh) adapter.submit(applied.items) else if (applied.items.isNotEmpty()) adapter.append(applied.items)
                 _binding?.let { b ->
                     b.recycler.postIfAlive(isAlive = { _binding === b && isResumed }) {
                         if (pendingFocusFirstCardAfterRefresh && applied.isRefresh) {
@@ -262,11 +288,13 @@ class LiveGridFragment : Fragment(), LivePageFocusTarget, RefreshKeyHandler {
                                     dpadGridController?.unparkFocusAfterDataSetReset()
                                 },
                             )
+                            viewportFillMonitor?.scheduleCheck()
                             return@postIfAlive
                         }
                         restoreFocusIfNeeded()
                         maybeConsumePendingFocusFirstCard()
                         dpadGridController?.consumePendingFocusAfterLoadMore()
+                        viewportFillMonitor?.scheduleCheck()
                     }
                 }
                 AppLog.i(
@@ -318,6 +346,7 @@ class LiveGridFragment : Fragment(), LivePageFocusTarget, RefreshKeyHandler {
         val contentWidthDp = contentWidthPx / dm.density
         val span = autoSpanCountForWidthDp(contentWidthDp)
         if (span != lm.spanCount) lm.spanCount = span
+        viewportFillMonitor?.scheduleCheck()
     }
 
     override fun requestFocusFirstCardFromTab(): Boolean {
@@ -554,6 +583,8 @@ class LiveGridFragment : Fragment(), LivePageFocusTarget, RefreshKeyHandler {
         initialLoadTriggered = false
         dpadGridController?.release()
         dpadGridController = null
+        viewportFillMonitor?.release()
+        viewportFillMonitor = null
         lastSpanCountContentWidthPx = -1
         _binding = null
         super.onDestroyView()
@@ -562,12 +593,21 @@ class LiveGridFragment : Fragment(), LivePageFocusTarget, RefreshKeyHandler {
     companion object {
         private const val ARG_SOURCE = "source"
         private const val ARG_ENABLE_TAB_FOCUS = "enable_tab_focus"
+        private const val ARG_SEARCH_KEYWORD = "search_keyword"
 
         const val SRC_RECOMMEND = "recommend"
         const val SRC_FOLLOWING = "following"
+        const val SRC_SEARCH = "search"
 
         fun newRecommend() = LiveGridFragment().apply { arguments = Bundle().apply { putString(ARG_SOURCE, SRC_RECOMMEND) } }
 
         fun newFollowing() = LiveGridFragment().apply { arguments = Bundle().apply { putString(ARG_SOURCE, SRC_FOLLOWING) } }
+
+        fun newSearch(keyword: String) = LiveGridFragment().apply {
+            arguments = Bundle().apply {
+                putString(ARG_SOURCE, SRC_SEARCH)
+                putString(ARG_SEARCH_KEYWORD, keyword.trim())
+            }
+        }
     }
 }

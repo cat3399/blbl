@@ -97,8 +97,10 @@
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:background="@drawable/bg_player_top_scrim"
-        android:paddingHorizontal="@dimen/player_top_bar_padding_h"
-        android:paddingVertical="@dimen/player_top_bar_padding_v"
+        android:paddingStart="@dimen/player_top_bar_padding_h"
+        android:paddingEnd="@dimen/player_top_bar_padding_h"
+        android:paddingTop="@dimen/player_top_bar_padding_v"
+        android:paddingBottom="@dimen/player_top_bar_padding_v"
         android:visibility="invisible"
         app:layout_constraintEnd_toEndOf="@id/player_view"
         app:layout_constraintStart_toStartOf="@id/player_view"
@@ -228,6 +230,10 @@
             android:format12Hour="HH:mm"
             android:format24Hour="HH:mm"
             android:includeFontPadding="false"
+            android:shadowColor="#E6000000"
+            android:shadowDx="0"
+            android:shadowDy="2"
+            android:shadowRadius="4"
             android:textColor="?attr/colorOnSurface"
             android:textSize="@dimen/player_clock_text_size"
             android:textStyle="bold"
@@ -274,7 +280,6 @@
             android:id="@+id/btn_up_quick_profile"
             android:layout_width="wrap_content"
             android:layout_height="@dimen/player_up_quick_chip_height"
-            android:background="?attr/blblFocusBgRound"
             android:clickable="true"
             android:focusable="true"
             android:focusableInTouchMode="false"
@@ -283,8 +288,9 @@
             android:nextFocusUp="@id/btn_up_quick_profile"
             android:nextFocusDown="@id/seek_progress"
             android:orientation="horizontal"
-            android:paddingStart="@dimen/player_up_quick_profile_padding_h"
-            android:paddingEnd="@dimen/player_up_quick_profile_padding_h">
+            android:paddingStart="@dimen/player_up_quick_profile_padding_start"
+            android:paddingEnd="@dimen/player_up_quick_profile_padding_end"
+            android:stateListAnimator="@animator/blbl_focus_scale">
 
             <com.google.android.material.imageview.ShapeableImageView
                 android:id="@+id/iv_up_quick_avatar"
@@ -312,9 +318,8 @@
         <TextView
             android:id="@+id/btn_up_quick_follow"
             android:layout_width="wrap_content"
-            android:layout_height="@dimen/player_up_quick_chip_height"
+            android:layout_height="@dimen/player_up_quick_follow_height"
             android:layout_marginStart="@dimen/player_up_quick_card_gap"
-            android:background="?attr/blblFocusBgRound"
             android:clickable="true"
             android:focusable="true"
             android:focusableInTouchMode="false"
@@ -323,8 +328,9 @@
             android:nextFocusLeft="@id/btn_up_quick_profile"
             android:nextFocusUp="@id/btn_up_quick_follow"
             android:nextFocusDown="@id/seek_progress"
-            android:paddingStart="@dimen/player_up_quick_follow_padding_h"
-            android:paddingEnd="@dimen/player_up_quick_follow_padding_h"
+            android:paddingStart="@dimen/player_up_quick_follow_padding_start"
+            android:paddingEnd="@dimen/player_up_quick_follow_padding_end"
+            android:stateListAnimator="@animator/blbl_focus_scale"
             android:text="@string/player_up_quick_follow"
             android:textColor="?attr/colorOnSurface"
             android:textSize="@dimen/player_up_quick_follow_text_size" />
@@ -349,7 +355,9 @@
             android:background="?attr/blblFocusBgRound"
             android:layout_marginHorizontal="0dp"
             android:layout_marginBottom="@dimen/player_seekbar_margin_bottom"
-            android:paddingHorizontal="0dp"
+            android:nextFocusUp="@id/btn_up_quick_profile"
+            android:paddingStart="0dp"
+            android:paddingEnd="0dp"
             android:progressDrawable="@drawable/seekbar_player_progress"
             android:splitTrack="false"
             android:thumb="@drawable/seekbar_player_thumb"
@@ -365,7 +373,8 @@
             android:layout_marginEnd="@dimen/player_controls_row_margin_end"
             android:gravity="center_vertical"
             android:orientation="horizontal"
-            android:paddingHorizontal="0dp"
+            android:paddingStart="0dp"
+            android:paddingEnd="0dp"
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintEnd_toStartOf="@id/tv_time"
             app:layout_constraintStart_toStartOf="parent"
@@ -533,6 +542,20 @@
                 android:visibility="gone" />
 
             <ImageButton
+                android:id="@+id/btn_sponsor_submit"
+                android:layout_width="?attr/playerOsdButtonTargetSize"
+                android:layout_height="?attr/playerOsdButtonTargetSize"
+                android:layout_marginEnd="?attr/playerOsdGap"
+                android:background="?attr/blblFocusBgRound"
+                android:contentDescription="@string/player_btn_sponsor_submit"
+                android:focusable="true"
+                android:padding="?attr/playerOsdPadSmall"
+                android:scaleType="fitCenter"
+                app:srcCompat="@drawable/ic_player_upload"
+                android:visibility="gone"
+                app:tint="@color/player_button_tint" />
+
+            <ImageButton
                 android:id="@+id/btn_advanced"
                 android:layout_width="?attr/playerOsdButtonTargetSize"
                 android:layout_height="?attr/playerOsdButtonTargetSize"
@@ -669,8 +692,13 @@
         android:layout_marginStart="@dimen/player_seek_hint_margin_start"
         android:layout_marginBottom="@dimen/player_seek_hint_margin_bottom"
         android:background="@color/player_overlay_bg"
-        android:paddingHorizontal="@dimen/player_seek_hint_padding_h"
-        android:paddingVertical="@dimen/player_seek_hint_padding_v"
+        android:ellipsize="end"
+        android:maxLines="1"
+        android:maxWidth="@dimen/player_seek_hint_max_width"
+        android:paddingStart="@dimen/player_seek_hint_padding_h"
+        android:paddingEnd="@dimen/player_seek_hint_padding_h"
+        android:paddingTop="@dimen/player_seek_hint_padding_v"
+        android:paddingBottom="@dimen/player_seek_hint_padding_v"
         android:textColor="?attr/colorOnSurface"
         android:textSize="@dimen/player_seek_hint_text_size"
         android:visibility="gone"
@@ -721,8 +749,10 @@
             android:layout_marginTop="8dp"
             android:gravity="center_vertical"
             android:orientation="horizontal"
-            android:paddingHorizontal="2dp"
-            android:paddingVertical="2dp"
+            android:paddingStart="2dp"
+            android:paddingEnd="2dp"
+            android:paddingTop="2dp"
+            android:paddingBottom="2dp"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toTopOf="parent">
 
@@ -735,8 +765,10 @@
                 android:focusable="true"
                 android:nextFocusLeft="@id/tab_page_list"
                 android:nextFocusRight="@id/tab_parts_list"
-                android:paddingHorizontal="12dp"
-                android:paddingVertical="6dp"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                android:paddingTop="6dp"
+                android:paddingBottom="6dp"
                 android:text="@string/player_list_tab_page"
                 android:textColor="@color/player_list_tab_text"
                 android:textSize="14sp" />
@@ -751,8 +783,10 @@
                 android:focusable="true"
                 android:nextFocusLeft="@id/tab_page_list"
                 android:nextFocusRight="@id/tab_recommend_list"
-                android:paddingHorizontal="12dp"
-                android:paddingVertical="6dp"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                android:paddingTop="6dp"
+                android:paddingBottom="6dp"
                 android:text="@string/player_list_tab_parts"
                 android:textColor="@color/player_list_tab_text"
                 android:textSize="14sp" />
@@ -767,8 +801,10 @@
                 android:focusable="true"
                 android:nextFocusLeft="@id/tab_parts_list"
                 android:nextFocusRight="@id/tab_recommend_list"
-                android:paddingHorizontal="12dp"
-                android:paddingVertical="6dp"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                android:paddingTop="6dp"
+                android:paddingBottom="6dp"
                 android:text="@string/player_list_tab_recommend"
                 android:textColor="@color/player_list_tab_text"
                 android:textSize="14sp" />
@@ -822,6 +858,148 @@
         </com.google.android.material.card.MaterialCardView>
 
     </androidx.constraintlayout.widget.ConstraintLayout>
+
+    <View
+        android:id="@+id/sponsor_submit_scrim"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:background="#99000000"
+        android:clickable="true"
+        android:focusable="false"
+        android:importantForAccessibility="no"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <androidx.constraintlayout.widget.Guideline
+        android:id="@+id/guideline_sponsor_submit_top"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        app:layout_constraintGuide_percent="0.38" />
+
+    <com.google.android.material.card.MaterialCardView
+        android:id="@+id/sponsor_submit_panel"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="24dp"
+        android:layout_marginEnd="24dp"
+        android:layout_marginBottom="4dp"
+        android:clickable="true"
+        android:focusable="false"
+        android:focusableInTouchMode="false"
+        android:visibility="gone"
+        app:cardBackgroundColor="#F20F0F0F"
+        app:cardCornerRadius="16dp"
+        app:cardElevation="10dp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="@id/guideline_sponsor_submit_top"
+        app:layout_constraintVertical_bias="0.25"
+        app:strokeWidth="0dp">
+
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingStart="10dp"
+            android:paddingTop="3dp"
+            android:paddingEnd="10dp"
+            android:paddingBottom="8dp">
+
+            <blbl.cat3399.feature.player.SponsorSubmitThumbnailStripView
+                android:id="@+id/sponsor_submit_thumbnails"
+                android:layout_width="0dp"
+                android:layout_height="@dimen/player_sponsor_submit_thumb_height"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent" />
+
+            <TextView
+                android:id="@+id/tv_sponsor_submit_status"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="16dp"
+                android:ellipsize="end"
+                android:gravity="end"
+                android:maxLines="1"
+                android:textColor="?attr/colorOnSurface"
+                android:textSize="16sp"
+                app:layout_constraintBottom_toBottomOf="@id/sponsor_submit_button_row"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toEndOf="@id/sponsor_submit_button_row"
+                app:layout_constraintTop_toTopOf="@id/sponsor_submit_button_row" />
+
+            <blbl.cat3399.feature.player.SponsorSubmitTimelineView
+                android:id="@+id/sponsor_submit_timeline"
+                android:layout_width="0dp"
+                android:layout_height="@dimen/player_sponsor_submit_timeline_height"
+                android:focusable="true"
+                android:focusableInTouchMode="false"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toBottomOf="@id/sponsor_submit_thumbnails" />
+
+            <LinearLayout
+                android:id="@+id/sponsor_submit_button_row"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:gravity="center"
+                android:orientation="horizontal"
+                app:layout_constraintBottom_toBottomOf="parent"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toBottomOf="@id/sponsor_submit_timeline">
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btn_sponsor_submit_upload"
+                    android:layout_width="wrap_content"
+                    android:layout_height="@dimen/player_sponsor_submit_button_height"
+                    android:focusable="true"
+                    android:minWidth="@dimen/player_sponsor_submit_button_min_width"
+                    android:stateListAnimator="@animator/blbl_focus_scale"
+                    android:text="@string/player_sponsor_submit_upload"
+                    android:textAllCaps="false"
+                    android:textSize="17sp"
+                    app:cornerRadius="12dp"
+                    app:strokeColor="?attr/blblFocusStrokeColor"
+                    app:strokeWidth="2dp" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btn_sponsor_submit_delete"
+                    android:layout_width="wrap_content"
+                    android:layout_height="@dimen/player_sponsor_submit_button_height"
+                    android:layout_marginStart="12dp"
+                    android:focusable="true"
+                    android:minWidth="@dimen/player_sponsor_submit_button_min_width"
+                    android:stateListAnimator="@animator/blbl_focus_scale"
+                    android:text="@string/player_sponsor_submit_delete"
+                    android:textAllCaps="false"
+                    android:textSize="17sp"
+                    app:cornerRadius="12dp"
+                    app:strokeColor="?attr/blblFocusStrokeColor"
+                    app:strokeWidth="2dp" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btn_sponsor_submit_close"
+                    android:layout_width="wrap_content"
+                    android:layout_height="@dimen/player_sponsor_submit_button_height"
+                    android:layout_marginStart="12dp"
+                    android:focusable="true"
+                    android:minWidth="@dimen/player_sponsor_submit_button_min_width"
+                    android:stateListAnimator="@animator/blbl_focus_scale"
+                    android:text="@string/player_sponsor_submit_close"
+                    android:textAllCaps="false"
+                    android:textSize="17sp"
+                    app:cornerRadius="12dp"
+                    app:strokeColor="?attr/blblFocusStrokeColor"
+                    app:strokeWidth="2dp" />
+            </LinearLayout>
+        </androidx.constraintlayout.widget.ConstraintLayout>
+    </com.google.android.material.card.MaterialCardView>
 
     <com.google.android.material.card.MaterialCardView
         android:id="@+id/player_info_panel"
@@ -1006,9 +1184,10 @@
                             android:background="?attr/blblFocusBgRound"
                             android:gravity="center"
                             android:orientation="vertical"
-                            android:paddingHorizontal="@dimen/player_info_action_padding_h"
-                            android:paddingVertical="@dimen/player_info_action_padding_v">
-
+                            android:paddingStart="@dimen/player_info_action_padding_h"
+                            android:paddingEnd="@dimen/player_info_action_padding_h"
+                            android:paddingTop="@dimen/player_info_action_padding_v"
+                            android:paddingBottom="@dimen/player_info_action_padding_v">
                             <ImageView
                                 android:id="@+id/iv_player_info_like"
                                 android:layout_width="@dimen/player_info_action_icon_size"
@@ -1035,9 +1214,10 @@
                             android:background="?attr/blblFocusBgRound"
                             android:gravity="center"
                             android:orientation="vertical"
-                            android:paddingHorizontal="@dimen/player_info_action_padding_h"
-                            android:paddingVertical="@dimen/player_info_action_padding_v">
-
+                            android:paddingStart="@dimen/player_info_action_padding_h"
+                            android:paddingEnd="@dimen/player_info_action_padding_h"
+                            android:paddingTop="@dimen/player_info_action_padding_v"
+                            android:paddingBottom="@dimen/player_info_action_padding_v">
                             <ImageView
                                 android:id="@+id/iv_player_info_coin"
                                 android:layout_width="@dimen/player_info_action_icon_size"
@@ -1064,9 +1244,10 @@
                             android:background="?attr/blblFocusBgRound"
                             android:gravity="center"
                             android:orientation="vertical"
-                            android:paddingHorizontal="@dimen/player_info_action_padding_h"
-                            android:paddingVertical="@dimen/player_info_action_padding_v">
-
+                            android:paddingStart="@dimen/player_info_action_padding_h"
+                            android:paddingEnd="@dimen/player_info_action_padding_h"
+                            android:paddingTop="@dimen/player_info_action_padding_v"
+                            android:paddingBottom="@dimen/player_info_action_padding_v">
                             <ImageView
                                 android:id="@+id/iv_player_info_fav"
                                 android:layout_width="@dimen/player_info_action_icon_size"
@@ -1158,6 +1339,8 @@
         android:layout_margin="@dimen/player_side_panel_margin"
         android:layout_marginTop="@dimen/player_side_panel_margin_top"
         android:layout_marginBottom="@dimen/player_side_panel_margin_bottom"
+        android:clipChildren="false"
+        android:clipToPadding="false"
         android:visibility="gone"
         app:cardBackgroundColor="#CC1E1E1E"
         app:cardCornerRadius="@dimen/player_side_panel_corner_radius"
@@ -1169,6 +1352,8 @@
         <androidx.constraintlayout.widget.ConstraintLayout
             android:layout_width="match_parent"
             android:layout_height="match_parent"
+            android:clipChildren="false"
+            android:clipToPadding="false"
             android:padding="@dimen/player_side_panel_padding">
 
             <androidx.recyclerview.widget.RecyclerView
@@ -1177,10 +1362,10 @@
                 android:layout_height="0dp"
                 android:clipChildren="false"
                 android:clipToPadding="false"
-                android:paddingStart="@dimen/player_side_panel_recycler_padding"
-                android:paddingTop="@dimen/player_side_panel_recycler_padding"
-                android:paddingEnd="@dimen/player_side_panel_recycler_padding"
-                android:paddingBottom="@dimen/player_side_panel_recycler_padding"
+                android:paddingStart="@dimen/player_settings_recycler_padding_h"
+                android:paddingTop="@dimen/focus_safe_padding_v"
+                android:paddingEnd="@dimen/player_settings_recycler_padding_h"
+                android:paddingBottom="@dimen/focus_safe_padding_v"
                 app:layout_constraintBottom_toBottomOf="parent"
                 app:layout_constraintEnd_toEndOf="parent"
                 app:layout_constraintStart_toStartOf="parent"
@@ -1191,11 +1376,13 @@
 
     <com.google.android.material.card.MaterialCardView
         android:id="@+id/comments_panel"
-        android:layout_width="@dimen/player_side_panel_width"
+        android:layout_width="@dimen/player_comments_panel_width"
         android:layout_height="0dp"
         android:layout_margin="@dimen/player_side_panel_margin"
         android:layout_marginTop="@dimen/player_side_panel_margin_top"
         android:layout_marginBottom="@dimen/player_side_panel_margin_bottom"
+        android:clipChildren="false"
+        android:clipToPadding="false"
         android:visibility="gone"
         app:cardBackgroundColor="#CC1E1E1E"
         app:cardCornerRadius="@dimen/player_side_panel_corner_radius"
@@ -1207,12 +1394,16 @@
         <androidx.constraintlayout.widget.ConstraintLayout
             android:layout_width="match_parent"
             android:layout_height="match_parent"
+            android:clipChildren="false"
+            android:clipToPadding="false"
             android:padding="@dimen/player_side_panel_padding">
 
             <LinearLayout
                 android:id="@+id/row_comment_sort"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
+                android:clipChildren="false"
+                android:clipToPadding="false"
                 android:gravity="center_vertical"
                 android:orientation="horizontal"
                 app:layout_constraintEnd_toEndOf="parent"
@@ -1237,8 +1428,10 @@
                     android:focusable="true"
                     android:nextFocusUp="@id/chip_comment_sort_hot"
                     android:nextFocusRight="@id/chip_comment_sort_new"
-                    android:paddingHorizontal="@dimen/player_comment_sort_chip_padding_h"
-                    android:paddingVertical="@dimen/player_comment_sort_chip_padding_v"
+                    android:paddingStart="@dimen/player_comment_sort_chip_padding_h"
+                    android:paddingEnd="@dimen/player_comment_sort_chip_padding_h"
+                    android:paddingTop="@dimen/player_comment_sort_chip_padding_v"
+                    android:paddingBottom="@dimen/player_comment_sort_chip_padding_v"
                     android:text="@string/player_comment_sort_hot"
                     android:textColor="?attr/colorOnSurface"
                     android:textSize="@dimen/player_comment_sort_chip_text_size" />
@@ -1254,8 +1447,10 @@
                     android:nextFocusLeft="@id/chip_comment_sort_hot"
                     android:nextFocusUp="@id/chip_comment_sort_new"
                     android:nextFocusRight="@id/chip_comment_sort_new"
-                    android:paddingHorizontal="@dimen/player_comment_sort_chip_padding_h"
-                    android:paddingVertical="@dimen/player_comment_sort_chip_padding_v"
+                    android:paddingStart="@dimen/player_comment_sort_chip_padding_h"
+                    android:paddingEnd="@dimen/player_comment_sort_chip_padding_h"
+                    android:paddingTop="@dimen/player_comment_sort_chip_padding_v"
+                    android:paddingBottom="@dimen/player_comment_sort_chip_padding_v"
                     android:text="@string/player_comment_sort_new"
                     android:textColor="?attr/colorOnSurface"
                     android:textSize="@dimen/player_comment_sort_chip_text_size" />
@@ -1266,6 +1461,8 @@
                 android:layout_width="0dp"
                 android:layout_height="0dp"
                 android:layout_marginTop="@dimen/player_side_panel_content_margin_top"
+                android:clipChildren="false"
+                android:clipToPadding="false"
                 app:layout_constraintBottom_toBottomOf="parent"
                 app:layout_constraintEnd_toEndOf="parent"
                 app:layout_constraintStart_toStartOf="parent"
@@ -1277,10 +1474,10 @@
                     android:layout_height="match_parent"
                     android:clipChildren="false"
                     android:clipToPadding="false"
-                    android:paddingStart="@dimen/player_side_panel_recycler_padding"
-                    android:paddingTop="@dimen/player_side_panel_recycler_padding"
-                    android:paddingEnd="@dimen/player_side_panel_recycler_padding"
-                    android:paddingBottom="@dimen/player_side_panel_recycler_padding" />
+                    android:paddingStart="@dimen/player_comments_recycler_padding_h"
+                    android:paddingTop="@dimen/focus_safe_padding_v"
+                    android:paddingEnd="@dimen/player_comments_recycler_padding_h"
+                    android:paddingBottom="@dimen/focus_safe_padding_v" />
 
                 <androidx.recyclerview.widget.RecyclerView
                     android:id="@+id/recycler_comment_thread"
@@ -1288,10 +1485,10 @@
                     android:layout_height="match_parent"
                     android:clipChildren="false"
                     android:clipToPadding="false"
-                    android:paddingStart="@dimen/player_side_panel_recycler_padding"
-                    android:paddingTop="@dimen/player_side_panel_recycler_padding"
-                    android:paddingEnd="@dimen/player_side_panel_recycler_padding"
-                    android:paddingBottom="@dimen/player_side_panel_recycler_padding"
+                    android:paddingStart="@dimen/player_comments_recycler_padding_h"
+                    android:paddingTop="@dimen/focus_safe_padding_v"
+                    android:paddingEnd="@dimen/player_comments_recycler_padding_h"
+                    android:paddingBottom="@dimen/focus_safe_padding_v"
                     android:visibility="gone" />
 
                 <TextView

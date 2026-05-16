@@ -32,10 +32,18 @@ class SearchInteractor(
         state.history = BiliClient.prefs.searchHistory
     }
 
+    fun renderInputPanelFromState() {
+        renderer.updateQueryUi()
+        renderer.updateMiddleUi(historyMatches(state.query), extra = state.suggestKeywords)
+        renderer.updateClearHistoryButton(state.query)
+        renderer.updateHotUi(state.hotKeywords)
+    }
+
     fun clearHistory() {
         BiliClient.prefs.clearSearchHistory()
         reloadHistory()
-        renderer.updateMiddleUi(historyMatches(state.query), extra = emptyList())
+        state.suggestKeywords = emptyList()
+        renderer.updateMiddleUi(historyMatches(state.query), extra = state.suggestKeywords)
         renderer.updateClearHistoryButton(state.query)
         renderer.focusFirstKey()
     }
@@ -48,10 +56,15 @@ class SearchInteractor(
                 renderer.updateQueryUi()
             }
         }
+        if (state.hotKeywords.isNotEmpty()) {
+            renderer.updateHotUi(state.hotKeywords)
+            return
+        }
         fragment.viewLifecycleOwner.lifecycleScope.launch {
             runCatching {
                 val hot = BiliApi.searchHot(limit = 12)
-                renderer.hotAdapter.submit(hot)
+                state.hotKeywords = hot
+                renderer.updateHotUi(hot)
             }.onFailure {
                 AppLog.w("Search", "load hot failed", it)
             }
@@ -90,20 +103,26 @@ class SearchInteractor(
     fun scheduleMiddleList(term: String) {
         suggestJob?.cancel()
         if (term.isBlank()) {
-            renderer.updateMiddleUi(historyMatches(term), extra = emptyList())
+            state.suggestKeywords = emptyList()
+            renderer.updateMiddleUi(historyMatches(term), extra = state.suggestKeywords)
             renderer.updateClearHistoryButton(term)
             return
         }
-        renderer.updateMiddleUi(historyMatches(term), extra = emptyList())
+        state.suggestKeywords = emptyList()
+        renderer.updateMiddleUi(historyMatches(term), extra = state.suggestKeywords)
         renderer.updateClearHistoryButton(term)
         suggestJob =
             fragment.viewLifecycleOwner.lifecycleScope.launch {
                 delay(200)
                 runCatching { BiliApi.searchSuggest(term.lowercase()) }
-                    .onSuccess { renderer.updateMiddleUi(historyMatches(term), extra = it) }
+                    .onSuccess {
+                        state.suggestKeywords = it
+                        renderer.updateMiddleUi(historyMatches(term), extra = state.suggestKeywords)
+                    }
                     .onFailure {
                         AppLog.w("Search", "suggest failed term=${term.take(16)}", it)
-                        renderer.updateMiddleUi(historyMatches(term), extra = emptyList())
+                        state.suggestKeywords = emptyList()
+                        renderer.updateMiddleUi(historyMatches(term), extra = state.suggestKeywords)
                     }
             }
     }

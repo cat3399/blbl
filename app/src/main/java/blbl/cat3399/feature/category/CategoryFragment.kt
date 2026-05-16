@@ -28,13 +28,14 @@ import blbl.cat3399.ui.SidebarFocusHost
 class CategoryFragment : Fragment(), VideoGridTabSwitchFocusHost, BackPressHandler {
     private var _binding: FragmentCategoryBinding? = null
     private val binding get() = _binding!!
+    private var mediator: TabLayoutMediator? = null
     private var pageCallback: androidx.viewpager2.widget.ViewPager2.OnPageChangeCallback? = null
     private var pendingFocusFirstCardFromContentSwitch: Boolean = false
     private var pendingFocusFirstCardFromBackToTab0: Boolean = false
     private var pendingBackToTab0RequestToken: Int = 0
     private var pendingBackToTab0AttemptsLeft: Int = 0
 
-    private val zones: List<Zone> = CategoryZones.defaultZones
+    private var zones: List<Zone> = emptyList()
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         _binding = FragmentCategoryBinding.inflate(inflater, container, false)
@@ -42,14 +43,7 @@ class CategoryFragment : Fragment(), VideoGridTabSwitchFocusHost, BackPressHandl
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
-        binding.viewPager.adapter = CategoryPagerAdapter(this, zones)
-        AppLog.d(
-            "Category",
-            "pager init count=${zones.size} offscreen=${binding.viewPager.offscreenPageLimit} t=${SystemClock.uptimeMillis()}",
-        )
-        TabLayoutMediator(binding.tabLayout, binding.viewPager) { tab, position ->
-            tab.text = zones[position].title
-        }.attach()
+        setZones(CategoryZones.visibleZones(BiliClient.prefs), force = true)
         binding.tabLayout.addOnTabSelectedListener(
             object : TabLayout.OnTabSelectedListener {
                 override fun onTabSelected(tab: TabLayout.Tab) = Unit
@@ -61,27 +55,6 @@ class CategoryFragment : Fragment(), VideoGridTabSwitchFocusHost, BackPressHandl
                 }
             },
         )
-        val b = binding
-        val tabLayout = b.tabLayout
-        tabLayout.postIfAlive(isAlive = { _binding === b }) {
-            tabLayout.enableDpadTabFocus(selectOnFocusProvider = { BiliClient.prefs.tabSwitchFollowsFocus }) { position ->
-                val zone = zones.getOrNull(position)
-                AppLog.d(
-                    "Category",
-                    "tab focus pos=$position title=${zone?.title} tid=${zone?.tid} t=${SystemClock.uptimeMillis()}",
-                )
-            }
-            val tabStrip = tabLayout.getChildAt(0) as? ViewGroup ?: return@postIfAlive
-            for (i in 0 until tabStrip.childCount) {
-                tabStrip.getChildAt(i).setOnKeyListener { _, keyCode, event ->
-                    if (event.action == KeyEvent.ACTION_DOWN && keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
-                        focusCurrentPageFirstCardFromTab()
-                        return@setOnKeyListener true
-                    }
-                    false
-                }
-            }
-        }
         pageCallback =
             object : androidx.viewpager2.widget.ViewPager2.OnPageChangeCallback() {
                 override fun onPageSelected(position: Int) {
@@ -104,6 +77,58 @@ class CategoryFragment : Fragment(), VideoGridTabSwitchFocusHost, BackPressHandl
 
     override fun onResume() {
         super.onResume()
+        setZones(CategoryZones.visibleZones(BiliClient.prefs))
+    }
+
+    private fun setZones(nextZones: List<Zone>, force: Boolean = false) {
+        val b = _binding ?: return
+        val next = nextZones.ifEmpty { CategoryZones.defaultZones }
+        if (!force && zones.map { CategoryZones.stableKeyFor(it) } == next.map { CategoryZones.stableKeyFor(it) }) return
+
+        val currentKey = zones.getOrNull(b.viewPager.currentItem)?.let { CategoryZones.stableKeyFor(it) }
+        mediator?.detach()
+        mediator = null
+        zones = next
+
+        b.viewPager.adapter = CategoryPagerAdapter(this, zones)
+        AppLog.d(
+            "Category",
+            "pager init count=${zones.size} offscreen=${b.viewPager.offscreenPageLimit} t=${SystemClock.uptimeMillis()}",
+        )
+        mediator =
+            TabLayoutMediator(b.tabLayout, b.viewPager) { tab, position ->
+                tab.text = zones.getOrNull(position)?.title.orEmpty()
+            }.also { it.attach() }
+
+        val targetIndex = currentKey?.let { key -> zones.indexOfFirst { CategoryZones.stableKeyFor(it) == key }.takeIf { it >= 0 } } ?: 0
+        if (targetIndex != b.viewPager.currentItem && targetIndex in zones.indices) {
+            b.viewPager.setCurrentItem(targetIndex, false)
+        }
+
+        installTabFocusHandlers(b)
+    }
+
+    private fun installTabFocusHandlers(b: FragmentCategoryBinding) {
+        val tabLayout = b.tabLayout
+        tabLayout.postIfAlive(isAlive = { _binding === b }) {
+            tabLayout.enableDpadTabFocus(selectOnFocusProvider = { BiliClient.prefs.tabSwitchFollowsFocus }) { position ->
+                val zone = zones.getOrNull(position)
+                AppLog.d(
+                    "Category",
+                    "tab focus pos=$position title=${zone?.title} tid=${zone?.tid} t=${SystemClock.uptimeMillis()}",
+                )
+            }
+            val tabStrip = tabLayout.getChildAt(0) as? ViewGroup ?: return@postIfAlive
+            for (i in 0 until tabStrip.childCount) {
+                tabStrip.getChildAt(i).setOnKeyListener { _, keyCode, event ->
+                    if (event.action == KeyEvent.ACTION_DOWN && keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
+                        focusCurrentPageFirstCardFromTab()
+                        return@setOnKeyListener true
+                    }
+                    false
+                }
+            }
+        }
     }
 
     private fun refreshCurrentPageFromTabReselect(): Boolean {
@@ -200,6 +225,9 @@ class CategoryFragment : Fragment(), VideoGridTabSwitchFocusHost, BackPressHandl
     override fun onDestroyView() {
         pageCallback?.let { binding.viewPager.unregisterOnPageChangeCallback(it) }
         pageCallback = null
+        mediator?.detach()
+        mediator = null
+        zones = emptyList()
         _binding = null
         super.onDestroyView()
     }

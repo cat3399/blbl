@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TextView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/tv_account_switch_row"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginHorizontal="@dimen/focus_safe_padding_h"
+    android:layout_marginTop="6dp"
+    android:background="?attr/blblFocusBgRound"
+    android:clickable="true"
+    android:focusable="true"
+    android:gravity="center"
+    android:paddingVertical="10dp"
+    android:stateListAnimator="@animator/blbl_focus_scale"
+    android:textColor="?attr/colorOnSurface"
+    android:textSize="14sp"
+    android:textStyle="bold" />

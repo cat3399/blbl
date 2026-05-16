@@ -97,6 +97,7 @@ internal fun defaultVideoCardPlaylistItem(card: VideoCard): PlayerPlaylistItem =
     PlayerPlaylistItem(
         bvid = card.bvid,
         cid = card.cid,
+        aid = card.aid,
         title = card.title,
     )
 
@@ -201,6 +202,7 @@ internal fun Context.openPlayerFromPlaybackSource(
             .putExtra(blbl.cat3399.feature.player.PlayerActivity.EXTRA_CID, card.cid ?: -1L)
             .putExtra(blbl.cat3399.feature.player.PlayerActivity.EXTRA_PLAYLIST_TOKEN, token)
             .putExtra(blbl.cat3399.feature.player.PlayerActivity.EXTRA_PLAYLIST_INDEX, safePosition)
+            .apply { card.aid?.takeIf { it > 0L }?.let { putExtra(blbl.cat3399.feature.player.PlayerActivity.EXTRA_AID, it) } }
             .apply { configurePlayerIntent(card) },
     )
 }

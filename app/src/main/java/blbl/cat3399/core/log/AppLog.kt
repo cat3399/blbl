@@ -99,10 +99,10 @@ object AppLog {
             if (tr == null) {
                 msg
             } else {
-                "$msg\n${Log.getStackTraceString(tr)}"
+                "$msg\n${runCatching { Log.getStackTraceString(tr) }.getOrElse { tr.stackTraceToString() }}"
             }
 
-        Log.println(priority, fullTag, rendered)
+        runCatching { Log.println(priority, fullTag, rendered) }
 
         sessionLogFile ?: return
         if (fileLoggingDisabled.get()) return

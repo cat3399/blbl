@@ -1,6 +1,5 @@
 package blbl.cat3399.feature.player.engine
 
-import blbl.cat3399.feature.player.DashSegmentBase
 import blbl.cat3399.feature.player.DashTrackInfo
 import blbl.cat3399.feature.player.Playable
 
@@ -11,9 +10,6 @@ internal object DashMpdGenerator {
         videoBaseUrl: String = dash.videoUrl,
         audioBaseUrl: String = dash.audioUrl,
     ): String {
-        val videoSeg = dash.videoTrackInfo.segmentBase ?: error("DASH video segment_base missing")
-        val audioSeg = dash.audioTrackInfo.segmentBase ?: error("DASH audio segment_base missing")
-
         val videoMimeType = (dash.videoTrackInfo.mimeType ?: "video/mp4").trim().ifBlank { "video/mp4" }
         val audioMimeType = (dash.audioTrackInfo.mimeType ?: "audio/mp4").trim().ifBlank { "audio/mp4" }
 
@@ -38,7 +34,6 @@ internal object DashMpdGenerator {
                 track = dash.videoTrackInfo,
                 representationId = videoRepresentationId,
                 baseUrl = videoBaseUrl,
-                segmentBase = videoSeg,
             )
             appendAdaptationSet(
                 contentType = "audio",
@@ -46,7 +41,6 @@ internal object DashMpdGenerator {
                 track = dash.audioTrackInfo,
                 representationId = audioRepresentationId,
                 baseUrl = audioBaseUrl,
-                segmentBase = audioSeg,
             )
 
             append("  </Period>\n")
@@ -60,7 +54,6 @@ internal object DashMpdGenerator {
         track: DashTrackInfo,
         representationId: String,
         baseUrl: String,
-        segmentBase: DashSegmentBase,
     ) {
         append("    <AdaptationSet contentType=\"").append(xmlEscapeAttr(contentType)).append("\"")
         append(" mimeType=\"").append(xmlEscapeAttr(mimeType)).append("\">\n")
@@ -84,9 +77,11 @@ internal object DashMpdGenerator {
         append(">\n")
 
         append("        <BaseURL>").append(xmlEscapeText(baseUrl)).append("</BaseURL>\n")
-        append("        <SegmentBase indexRange=\"").append(xmlEscapeAttr(segmentBase.indexRange)).append("\">\n")
-        append("          <Initialization range=\"").append(xmlEscapeAttr(segmentBase.initialization)).append("\" />\n")
-        append("        </SegmentBase>\n")
+        track.segmentBase?.let { segmentBase ->
+            append("        <SegmentBase indexRange=\"").append(xmlEscapeAttr(segmentBase.indexRange)).append("\">\n")
+            append("          <Initialization range=\"").append(xmlEscapeAttr(segmentBase.initialization)).append("\" />\n")
+            append("        </SegmentBase>\n")
+        }
         append("      </Representation>\n")
         append("    </AdaptationSet>\n")
     }

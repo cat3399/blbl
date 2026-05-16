@@ -4,7 +4,6 @@ import android.content.Intent
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import blbl.cat3399.core.api.BiliApi
-import blbl.cat3399.core.api.BiliApiException
 import blbl.cat3399.core.model.VideoCard
 import blbl.cat3399.core.ui.AppToast
 import kotlinx.coroutines.CancellationException
@@ -25,14 +24,8 @@ fun Fragment.openUpDetailFromVideoCard(card: VideoCard) {
 
     lifecycleScope.launch {
         try {
-            val json = if (card.bvid.isNotBlank()) BiliApi.view(card.bvid) else BiliApi.view(safeAid ?: 0L)
-            val code = json.optInt("code", 0)
-            if (code != 0) {
-                val msg = json.optString("message", json.optString("msg", ""))
-                throw BiliApiException(apiCode = code, apiMessage = msg)
-            }
-            val owner = json.optJSONObject("data")?.optJSONObject("owner")
-            val viewMid = owner?.optLong("mid") ?: 0L
+            val detail = if (card.bvid.isNotBlank()) BiliApi.videoDetail(card.bvid) else BiliApi.videoDetail(safeAid ?: 0L)
+            val viewMid = detail.owner?.mid ?: 0L
             if (viewMid <= 0L) {
                 context?.let { AppToast.show(it, "未获取到 UP 主信息") }
                 return@launch

@@ -7,9 +7,7 @@ import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
 import androidx.fragment.app.Fragment
-import androidx.viewpager2.adapter.FragmentStateAdapter
 import com.google.android.material.tabs.TabLayoutMediator
-import blbl.cat3399.R
 import blbl.cat3399.core.log.AppLog
 import blbl.cat3399.core.prefs.AppPrefs
 import blbl.cat3399.core.net.BiliClient
@@ -29,7 +27,9 @@ import com.google.android.material.tabs.TabLayout
 class HomeFragment : Fragment(), VideoGridTabSwitchFocusHost, BackPressHandler {
     private var _binding: FragmentHomeBinding? = null
     private val binding get() = _binding!!
+    private var mediator: TabLayoutMediator? = null
     private var pageCallback: androidx.viewpager2.widget.ViewPager2.OnPageChangeCallback? = null
+    private var tabs: List<HomeTabSpec> = emptyList()
     private var pendingFocusFirstCardFromContentSwitch: Boolean = false
     private var pendingFocusFirstCardFromBackToTab0: Boolean = false
     private var pendingBackToTab0RequestToken: Int = 0
@@ -84,15 +84,7 @@ class HomeFragment : Fragment(), VideoGridTabSwitchFocusHost, BackPressHandler {
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
-        binding.viewPager.adapter = HomePagerAdapter(this)
-        TabLayoutMediator(binding.tabLayout, binding.viewPager) { tab, position ->
-            tab.text = when (position) {
-                0 -> getString(R.string.tab_recommend)
-                1 -> getString(R.string.tab_popular)
-                2 -> getString(R.string.tab_bangumi)
-                else -> getString(R.string.tab_cinema)
-            }
-        }.attach()
+        setTabs(HomeTabs.visibleTabs(BiliClient.prefs), force = true)
         binding.tabLayout.addOnTabSelectedListener(
             object : TabLayout.OnTabSelectedListener {
                 override fun onTabSelected(tab: TabLayout.Tab) = Unit
@@ -104,28 +96,11 @@ class HomeFragment : Fragment(), VideoGridTabSwitchFocusHost, BackPressHandler {
                 }
             },
         )
-        val b = binding
-        val tabLayout = b.tabLayout
-        tabLayout.postIfAlive(isAlive = { _binding === b }) {
-            tabLayout.enableDpadTabFocus(selectOnFocusProvider = { BiliClient.prefs.tabSwitchFollowsFocus }) { position ->
-                AppLog.d("Home", "tab focus pos=$position t=${SystemClock.uptimeMillis()}")
-            }
-            val tabStrip = tabLayout.getChildAt(0) as? ViewGroup ?: return@postIfAlive
-            for (i in 0 until tabStrip.childCount) {
-                tabStrip.getChildAt(i).setOnKeyListener { _, keyCode, event ->
-                    if (event.action == KeyEvent.ACTION_DOWN && keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
-                        val pageFragment = findCurrentViewPagerChildFragmentAs<TabContentFocusTarget>(binding.viewPager)
-                            ?: return@setOnKeyListener false
-                        return@setOnKeyListener pageFragment.requestFocusPrimaryItemFromTab()
-                    }
-                    false
-                }
-            }
-        }
         pageCallback =
             object : androidx.viewpager2.widget.ViewPager2.OnPageChangeCallback() {
                 override fun onPageSelected(position: Int) {
-                    AppLog.d("Home", "page selected pos=$position t=${SystemClock.uptimeMillis()}")
+                    val tab = tabs.getOrNull(position)
+                    AppLog.d("Home", "page selected pos=$position key=${tab?.key} t=${SystemClock.uptimeMillis()}")
                     if (pendingFocusFirstCardFromBackToTab0) {
                         maybeRequestTab0FocusFromBackToTab0()
                     } else if (pendingFocusFirstCardFromContentSwitch) {
@@ -140,6 +115,52 @@ class HomeFragment : Fragment(), VideoGridTabSwitchFocusHost, BackPressHandler {
 
     override fun onResume() {
         super.onResume()
+        setTabs(HomeTabs.visibleTabs(BiliClient.prefs))
+    }
+
+    private fun setTabs(nextTabs: List<HomeTabSpec>, force: Boolean = false) {
+        val b = _binding ?: return
+        val next = nextTabs.ifEmpty { HomeTabs.all }
+        if (!force && tabs.map { it.key } == next.map { it.key }) return
+
+        val currentKey = tabs.getOrNull(b.viewPager.currentItem)?.key
+        mediator?.detach()
+        mediator = null
+        tabs = next
+
+        b.viewPager.adapter = HomePagerAdapter(this, tabs)
+        mediator =
+            TabLayoutMediator(b.tabLayout, b.viewPager) { tab, position ->
+                tab.text = tabs.getOrNull(position)?.let { getString(it.titleRes) }.orEmpty()
+            }.also { it.attach() }
+
+        val targetIndex = currentKey?.let { key -> tabs.indexOfFirst { it.key == key }.takeIf { it >= 0 } } ?: 0
+        if (targetIndex != b.viewPager.currentItem && targetIndex in tabs.indices) {
+            b.viewPager.setCurrentItem(targetIndex, false)
+        }
+
+        installTabFocusHandlers(b)
+    }
+
+    private fun installTabFocusHandlers(b: FragmentHomeBinding) {
+        val tabLayout = b.tabLayout
+        tabLayout.postIfAlive(isAlive = { _binding === b }) {
+            tabLayout.enableDpadTabFocus(selectOnFocusProvider = { BiliClient.prefs.tabSwitchFollowsFocus }) { position ->
+                val tab = tabs.getOrNull(position)
+                AppLog.d("Home", "tab focus pos=$position key=${tab?.key} t=${SystemClock.uptimeMillis()}")
+            }
+            val tabStrip = tabLayout.getChildAt(0) as? ViewGroup ?: return@postIfAlive
+            for (i in 0 until tabStrip.childCount) {
+                tabStrip.getChildAt(i).setOnKeyListener { _, keyCode, event ->
+                    if (event.action == KeyEvent.ACTION_DOWN && keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
+                        val pageFragment = findCurrentViewPagerChildFragmentAs<TabContentFocusTarget>(binding.viewPager)
+                            ?: return@setOnKeyListener false
+                        return@setOnKeyListener pageFragment.requestFocusPrimaryItemFromTab()
+                    }
+                    false
+                }
+            }
+        }
     }
 
     override fun handleBackPressed(): Boolean {
@@ -189,6 +210,9 @@ class HomeFragment : Fragment(), VideoGridTabSwitchFocusHost, BackPressHandler {
     override fun onDestroyView() {
         pageCallback?.let { binding.viewPager.unregisterOnPageChangeCallback(it) }
         pageCallback = null
+        mediator?.detach()
+        mediator = null
+        tabs = emptyList()
         _binding = null
         super.onDestroyView()
     }

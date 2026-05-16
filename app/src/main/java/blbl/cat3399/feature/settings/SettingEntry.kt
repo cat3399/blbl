@@ -11,6 +11,7 @@ enum class SettingId(
     // 通用设置
     ImageQuality("image_quality"),
     ThemePreset("theme_preset"),
+    ApiSource("api_source"),
     UserAgent("user_agent"),
     Ipv4OnlyEnabled("ipv4_only_enabled"),
     GaiaVgate("gaia_vgate"),
@@ -27,11 +28,16 @@ enum class SettingId(
     PgcGridSpanCount("pgc_grid_span_count"),
     UiScaleFactor("ui_scale_factor"),
     FullscreenEnabled("fullscreen_enabled"),
+    AvoidDisplayCutout("avoid_display_cutout"),
     TabSwitchFollowsFocus("tab_switch_follows_focus"),
     MainAutoHideSidebarOnEnterContent("main_auto_hide_sidebar_on_enter_content"),
     MainBackFocusScheme("main_back_focus_scheme"),
     VideoCardLongPressAction("video_card_long_press_action"),
     FollowingListOrder("following_list_order"),
+    MainHomeVisibleTabs("main_home_visible_tabs"),
+    MainCategoryVisibleTabs("main_category_visible_tabs"),
+    MainLiveVisibleTabs("main_live_visible_tabs"),
+    MainMyVisibleTabs("main_my_visible_tabs"),
 
     // 播放设置
     PlayerPreferredQn("player_preferred_qn"),
@@ -43,12 +49,15 @@ enum class SettingId(
     PlayerShortSeekStepSeconds("player_short_seek_step_seconds"),
     PlayerHoldSeekSpeed("player_hold_seek_speed"),
     PlayerHoldSeekMode("player_hold_seek_mode"),
+    PlayerHoldScrubTraverseSeconds("player_hold_scrub_traverse_seconds"),
+    PlayerHoldScrubFixedStepSeconds("player_hold_scrub_fixed_step_seconds"),
     PlayerAutoResumeEnabled("player_auto_resume_enabled"),
     PlayerAutoSkipSegmentsEnabled("player_auto_skip_segments_enabled"),
     PlayerAutoSkipServerBaseUrl("player_auto_skip_server_base_url"),
     PlayerOpenDetailBeforePlay("player_open_detail_before_play"),
     PlayerPlaybackMode("player_playback_mode"),
     PlayerSettingsApplyToGlobal("player_settings_apply_to_global"),
+    PlayerUpQuickCardEnabled("player_up_quick_card_enabled"),
     PlayerStyle("player_style"),
     SubtitlePreferredLang("subtitle_preferred_lang"),
     SubtitleTextSizeSp("subtitle_text_size_sp"),
@@ -91,12 +100,14 @@ enum class SettingId(
     DanmakuAllowSpecial("danmaku_allow_special"),
 
     // 关于应用
+    PlayerKernelCheck("player_kernel_check"),
     AppVersion("app_version"),
     ProjectUrl("project_url"),
     QqGroup("qq_group"),
     LogTag("log_tag"),
     ExportLogs("export_logs"),
     UploadLogs("upload_logs"),
+    AutoUpdateCheckEnabled("auto_update_check_enabled"),
     CheckUpdate("check_update"),
 
     // 设备信息

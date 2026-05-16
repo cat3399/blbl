@@ -39,19 +39,25 @@ import blbl.cat3399.core.prefs.PlayerCustomShortcut
 import blbl.cat3399.core.prefs.PlayerCustomShortcutAction
 import blbl.cat3399.core.prefs.PlayerPlaybackModes
 import blbl.cat3399.core.prefs.PlayerCustomShortcutsStore
-import blbl.cat3399.core.theme.LauncherAliasManager
 import blbl.cat3399.core.ui.AppToast
 import blbl.cat3399.core.ui.Immersive
 import blbl.cat3399.core.ui.popup.AppPopup
 import blbl.cat3399.core.ui.popup.PopupAction
 import blbl.cat3399.core.ui.popup.PopupActionRole
+import blbl.cat3399.core.update.ApkUpdateFlow
 import blbl.cat3399.core.update.ApkUpdater
+import blbl.cat3399.feature.player.engine.IjkPlayerPlugin
 import blbl.cat3399.feature.player.engine.IjkPlayerPluginUi
 import blbl.cat3399.feature.player.AudioBalanceLevel
 import blbl.cat3399.feature.player.PlaybackSettingChoices
 import blbl.cat3399.feature.player.PlayerCustomShortcutCatalog
 import blbl.cat3399.feature.risk.GaiaVgateActivity
+import blbl.cat3399.feature.category.CategoryZones
+import blbl.cat3399.feature.custom.CustomPageSearchSourceKind
 import blbl.cat3399.feature.custom.CustomPageTabRegistry
+import blbl.cat3399.feature.home.HomeTabs
+import blbl.cat3399.feature.live.LiveFragment
+import blbl.cat3399.feature.my.MyTabs
 import blbl.cat3399.ui.MainRootNavRegistry
 import blbl.cat3399.ui.MainActivity
 import kotlinx.coroutines.CancellationException
@@ -69,7 +75,6 @@ import java.util.ArrayDeque
 import java.util.Date
 import java.util.Locale
 import org.json.JSONObject
-import org.json.JSONArray
 
 class SettingsInteractionHandler(
     private val activity: SettingsActivity,
@@ -205,7 +210,7 @@ class SettingsInteractionHandler(
             val tv =
                 LayoutInflater.from(dialogContext)
                     .inflate(R.layout.view_popup_message, null, false) as TextView
-            tv.text = "可导出当前配置，也可选包含当前登录状态；导入时会按文件内容整包覆盖。"
+            tv.text = "可导出当前配置，也可选包含已保存帐号和登录状态；导入时会按文件内容整包覆盖。"
             tv
         }
     }
@@ -299,7 +304,7 @@ class SettingsInteractionHandler(
     private fun showImportConfigConfirmDialog(parsed: AppConfigBackup.ParsedBackup) {
         val message =
             if (parsed.includesCredentials) {
-                "该文件包含登录状态部分。\n导入后将覆盖当前配置和登录状态，并重启应用。"
+                "该文件包含登录状态部分。\n导入后将覆盖当前配置、已保存帐号和登录状态，并重启应用。"
             } else {
                 "该文件仅包含配置部分。\n导入后只覆盖当前配置，保留当前登录状态，并重启应用。"
             }
@@ -324,10 +329,14 @@ class SettingsInteractionHandler(
                 failureLogMessage = "apply config failed",
                 failureToastPrefix = "导入失败",
                 work = {
-                    AppConfigBackup.apply(parsed, prefs = BiliClient.prefs, cookies = BiliClient.cookies)
+                    AppConfigBackup.apply(
+                        parsed,
+                        prefs = BiliClient.prefs,
+                        cookies = BiliClient.cookies,
+                        accounts = BiliClient.accounts,
+                    )
                 },
             ) {
-                LauncherAliasManager.sync(activity.applicationContext, BiliClient.prefs.themePreset)
                 evictNetworkConnections()
                 AppToast.showLong(activity, if (parsed.includesCredentials) "已导入配置与登录状态，正在重启…" else "已导入配置，正在重启…")
                 restartToMain()
@@ -338,6 +347,7 @@ class SettingsInteractionHandler(
         return AppConfigBackup.prepareExport(
             prefs = BiliClient.prefs,
             cookies = BiliClient.cookies,
+            accounts = BiliClient.accounts,
             mode = mode,
         )
     }
@@ -361,6 +371,7 @@ class SettingsInteractionHandler(
             title = "上传日志",
             message =
                 "将日志上传给开发者便于排查问题。\n\n" +
+                    "会随日志附带设备、版本、屏幕和非登录配置元数据，不包含登录 Cookie。\n\n" +
                     "反馈问题时请带上上传成功后显示的文件名。",
             positiveText = "上传",
             negativeText = "取消",
@@ -522,7 +533,9 @@ class SettingsInteractionHandler(
                         .put("model", Build.MODEL)
                         .put("sdk_int", Build.VERSION.SDK_INT)
                         .put("release", Build.VERSION.RELEASE)
-                        .put("abi", DeviceAbi.getFirstAbi()),
+                        .put("abi", DeviceAbi.getFirstAbi())
+                        .put("ram", SettingsText.ramText(activity))
+                        .put("hardware_decoder", SettingsText.hardDecoderSupportText()),
                 )
                 .put(
                     "account",
@@ -530,7 +543,7 @@ class SettingsInteractionHandler(
                         .put("is_logged_in", BiliClient.cookies.hasSessData()),
                 )
                 .put("screen", buildUploadScreenJson())
-                .put("prefs", buildUploadPrefsJson(prefs))
+                .put("prefs_snapshot", prefs.exportDiagnosticsSnapshotJson())
 
         return json.toString(2)
     }
@@ -577,87 +590,6 @@ class SettingsInteractionHandler(
                     .put("density", sysDm.density)
                     .put("scaled_density", systemScaledDensity)
                     .put("density_dpi", sysDm.densityDpi),
-            )
-    }
-
-    private fun buildUploadPrefsJson(prefs: AppPrefs): JSONObject {
-        val osdButtons = JSONArray()
-        for (b in prefs.playerOsdButtons) osdButtons.put(b)
-
-        return JSONObject()
-            .put(
-                "ui",
-                JSONObject()
-                    .put("theme_preset", prefs.themePreset)
-                    .put("ui_scale_factor", prefs.uiScaleFactor)
-                    .put("sidebar_size", prefs.sidebarSize)
-                    .put("startup_page", prefs.startupPage)
-                    .put("following_list_order", prefs.followingListOrder)
-                    .put("dynamic_following_recent_update_dot_enabled", prefs.dynamicFollowingRecentUpdateDotEnabled)
-                    .put("image_quality", prefs.imageQuality)
-                    .put("fullscreen_enabled", prefs.fullscreenEnabled)
-                    .put("tab_switch_follows_focus", prefs.tabSwitchFollowsFocus)
-                    .put("main_back_focus_scheme", prefs.mainBackFocusScheme)
-                    .put("grid_span", prefs.gridSpanCount)
-                    .put("dynamic_grid_span", prefs.dynamicGridSpanCount)
-                    .put("pgc_grid_span", prefs.pgcGridSpanCount)
-                    .put("pgc_episode_order_reversed", prefs.pgcEpisodeOrderReversed),
-            )
-            .put(
-                "network",
-                JSONObject()
-                    .put("ipv4_only_enabled", prefs.ipv4OnlyEnabled)
-                    .put("user_agent", prefs.userAgent)
-                    .put("auto_skip_server_base_url", prefs.playerAutoSkipServerBaseUrl)
-                    .put("player_cdn_preference", prefs.playerCdnPreference),
-            )
-            .put(
-                "danmaku",
-                JSONObject()
-                    .put("enabled", prefs.danmakuEnabled)
-                    .put("allow_top", prefs.danmakuAllowTop)
-                    .put("allow_bottom", prefs.danmakuAllowBottom)
-                    .put("allow_scroll", prefs.danmakuAllowScroll)
-                    .put("allow_color", prefs.danmakuAllowColor)
-                    .put("allow_special", prefs.danmakuAllowSpecial)
-                    .put("follow_bili_shield", prefs.danmakuFollowBiliShield)
-                    .put("ai_shield_enabled", prefs.danmakuAiShieldEnabled)
-                    .put("ai_shield_level", prefs.danmakuAiShieldLevel)
-                    .put("opacity", prefs.danmakuOpacity)
-                    .put("text_size_sp", prefs.danmakuTextSizeSp)
-                    .put("speed", prefs.danmakuSpeed)
-                    .put("area", prefs.danmakuArea),
-            )
-            .put(
-                "player",
-                JSONObject()
-                    .put("preferred_qn", prefs.playerPreferredQn)
-                    .put("preferred_qn_portrait", prefs.playerPreferredQnPortrait)
-                    .put("preferred_codec", prefs.playerPreferredCodec)
-                    .put("render_view_type", prefs.playerRenderViewType)
-                    .put("engine_kind", prefs.playerEngineKind)
-                    .put("preferred_audio_id", prefs.playerPreferredAudioId)
-                    .put("subtitle_lang", prefs.subtitlePreferredLang)
-                    .put("subtitle_enabled_default", prefs.subtitleEnabledDefault)
-                    .put("subtitle_text_size_sp", prefs.subtitleTextSizeSp)
-                    .put("subtitle_bottom_padding_fraction", prefs.subtitleBottomPaddingFraction)
-                    .put("subtitle_background_opacity", prefs.subtitleBackgroundOpacity)
-                    .put("speed", prefs.playerSpeed)
-                    .put("short_seek_step_seconds", prefs.playerShortSeekStepSeconds)
-                    .put("hold_seek_speed", prefs.playerHoldSeekSpeed)
-                    .put("hold_seek_mode", prefs.playerHoldSeekMode)
-                    .put("auto_resume_enabled", prefs.playerAutoResumeEnabled)
-                    .put("auto_skip_segments_enabled", prefs.playerAutoSkipSegmentsEnabled)
-                    .put("open_detail_before_play", prefs.playerOpenDetailBeforePlay)
-                    .put("debug_enabled", prefs.playerDebugEnabled)
-                    .put("double_back_to_exit", prefs.playerDoubleBackToExit)
-                    .put("down_key_osd_focus_target", prefs.playerDownKeyOsdFocusTarget)
-                    .put("toggle_play_state_show_osd", prefs.playerTogglePlayStateShowOsd)
-                    .put("persistent_bottom_progress_enabled", prefs.playerPersistentBottomProgressEnabled)
-                    .put("persistent_clock_enabled", prefs.playerPersistentClockEnabled)
-                    .put("touch_gestures_enabled", prefs.playerTouchGesturesEnabled)
-                    .put("playback_mode", prefs.playerPlaybackMode)
-                    .put("osd_buttons", osdButtons),
             )
     }
 
@@ -752,6 +684,7 @@ class SettingsInteractionHandler(
                     listOf(
                         blbl.cat3399.core.prefs.AppPrefs.THEME_PRESET_DEFAULT to "默认",
                         blbl.cat3399.core.prefs.AppPrefs.THEME_PRESET_TV_PINK to "小电视粉",
+                        blbl.cat3399.core.prefs.AppPrefs.THEME_PRESET_TV_PINK_ILLUSTRATION to "经典",
                     )
                 showChoiceDialog(
                     title = "主题",
@@ -768,9 +701,38 @@ class SettingsInteractionHandler(
                     }
 
                     prefs.themePreset = key
-                    LauncherAliasManager.sync(activity.applicationContext, key)
                     AppToast.show(activity, "主题：$selected（已应用）")
                     restartToMain()
+                }
+            }
+
+            SettingId.ApiSource -> {
+                val options =
+                    listOf(
+                        blbl.cat3399.core.prefs.AppPrefs.API_SOURCE_WEB to "Web",
+                        blbl.cat3399.core.prefs.AppPrefs.API_SOURCE_APP to "App",
+                    )
+                showChoiceDialog(
+                    title = "接口类别",
+                    items = options.map { it.second },
+                    current = SettingsText.apiSourceText(prefs.apiSource),
+                ) { selected ->
+                    val key = options.firstOrNull { it.second == selected }?.first
+                        ?: blbl.cat3399.core.prefs.AppPrefs.API_SOURCE_WEB
+                    if (key == blbl.cat3399.core.prefs.AppPrefs.API_SOURCE_APP &&
+                        prefs.appAuthSession?.accessKey.isNullOrBlank()
+                    ) {
+                        AppToast.show(activity, "首次使用 App 接口需要重新登录")
+                        return@showChoiceDialog
+                    }
+                    if (prefs.apiSource == key) {
+                        AppToast.show(activity, "接口类别：$selected")
+                        return@showChoiceDialog
+                    }
+                    prefs.apiSource = key
+                    evictNetworkConnections()
+                    AppToast.show(activity, "接口类别：$selected")
+                    renderer.refreshSection(entry.id)
                 }
             }
 
@@ -799,10 +761,23 @@ class SettingsInteractionHandler(
                 showUploadLogsDialog()
             }
 
+            SettingId.AutoUpdateCheckEnabled -> {
+                prefs.autoUpdateCheckEnabled = !prefs.autoUpdateCheckEnabled
+                AppToast.show(activity, "自动检查更新：${if (prefs.autoUpdateCheckEnabled) "开" else "关"}")
+                renderer.refreshSection(entry.id)
+            }
+
             SettingId.FullscreenEnabled -> {
                 prefs.fullscreenEnabled = !prefs.fullscreenEnabled
                 Immersive.apply(activity, prefs.fullscreenEnabled)
                 AppToast.show(activity, "全屏：${if (prefs.fullscreenEnabled) "开" else "关"}")
+                renderer.refreshSection(entry.id)
+            }
+
+            SettingId.AvoidDisplayCutout -> {
+                prefs.avoidDisplayCutout = !prefs.avoidDisplayCutout
+                activity.reapplyWindowDisplayPolicy()
+                AppToast.show(activity, "避开挖孔/圆角区域：${if (prefs.avoidDisplayCutout) "开" else "关"}")
                 renderer.refreshSection(entry.id)
             }
 
@@ -903,6 +878,46 @@ class SettingsInteractionHandler(
                     AppToast.show(activity, "关注列表排序：$selected")
                     renderer.refreshSection(entry.id)
                 }
+            }
+
+            SettingId.MainHomeVisibleTabs -> {
+                showVisibleTabsDialog(
+                    sectionIndex = state.currentSectionIndex,
+                    focusId = entry.id,
+                    title = "主页显示页面",
+                    options = HomeTabs.all.map { it.key to activity.getString(it.titleRes) },
+                    selectedKeys = prefs.mainHomeVisibleTabs,
+                ) { prefs.mainHomeVisibleTabs = it }
+            }
+
+            SettingId.MainCategoryVisibleTabs -> {
+                showVisibleTabsDialog(
+                    sectionIndex = state.currentSectionIndex,
+                    focusId = entry.id,
+                    title = "分类页显示页面",
+                    options = CategoryZones.defaultZones.map { CategoryZones.stableKeyFor(it) to it.title },
+                    selectedKeys = prefs.mainCategoryVisibleTabs,
+                ) { prefs.mainCategoryVisibleTabs = it }
+            }
+
+            SettingId.MainLiveVisibleTabs -> {
+                showVisibleTabsDialog(
+                    sectionIndex = state.currentSectionIndex,
+                    focusId = entry.id,
+                    title = "直播页显示页面",
+                    options = LiveFragment.LiveTabs.all.map { it.key to it.title },
+                    selectedKeys = prefs.mainLiveVisibleTabs,
+                ) { prefs.mainLiveVisibleTabs = it }
+            }
+
+            SettingId.MainMyVisibleTabs -> {
+                showVisibleTabsDialog(
+                    sectionIndex = state.currentSectionIndex,
+                    focusId = entry.id,
+                    title = "我的页显示页面",
+                    options = MyTabs.all.map { it.key to activity.getString(it.titleRes) },
+                    selectedKeys = prefs.mainMyVisibleTabs,
+                ) { prefs.mainMyVisibleTabs = it }
             }
 
             SettingId.UiScaleFactor -> {
@@ -1277,6 +1292,14 @@ class SettingsInteractionHandler(
                 }
             }
 
+            SettingId.PlayerHoldScrubTraverseSeconds -> {
+                showPlayerHoldScrubTraverseSecondsDialog(sectionIndex = state.currentSectionIndex, focusId = entry.id)
+            }
+
+            SettingId.PlayerHoldScrubFixedStepSeconds -> {
+                showPlayerHoldScrubFixedStepSecondsDialog(sectionIndex = state.currentSectionIndex, focusId = entry.id)
+            }
+
             SettingId.PlayerAutoResumeEnabled -> {
                 prefs.playerAutoResumeEnabled = !prefs.playerAutoResumeEnabled
                 renderer.refreshSection(entry.id)
@@ -1312,6 +1335,11 @@ class SettingsInteractionHandler(
 
             SettingId.PlayerSettingsApplyToGlobal -> {
                 prefs.playerSettingsApplyToGlobal = !prefs.playerSettingsApplyToGlobal
+                renderer.refreshSection(entry.id)
+            }
+
+            SettingId.PlayerUpQuickCardEnabled -> {
+                prefs.playerUpQuickCardEnabled = !prefs.playerUpQuickCardEnabled
                 renderer.refreshSection(entry.id)
             }
 
@@ -1452,6 +1480,7 @@ class SettingsInteractionHandler(
                         blbl.cat3399.core.prefs.AppPrefs.PLAYER_DOWN_KEY_OSD_FOCUS_COIN to "投币",
                         blbl.cat3399.core.prefs.AppPrefs.PLAYER_DOWN_KEY_OSD_FOCUS_FAV to "收藏",
                         blbl.cat3399.core.prefs.AppPrefs.PLAYER_DOWN_KEY_OSD_FOCUS_LIST_PANEL to "列表面板",
+                        blbl.cat3399.core.prefs.AppPrefs.PLAYER_DOWN_KEY_OSD_FOCUS_SPONSOR_SUBMIT to "上传广告片段",
                         blbl.cat3399.core.prefs.AppPrefs.PLAYER_DOWN_KEY_OSD_FOCUS_ADVANCED to "更多设置",
                     )
                 showChoiceDialog(
@@ -1532,6 +1561,8 @@ class SettingsInteractionHandler(
                 copyToClipboard(label = "QQ交流群", text = SettingsConstants.QQ_GROUP, toastText = "已复制群号：${SettingsConstants.QQ_GROUP}")
             }
 
+            SettingId.PlayerKernelCheck -> handlePlayerKernelCheck()
+
             SettingId.CheckUpdate -> {
                 when (val checkState = state.testUpdateCheckState) {
                     TestUpdateCheckState.Checking -> {
@@ -1539,14 +1570,36 @@ class SettingsInteractionHandler(
                     }
 
                     is TestUpdateCheckState.UpdateAvailable -> {
-                        startTestUpdateDownload(latestVersionHint = checkState.latestVersion)
+                        ApkUpdateFlow.showUpdatePrompt(activity, checkState.update) { selectedUpdate ->
+                            startTestUpdateDownload(selectedUpdate.versionName)
+                        }
                     }
 
-                    else -> ensureTestUpdateChecked(force = true, refreshUi = true)
+                    else -> ensureTestUpdateChecked(force = true, refreshUi = true, promptIfUpdate = true)
                 }
             }
 
             else -> AppLog.i("Settings", "click id=${entry.id.key} title=${entry.title}")
+        }
+    }
+
+    private fun handlePlayerKernelCheck() {
+        when (IjkPlayerPlugin.status(activity)) {
+            IjkPlayerPlugin.InstallStatus.Unsupported -> {
+                AppToast.showLong(activity, "当前设备不支持 IjkPlayer（ABI=${DeviceAbi.getSupportedAbis().joinToString()}）")
+            }
+
+            IjkPlayerPlugin.InstallStatus.Installed -> {
+                AppToast.show(activity, "播放器内核已是最新")
+            }
+
+            IjkPlayerPlugin.InstallStatus.NotInstalled,
+            IjkPlayerPlugin.InstallStatus.NeedsUpdate,
+            -> {
+                IjkPlayerPluginUi.ensureInstalled(activity) {
+                    renderer.refreshAboutSectionKeepPosition()
+                }
+            }
         }
     }
 
@@ -1560,6 +1613,7 @@ class SettingsInteractionHandler(
     private fun evictNetworkConnections() {
         runCatching { BiliClient.apiOkHttp.evictConnectionPool() }
         runCatching { BiliClient.cdnOkHttp.evictConnectionPool() }
+        runCatching { BiliClient.appCdnOkHttp.evictConnectionPool() }
         runCatching { ApkUpdater.evictConnections() }
     }
 
@@ -1585,6 +1639,45 @@ class SettingsInteractionHandler(
         }
     }
 
+    private fun showVisibleTabsDialog(
+        sectionIndex: Int,
+        focusId: SettingId,
+        title: String,
+        options: List<Pair<String, String>>,
+        selectedKeys: List<String>,
+        save: (List<String>) -> Unit,
+    ) {
+        val keys = options.map { it.first }
+        val labels = options.map { it.second }
+        val selected =
+            selectedKeys
+                .takeIf { it.isNotEmpty() }
+                ?.toSet()
+                ?: keys.toSet()
+        val checked = BooleanArray(keys.size) { idx -> keys.getOrNull(idx) in selected }
+        if (checked.none { it } && checked.isNotEmpty()) {
+            for (idx in checked.indices) checked[idx] = true
+        }
+
+        AppPopup.multiChoice(
+            context = activity,
+            title = title,
+            items = labels,
+            checked = checked,
+            minCheckedCount = 1,
+            onChanged = { finalChecked ->
+                save(
+                    keys.filterIndexed { idx, _ ->
+                        idx in finalChecked.indices && finalChecked[idx]
+                    },
+                )
+            },
+            onDismiss = {
+                renderer.showSection(sectionIndex, focusId = focusId)
+            },
+        )
+    }
+
     private fun showPlayerOsdButtonsDialog(sectionIndex: Int, focusId: SettingId) {
         val prefs = BiliClient.prefs
         val options =
@@ -1601,6 +1694,7 @@ class SettingsInteractionHandler(
                 blbl.cat3399.core.prefs.AppPrefs.PLAYER_OSD_BTN_COIN to "投币",
                 blbl.cat3399.core.prefs.AppPrefs.PLAYER_OSD_BTN_FAV to "收藏",
                 blbl.cat3399.core.prefs.AppPrefs.PLAYER_OSD_BTN_LIST_PANEL to "列表",
+                blbl.cat3399.core.prefs.AppPrefs.PLAYER_OSD_BTN_SPONSOR_SUBMIT to "上传广告片段",
                 blbl.cat3399.core.prefs.AppPrefs.PLAYER_OSD_BTN_ADVANCED to "更多设置",
             )
         val keys = options.map { it.first }
@@ -2153,9 +2247,63 @@ class SettingsInteractionHandler(
                         val current = loadConfig()
                         saveConfig(current.copy(tabs = current.tabs + directOption.config))
                         showManager(focusStableKey = directOption.config.stableKey())
+                    } else if (picked.key == CustomPageTabRegistry.GROUP_SEARCH) {
+                        showSearchTypePicker()
                     } else {
                         showAddLeafPicker(group = picked)
                     }
+                }
+            }
+
+            private fun showSearchTypePicker() {
+                var forward = false
+                val config = loadConfig()
+                val kinds = CustomPageTabRegistry.availableSearchSourceKinds(config)
+                if (kinds.isEmpty()) {
+                    AppToast.show(activity, "暂无可添加的搜索历史")
+                    showAddPicker()
+                    return
+                }
+
+                AppPopup.singleChoice(
+                    context = activity,
+                    title = "添加搜索页面",
+                    items = kinds.map { it.label },
+                    checkedIndex = 0,
+                    onDismiss = {
+                        if (!forward) showAddPicker()
+                    },
+                ) { which, _ ->
+                    val picked = kinds.getOrNull(which) ?: return@singleChoice
+                    forward = true
+                    showSearchHistoryPicker(kind = picked)
+                }
+            }
+
+            private fun showSearchHistoryPicker(kind: CustomPageSearchSourceKind) {
+                var forward = false
+                val config = loadConfig()
+                val options = CustomPageTabRegistry.availableSearchHistoryOptions(kind.sourceType, config)
+                if (options.isEmpty()) {
+                    AppToast.show(activity, "该类别下暂无可添加的搜索历史")
+                    showSearchTypePicker()
+                    return
+                }
+
+                AppPopup.singleChoice(
+                    context = activity,
+                    title = "添加${kind.label}搜索",
+                    items = options.map { it.label },
+                    checkedIndex = 0,
+                    onDismiss = {
+                        if (!forward) showSearchTypePicker()
+                    },
+                ) { which, _ ->
+                    val picked = options.getOrNull(which) ?: return@singleChoice
+                    forward = true
+                    val current = loadConfig()
+                    saveConfig(current.copy(tabs = current.tabs + picked.config))
+                    showManager(focusStableKey = picked.config.stableKey())
                 }
             }
 
@@ -2366,17 +2514,65 @@ class SettingsInteractionHandler(
         }
     }
 
+    private fun showPlayerHoldScrubTraverseSecondsDialog(sectionIndex: Int, focusId: SettingId) {
+        val prefs = BiliClient.prefs
+        showPlayerHoldScrubSecondsDialog(
+            title = "拖完整个视频所需时间",
+            currentSeconds = prefs.playerHoldScrubTraverseSeconds,
+            sectionIndex = sectionIndex,
+            focusId = focusId,
+        ) { value ->
+            prefs.playerHoldScrubTraverseSeconds = value
+        }
+    }
+
+    private fun showPlayerHoldScrubFixedStepSecondsDialog(sectionIndex: Int, focusId: SettingId) {
+        val prefs = BiliClient.prefs
+        showPlayerHoldScrubSecondsDialog(
+            title = "固定时间拖动进度条间隔",
+            currentSeconds = prefs.playerHoldScrubFixedStepSeconds,
+            sectionIndex = sectionIndex,
+            focusId = focusId,
+        ) { value ->
+            prefs.playerHoldScrubFixedStepSeconds = value
+        }
+    }
+
+    private fun showPlayerHoldScrubSecondsDialog(
+        title: String,
+        currentSeconds: Int,
+        sectionIndex: Int,
+        focusId: SettingId,
+        onSelected: (Int) -> Unit,
+    ) {
+        val options = AppPrefs.PLAYER_HOLD_SCRUB_SECONDS_OPTIONS.toList()
+        showChoiceDialog(
+            title = title,
+            items = options.map(SettingsText::seekStepSecondsText),
+            current = SettingsText.seekStepSecondsText(currentSeconds),
+        ) { selected ->
+            val value =
+                options.firstOrNull { SettingsText.seekStepSecondsText(it) == selected }
+                    ?: AppPrefs.PLAYER_HOLD_SCRUB_SECONDS_DEFAULT
+            onSelected(value)
+            renderer.showSection(sectionIndex, focusId = focusId)
+        }
+    }
+
     private fun showClearLoginDialog(sectionIndex: Int, focusId: SettingId) {
         AppPopup.confirm(
             context = activity,
             title = "清除登录",
-            message = "将清除 Cookie（SESSDATA 等），需要重新登录。确定继续吗？",
+            message = "将清除所有已保存帐号和当前登录状态，需要重新登录。确定继续吗？",
             positiveText = "确定清除",
             negativeText = "取消",
             cancelable = true,
             onPositive = {
-                BiliClient.clearLoginSession()
-                AppToast.show(activity, "已清除 Cookie")
+                BiliClient.accounts.clearAllAccountsAndCurrentSession(
+                    appPrefs = BiliClient.prefs,
+                    cookies = BiliClient.cookies,
+                )
+                AppToast.show(activity, "已清除登录状态")
                 renderer.showSection(sectionIndex, focusId = focusId)
             },
         )
@@ -2480,7 +2676,7 @@ class SettingsInteractionHandler(
         return total.coerceAtLeast(0L)
     }
 
-    private fun ensureTestUpdateChecked(force: Boolean, refreshUi: Boolean = true) {
+    private fun ensureTestUpdateChecked(force: Boolean, refreshUi: Boolean = true, promptIfUpdate: Boolean = false) {
         if (testUpdateJob?.isActive == true) return
         if (testUpdateCheckJob?.isActive == true) return
         if (state.testUpdateCheckState is TestUpdateCheckState.Checking) return
@@ -2501,15 +2697,21 @@ class SettingsInteractionHandler(
         testUpdateCheckJob =
             activity.lifecycleScope.launch {
                 try {
-                    val latest = ApkUpdater.fetchLatestVersionName()
+                    val update = ApkUpdater.fetchLatestUpdate()
+                    val latest = update.versionName
                     val current = BuildConfig.VERSION_NAME
                     state.testUpdateCheckState =
                         if (ApkUpdater.isRemoteNewer(latest, current)) {
-                            TestUpdateCheckState.UpdateAvailable(latest)
+                            TestUpdateCheckState.UpdateAvailable(update)
                         } else {
                             TestUpdateCheckState.Latest(latest)
                         }
                     state.testUpdateCheckedAtMs = System.currentTimeMillis()
+                    if (promptIfUpdate && state.testUpdateCheckState is TestUpdateCheckState.UpdateAvailable) {
+                        ApkUpdateFlow.showUpdatePrompt(activity, update) { selectedUpdate ->
+                            startTestUpdateDownload(selectedUpdate.versionName)
+                        }
+                    }
                 } catch (_: CancellationException) {
                     return@launch
                 } catch (t: Throwable) {
@@ -2526,82 +2728,17 @@ class SettingsInteractionHandler(
             return
         }
 
-        val now = System.currentTimeMillis()
-        val cooldownLeftMs = ApkUpdater.cooldownLeftMs(now)
-        if (cooldownLeftMs > 0) {
-            AppToast.show(activity, "操作太频繁，请稍后再试（${(cooldownLeftMs / 1000).coerceAtLeast(1)}s）")
-            return
-        }
-
-        val popup =
-            AppPopup.progress(
-                context = activity,
-                title = "下载更新",
-                status = "检查更新…",
-                negativeText = "取消",
-                cancelable = false,
-                onNegative = { testUpdateJob?.cancel() },
-            )
-
         testUpdateJob =
-            activity.lifecycleScope.launch {
-                try {
-                    val currentVersion = BuildConfig.VERSION_NAME
-                    val latestVersion = latestVersionHint ?: ApkUpdater.fetchLatestVersionName()
-                    if (!ApkUpdater.isRemoteNewer(latestVersion, currentVersion)) {
-                        state.testUpdateCheckState = TestUpdateCheckState.Latest(latestVersion)
-                        state.testUpdateCheckedAtMs = System.currentTimeMillis()
-                        renderer.refreshAboutSectionKeepPosition()
-                        popup?.dismiss()
-                        AppToast.show(activity, "已是最新版（当前：$currentVersion）")
-                        return@launch
-                    }
-
-                    state.testUpdateCheckState = TestUpdateCheckState.UpdateAvailable(latestVersion)
-                    state.testUpdateCheckedAtMs = System.currentTimeMillis()
-                    renderer.refreshAboutSectionKeepPosition()
-
-                    popup?.updateStatus("准备下载…（最新：$latestVersion）")
-                    popup?.updateProgress(null)
-
-                    ApkUpdater.markStarted(now)
-                    val apkFile =
-                        ApkUpdater.downloadApkToCache(
-                            context = activity,
-                            url = ApkUpdater.TEST_APK_URL,
-                        ) { dlState ->
-                            when (dlState) {
-                                ApkUpdater.Progress.Connecting -> {
-                                    popup?.updateProgress(null)
-                                    popup?.updateStatus("连接中…")
-                                }
-
-                                is ApkUpdater.Progress.Downloading -> {
-                                    val pct = dlState.percent
-                                    if (pct != null) {
-                                        popup?.updateProgress(pct.coerceIn(0, 100))
-                                        popup?.updateStatus("下载中… ${pct.coerceIn(0, 100)}% ${dlState.hint}")
-                                    } else {
-                                        popup?.updateProgress(null)
-                                        popup?.updateStatus("下载中… ${dlState.hint}")
-                                    }
-                                }
-                            }
-                        }
-
-                    popup?.updateStatus("准备安装…")
-                    popup?.updateProgress(null)
-                    popup?.dismiss()
-                    ApkUpdater.installApk(activity, apkFile)
-                } catch (_: CancellationException) {
-                    popup?.dismiss()
-                    AppToast.show(activity, "已取消更新")
-                } catch (t: Throwable) {
-                    AppLog.w("TestUpdate", "update failed: ${t.message}")
-                    popup?.dismiss()
-                    AppToast.showLong(activity, "更新失败：${t.message ?: "未知错误"}")
-                }
+            ApkUpdateFlow.startDownloadAndInstall(
+                activity = activity,
+                latestVersionHint = latestVersionHint,
+                apkUrl = latestVersionHint?.let(ApkUpdater::apkUrlFor),
+            ) { latestVersion, isNewer ->
+                if (!isNewer && latestVersionHint == null) state.testUpdateCheckState = TestUpdateCheckState.Latest(latestVersion)
+                state.testUpdateCheckedAtMs = System.currentTimeMillis()
+                renderer.refreshAboutSectionKeepPosition()
             }
+                ?: return
     }
 
     private fun showProjectDialog() {

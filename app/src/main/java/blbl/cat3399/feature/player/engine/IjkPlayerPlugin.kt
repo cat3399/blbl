@@ -33,6 +33,8 @@ internal object IjkPlayerPlugin {
     private const val BASE_URL = "https://cat3399.top/blbl/ijkplayer"
     private const val ZIP_FILE_NAME = "libijkplayer.zip"
     private const val SO_FILE_NAME = "libijkplayer.so"
+    private const val INSTALL_STAMP_FILE_NAME = "install_stamp"
+    private const val REQUIRED_INSTALL_STAMP = 3
     private const val MIN_SO_BYTES = 1_000_000L
 
     private val supportedAbis: Set<String> =
@@ -74,16 +76,32 @@ internal object IjkPlayerPlugin {
         }
     }
 
+    enum class InstallStatus {
+        Unsupported,
+        NotInstalled,
+        NeedsUpdate,
+        Installed,
+    }
+
     fun deviceAbi(): String? {
         return DeviceAbi.getSupportedAbis().firstOrNull { supportedAbis.contains(it) }
     }
 
-    fun isInstalled(context: Context, abi: String = deviceAbi().orEmpty()): Boolean {
-        if (abi.isBlank()) return false
+    fun status(context: Context, abi: String = deviceAbi().orEmpty()): InstallStatus {
+        if (abi.isBlank()) return InstallStatus.Unsupported
         val so = soFile(context, abi)
-        if (!so.exists() || !so.isFile) return false
-        if (so.length() < MIN_SO_BYTES) return false
-        return looksLikeElf(so)
+        if (!so.exists() || !so.isFile) return InstallStatus.NotInstalled
+        if (so.length() < MIN_SO_BYTES) return InstallStatus.NotInstalled
+        if (!looksLikeElf(so)) return InstallStatus.NotInstalled
+        return if (readInstallStamp(context, abi) == REQUIRED_INSTALL_STAMP) {
+            InstallStatus.Installed
+        } else {
+            InstallStatus.NeedsUpdate
+        }
+    }
+
+    fun isInstalled(context: Context, abi: String = deviceAbi().orEmpty()): Boolean {
+        return status(context, abi) == InstallStatus.Installed
     }
 
     fun soFile(context: Context, abi: String = deviceAbi().orEmpty()): File {
@@ -134,6 +152,7 @@ internal object IjkPlayerPlugin {
             try {
                 val so = extractSoFromZip(appContext, abi = abi, zipFile = zip, onProgress = onProgress)
                 validateInstalledSo(so)
+                writeInstallStamp(appContext, abi)
                 return@withContext so
             } finally {
                 runCatching { zip.delete() }
@@ -152,6 +171,8 @@ internal object IjkPlayerPlugin {
             val targetSo = soFile(context, abi)
             targetSo.parentFile?.mkdirs()
             bundledSo.copyTo(targetSo, overwrite = true)
+            validateInstalledSo(targetSo)
+            writeInstallStamp(context, abi)
 
             if (isInstalled(context, abi)) targetSo else null
         } catch (e: Exception) {
@@ -164,7 +185,7 @@ internal object IjkPlayerPlugin {
         // API 19 needs a .so built with an older NDK (no _FORTIFY_SOURCE) to avoid
         // UnsatisfiedLinkError on missing __read_chk / __write_chk symbols.
         val variant = if (Build.VERSION.SDK_INT < 21) "$safeAbi-api19" else safeAbi
-        return "$BASE_URL/$variant/$ZIP_FILE_NAME"
+        return "$BASE_URL/$variant/$ZIP_FILE_NAME?cb=${System.currentTimeMillis()}"
     }
 
     private val okHttp: OkHttpClient by lazy {
@@ -316,6 +337,26 @@ internal object IjkPlayerPlugin {
         check(file.exists() && file.isFile) { "so 不存在" }
         check(file.length() >= MIN_SO_BYTES) { "so 文件过小（${file.length()} bytes）" }
         check(looksLikeElf(file)) { "so 文件格式不正确" }
+    }
+
+    private fun installStampFile(context: Context, abi: String): File {
+        return File(soFile(context, abi).parentFile, INSTALL_STAMP_FILE_NAME)
+    }
+
+    private fun readInstallStamp(context: Context, abi: String): Int? {
+        return runCatching {
+            installStampFile(context, abi)
+                .takeIf { it.exists() && it.isFile }
+                ?.readText(Charsets.UTF_8)
+                ?.trim()
+                ?.toIntOrNull()
+        }.getOrNull()
+    }
+
+    private fun writeInstallStamp(context: Context, abi: String) {
+        val file = installStampFile(context, abi)
+        file.parentFile?.mkdirs()
+        file.writeText(REQUIRED_INSTALL_STAMP.toString(), Charsets.UTF_8)
     }
 
     private fun looksLikeElf(file: File): Boolean {

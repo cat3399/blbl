@@ -20,8 +20,8 @@
         android:layout_height="match_parent"
         android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:paddingHorizontal="@dimen/following_container_padding_h">
-
+        android:paddingStart="@dimen/following_container_padding_h"
+        android:paddingEnd="@dimen/following_container_padding_h">
         <View
             android:id="@+id/v_selected"
             android:layout_width="@dimen/following_selected_width"

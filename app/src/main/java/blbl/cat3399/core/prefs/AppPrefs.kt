@@ -27,6 +27,21 @@ class AppPrefs(context: Context) {
         get() = prefs.getString(KEY_WEB_REFRESH_TOKEN, null)?.trim()?.takeIf { it.isNotBlank() }
         set(value) = prefs.edit().putString(KEY_WEB_REFRESH_TOKEN, value?.trim()).apply()
 
+    var appAuthSession: BiliAppAuthSession?
+        get() {
+            val raw = prefs.getString(KEY_APP_AUTH_SESSION, null)?.trim()?.takeIf { it.isNotBlank() } ?: return null
+            return runCatching { BiliAppAuthSession.fromJson(JSONObject(raw)) }.getOrNull()
+        }
+        set(value) {
+            val editor = prefs.edit()
+            if (value == null) {
+                editor.remove(KEY_APP_AUTH_SESSION)
+            } else {
+                editor.putString(KEY_APP_AUTH_SESSION, value.toJson().toString())
+            }
+            editor.apply()
+        }
+
     var webCookieRefreshCheckedEpochDay: Long
         get() = prefs.getLong(KEY_WEB_COOKIE_REFRESH_CHECKED_EPOCH_DAY, -1L)
         set(value) = prefs.edit().putLong(KEY_WEB_COOKIE_REFRESH_CHECKED_EPOCH_DAY, value).apply()
@@ -55,23 +70,10 @@ class AppPrefs(context: Context) {
 
     var themePreset: String
         get() {
-            val raw = prefs.getString(KEY_THEME_PRESET, THEME_PRESET_DEFAULT) ?: THEME_PRESET_DEFAULT
-            val v = raw.trim()
-            return when (v) {
-                THEME_PRESET_DEFAULT,
-                THEME_PRESET_TV_PINK,
-                -> v
-                else -> THEME_PRESET_DEFAULT
-            }
+            return normalizeThemePreset(prefs.getString(KEY_THEME_PRESET, THEME_PRESET_DEFAULT))
         }
         set(value) {
-            val v = value.trim()
-            val normalized =
-                when (v) {
-                    THEME_PRESET_TV_PINK -> THEME_PRESET_TV_PINK
-                    else -> THEME_PRESET_DEFAULT
-                }
-            prefs.edit().putString(KEY_THEME_PRESET, normalized).apply()
+            prefs.edit().putString(KEY_THEME_PRESET, normalizeThemePreset(value)).apply()
         }
 
     var startupPage: String
@@ -91,6 +93,22 @@ class AppPrefs(context: Context) {
                 prefs.edit().putString(KEY_CUSTOM_PAGE_CONFIG, CustomPageConfigStore.serialize(normalized)).apply()
             }
         }
+
+    var mainHomeVisibleTabs: List<String>
+        get() = loadStringList(KEY_MAIN_HOME_VISIBLE_TABS)
+        set(value) = saveStringList(KEY_MAIN_HOME_VISIBLE_TABS, normalizeStringList(value))
+
+    var mainCategoryVisibleTabs: List<String>
+        get() = loadStringList(KEY_MAIN_CATEGORY_VISIBLE_TABS)
+        set(value) = saveStringList(KEY_MAIN_CATEGORY_VISIBLE_TABS, normalizeStringList(value))
+
+    var mainLiveVisibleTabs: List<String>
+        get() = loadStringList(KEY_MAIN_LIVE_VISIBLE_TABS)
+        set(value) = saveStringList(KEY_MAIN_LIVE_VISIBLE_TABS, normalizeStringList(value))
+
+    var mainMyVisibleTabs: List<String>
+        get() = loadStringList(KEY_MAIN_MY_VISIBLE_TABS)
+        set(value) = saveStringList(KEY_MAIN_MY_VISIBLE_TABS, normalizeStringList(value))
 
     var followingListOrder: String
         get() {
@@ -113,9 +131,21 @@ class AppPrefs(context: Context) {
         get() = prefs.getBoolean(KEY_DYNAMIC_FOLLOWING_RECENT_UPDATE_DOT_ENABLED, false)
         set(value) = prefs.edit().putBoolean(KEY_DYNAMIC_FOLLOWING_RECENT_UPDATE_DOT_ENABLED, value).apply()
 
+    var autoUpdateCheckEnabled: Boolean
+        get() = prefs.getBoolean(KEY_AUTO_UPDATE_CHECK_ENABLED, true)
+        set(value) = prefs.edit().putBoolean(KEY_AUTO_UPDATE_CHECK_ENABLED, value).apply()
+
+    var autoUpdateIgnoredVersionName: String?
+        get() = prefs.getString(KEY_AUTO_UPDATE_IGNORED_VERSION_NAME, null)?.trim()?.takeIf { it.isNotBlank() }
+        set(value) = prefs.edit().putString(KEY_AUTO_UPDATE_IGNORED_VERSION_NAME, value?.trim()).apply()
+
     var userAgent: String
         get() = prefs.getString(KEY_UA, DEFAULT_UA) ?: DEFAULT_UA
         set(value) = prefs.edit().putString(KEY_UA, value).apply()
+
+    var apiSource: String
+        get() = normalizeApiSource(prefs.getString(KEY_API_SOURCE, API_SOURCE_WEB))
+        set(value) = prefs.edit().putString(KEY_API_SOURCE, normalizeApiSource(value)).apply()
 
     var ipv4OnlyEnabled: Boolean
         get() = prefs.getBoolean(KEY_IPV4_ONLY_ENABLED, false)
@@ -478,6 +508,30 @@ class AppPrefs(context: Context) {
             prefs.edit().putString(KEY_PLAYER_HOLD_SEEK_MODE, v).apply()
         }
 
+    var playerHoldScrubTraverseSeconds: Int
+        get() =
+            normalizePlayerHoldScrubSeconds(
+                prefs.getInt(KEY_PLAYER_HOLD_SCRUB_TRAVERSE_SECONDS, PLAYER_HOLD_SCRUB_SECONDS_DEFAULT),
+            )
+        set(value) =
+            prefs.edit()
+                .putInt(
+                    KEY_PLAYER_HOLD_SCRUB_TRAVERSE_SECONDS,
+                    normalizePlayerHoldScrubSeconds(value),
+                ).apply()
+
+    var playerHoldScrubFixedStepSeconds: Int
+        get() =
+            normalizePlayerHoldScrubSeconds(
+                prefs.getInt(KEY_PLAYER_HOLD_SCRUB_FIXED_STEP_SECONDS, PLAYER_HOLD_SCRUB_SECONDS_DEFAULT),
+            )
+        set(value) =
+            prefs.edit()
+                .putInt(
+                    KEY_PLAYER_HOLD_SCRUB_FIXED_STEP_SECONDS,
+                    normalizePlayerHoldScrubSeconds(value),
+                ).apply()
+
     var playerAutoResumeEnabled: Boolean
         get() = prefs.getBoolean(KEY_PLAYER_AUTO_RESUME_ENABLED, true)
         set(value) = prefs.edit().putBoolean(KEY_PLAYER_AUTO_RESUME_ENABLED, value).apply()
@@ -499,6 +553,24 @@ class AppPrefs(context: Context) {
             }
         }
 
+    var sponsorBlockPrivateUserId: String
+        get() {
+            val cached =
+                prefs.getString(KEY_SPONSOR_BLOCK_PRIVATE_USER_ID, null)
+                    ?.trim()
+                    ?.takeIf { isValidSponsorBlockPrivateUserId(it) }
+            if (cached != null) return cached
+            val generated = generateSponsorBlockPrivateUserId()
+            prefs.edit().putString(KEY_SPONSOR_BLOCK_PRIVATE_USER_ID, generated).apply()
+            return generated
+        }
+        set(value) {
+            val normalized = value.trim()
+            if (isValidSponsorBlockPrivateUserId(normalized)) {
+                prefs.edit().putString(KEY_SPONSOR_BLOCK_PRIVATE_USER_ID, normalized).apply()
+            }
+        }
+
     var playerOpenDetailBeforePlay: Boolean
         get() = prefs.getBoolean(KEY_PLAYER_OPEN_DETAIL_BEFORE_PLAY, false)
         set(value) = prefs.edit().putBoolean(KEY_PLAYER_OPEN_DETAIL_BEFORE_PLAY, value).apply()
@@ -506,6 +578,10 @@ class AppPrefs(context: Context) {
     var fullscreenEnabled: Boolean
         get() = prefs.getBoolean(KEY_FULLSCREEN, true)
         set(value) = prefs.edit().putBoolean(KEY_FULLSCREEN, value).apply()
+
+    var avoidDisplayCutout: Boolean
+        get() = prefs.getBoolean(KEY_AVOID_DISPLAY_CUTOUT, true)
+        set(value) = prefs.edit().putBoolean(KEY_AVOID_DISPLAY_CUTOUT, value).apply()
 
     var tabSwitchFollowsFocus: Boolean
         get() = prefs.getBoolean(KEY_TAB_SWITCH_FOLLOWS_FOCUS, true)
@@ -595,6 +671,7 @@ class AppPrefs(context: Context) {
                 PLAYER_DOWN_KEY_OSD_FOCUS_COIN,
                 PLAYER_DOWN_KEY_OSD_FOCUS_FAV,
                 PLAYER_DOWN_KEY_OSD_FOCUS_LIST_PANEL,
+                PLAYER_DOWN_KEY_OSD_FOCUS_SPONSOR_SUBMIT,
                 PLAYER_DOWN_KEY_OSD_FOCUS_ADVANCED,
                 -> normalized
 
@@ -616,6 +693,7 @@ class AppPrefs(context: Context) {
                     PLAYER_DOWN_KEY_OSD_FOCUS_COIN,
                     PLAYER_DOWN_KEY_OSD_FOCUS_FAV,
                     PLAYER_DOWN_KEY_OSD_FOCUS_LIST_PANEL,
+                    PLAYER_DOWN_KEY_OSD_FOCUS_SPONSOR_SUBMIT,
                     PLAYER_DOWN_KEY_OSD_FOCUS_ADVANCED,
                     -> value
 
@@ -704,6 +782,10 @@ class AppPrefs(context: Context) {
     var playerSettingsApplyToGlobal: Boolean
         get() = prefs.getBoolean(KEY_PLAYER_SETTINGS_APPLY_TO_GLOBAL, false)
         set(value) = prefs.edit().putBoolean(KEY_PLAYER_SETTINGS_APPLY_TO_GLOBAL, value).apply()
+
+    var playerUpQuickCardEnabled: Boolean
+        get() = prefs.getBoolean(KEY_PLAYER_UP_QUICK_CARD_ENABLED, true)
+        set(value) = prefs.edit().putBoolean(KEY_PLAYER_UP_QUICK_CARD_ENABLED, value).apply()
 
     var playerOsdButtons: List<String>
         get() {
@@ -797,6 +879,12 @@ class AppPrefs(context: Context) {
             excludeKeys = CREDENTIAL_KEYS,
         )
 
+    fun exportDiagnosticsSnapshotJson(): JSONObject =
+        SharedPreferencesSnapshot.encode(
+            prefs = prefs,
+            excludeKeys = DIAGNOSTIC_EXCLUDED_KEYS,
+        )
+
     fun exportCredentialsSnapshotJson(): JSONObject =
         SharedPreferencesSnapshot.encode(
             prefs = prefs,
@@ -839,6 +927,18 @@ class AppPrefs(context: Context) {
         prefs.edit().putString(key, arr.toString()).apply()
     }
 
+    private fun normalizeStringList(value: List<String>): List<String> {
+        if (value.isEmpty()) return emptyList()
+        val out = ArrayList<String>(value.size)
+        val seen = HashSet<String>(value.size * 2)
+        for (raw in value) {
+            val key = raw.trim()
+            if (key.isBlank()) continue
+            if (seen.add(key)) out.add(key)
+        }
+        return out
+    }
+
     private fun migratePlayerOsdDetailButtonIfNeeded(normalized: List<String>): List<String> {
         if (prefs.getBoolean(KEY_PLAYER_OSD_BUTTONS_DETAIL_MIGRATED, false)) return normalized
         // Requirement: auto-enable the new "Detail" button even for users who previously customized OSD.
@@ -879,6 +979,10 @@ class AppPrefs(context: Context) {
         return if (PLAYER_SHORT_SEEK_STEP_SECONDS_OPTIONS.contains(value)) value else PLAYER_SHORT_SEEK_STEP_SECONDS_DEFAULT
     }
 
+    private fun normalizePlayerHoldScrubSeconds(value: Int): Int {
+        return if (PLAYER_HOLD_SCRUB_SECONDS_OPTIONS.contains(value)) value else PLAYER_HOLD_SCRUB_SECONDS_DEFAULT
+    }
+
     companion object {
         const val STARTUP_PAGE_HOME = "home"
         const val STARTUP_PAGE_CATEGORY = "category"
@@ -898,6 +1002,7 @@ class AppPrefs(context: Context) {
 
         const val THEME_PRESET_DEFAULT = "default"
         const val THEME_PRESET_TV_PINK = "tv_pink"
+        const val THEME_PRESET_TV_PINK_ILLUSTRATION = "tv_pink_illustration"
 
         const val FOLLOWING_LIST_ORDER_FOLLOW_TIME = "follow_time"
         const val FOLLOWING_LIST_ORDER_RECENT_VISIT = "recent_visit"
@@ -915,10 +1020,12 @@ class AppPrefs(context: Context) {
 
         private const val KEY_DISCLAIMER_ACCEPTED = "disclaimer_accepted"
         private const val KEY_WEB_REFRESH_TOKEN = "web_refresh_token"
+        private const val KEY_APP_AUTH_SESSION = "app_auth_session"
         private const val KEY_WEB_COOKIE_REFRESH_CHECKED_EPOCH_DAY = "web_cookie_refresh_checked_epoch_day"
         private const val KEY_BILI_TICKET_CHECKED_EPOCH_DAY = "bili_ticket_checked_epoch_day"
 
         private const val KEY_UA = "ua"
+        private const val KEY_API_SOURCE = "api_source"
         private const val KEY_IPV4_ONLY_ENABLED = "ipv4_only_enabled"
         private const val KEY_DEVICE_BUVID = "device_buvid"
         private const val KEY_DEVICE_UUID = "device_uuid"
@@ -929,8 +1036,14 @@ class AppPrefs(context: Context) {
         private const val KEY_THEME_PRESET = "theme_preset"
         private const val KEY_STARTUP_PAGE = "startup_page"
         private const val KEY_CUSTOM_PAGE_CONFIG = "custom_page_config"
+        private const val KEY_MAIN_HOME_VISIBLE_TABS = "main_home_visible_tabs"
+        private const val KEY_MAIN_CATEGORY_VISIBLE_TABS = "main_category_visible_tabs"
+        private const val KEY_MAIN_LIVE_VISIBLE_TABS = "main_live_visible_tabs"
+        private const val KEY_MAIN_MY_VISIBLE_TABS = "main_my_visible_tabs"
         private const val KEY_FOLLOWING_LIST_ORDER = "following_list_order"
         private const val KEY_DYNAMIC_FOLLOWING_RECENT_UPDATE_DOT_ENABLED = "dynamic_following_recent_update_dot_enabled"
+        private const val KEY_AUTO_UPDATE_CHECK_ENABLED = "auto_update_check_enabled"
+        private const val KEY_AUTO_UPDATE_IGNORED_VERSION_NAME = "auto_update_ignored_version_name"
         private const val KEY_IMAGE_QUALITY = "image_quality"
         private const val KEY_DANMAKU_ENABLED = "danmaku_enabled"
         private const val KEY_DANMAKU_ALLOW_TOP = "danmaku_allow_top"
@@ -967,11 +1080,15 @@ class AppPrefs(context: Context) {
         private const val KEY_PLAYER_SHORT_SEEK_STEP_SECONDS = "player_short_seek_step_seconds"
         private const val KEY_PLAYER_HOLD_SEEK_SPEED = "player_hold_seek_speed"
         private const val KEY_PLAYER_HOLD_SEEK_MODE = "player_hold_seek_mode"
+        private const val KEY_PLAYER_HOLD_SCRUB_TRAVERSE_SECONDS = "player_hold_scrub_traverse_seconds"
+        private const val KEY_PLAYER_HOLD_SCRUB_FIXED_STEP_SECONDS = "player_hold_scrub_fixed_step_seconds"
         private const val KEY_PLAYER_AUTO_RESUME_ENABLED = "player_auto_resume_enabled"
         private const val KEY_PLAYER_AUTO_SKIP_SEGMENTS_ENABLED = "player_auto_skip_segments_enabled"
         private const val KEY_PLAYER_AUTO_SKIP_SERVER_BASE_URL = "player_auto_skip_server_base_url"
+        private const val KEY_SPONSOR_BLOCK_PRIVATE_USER_ID = "sponsor_block_private_user_id"
         private const val KEY_PLAYER_OPEN_DETAIL_BEFORE_PLAY = "player_open_detail_before_play"
         private const val KEY_FULLSCREEN = "fullscreen_enabled"
+        private const val KEY_AVOID_DISPLAY_CUTOUT = "avoid_display_cutout"
         private const val KEY_TAB_SWITCH_FOLLOWS_FOCUS = "tab_switch_follows_focus"
         private const val KEY_MAIN_AUTO_HIDE_SIDEBAR_ON_ENTER_CONTENT = "main_auto_hide_sidebar_on_enter_content"
         private const val KEY_MAIN_BACK_FOCUS_SCHEME = "main_back_focus_scheme"
@@ -987,6 +1104,7 @@ class AppPrefs(context: Context) {
         private const val KEY_PLAYER_AUDIO_BALANCE_LEVEL = "player_audio_balance_level"
         private const val KEY_PLAYER_PLAYBACK_MODE = "player_playback_mode"
         private const val KEY_PLAYER_SETTINGS_APPLY_TO_GLOBAL = "player_settings_apply_to_global"
+        private const val KEY_PLAYER_UP_QUICK_CARD_ENABLED = "player_up_quick_card_enabled"
         private const val KEY_PLAYER_OSD_BUTTONS = "player_osd_buttons"
         private const val KEY_PLAYER_OSD_BUTTONS_DETAIL_MIGRATED = "player_osd_buttons_detail_migrated"
         private const val KEY_PLAYER_CUSTOM_SHORTCUTS = "player_custom_shortcuts"
@@ -1001,11 +1119,20 @@ class AppPrefs(context: Context) {
         private val CREDENTIAL_KEYS: Set<String> =
             setOf(
                 KEY_WEB_REFRESH_TOKEN,
+                KEY_APP_AUTH_SESSION,
                 KEY_WEB_COOKIE_REFRESH_CHECKED_EPOCH_DAY,
                 KEY_BILI_TICKET_CHECKED_EPOCH_DAY,
                 KEY_GAIA_VGATE_V_VOUCHER,
                 KEY_GAIA_VGATE_V_VOUCHER_SAVED_AT_MS,
+                KEY_SPONSOR_BLOCK_PRIVATE_USER_ID,
             )
+
+        private val DIAGNOSTIC_EXCLUDED_KEYS: Set<String> =
+            CREDENTIAL_KEYS +
+                setOf(
+                    KEY_BUVID_ACTIVATED_MID,
+                    KEY_SEARCH_HISTORY,
+                )
 
         // PC browser UA is used to reduce CDN 403 for media resources.
         const val DEFAULT_UA =
@@ -1091,6 +1218,9 @@ class AppPrefs(context: Context) {
         const val PLAYER_AUDIO_BALANCE_MEDIUM = "medium"
         const val PLAYER_AUDIO_BALANCE_HIGH = "high"
 
+        const val API_SOURCE_WEB = "web"
+        const val API_SOURCE_APP = "app"
+
         const val PLAYER_PLAYBACK_MODE_NONE = "none"
         const val PLAYER_PLAYBACK_MODE_LOOP_ONE = "loop_one"
         const val PLAYER_PLAYBACK_MODE_EXIT = "exit"
@@ -1106,6 +1236,8 @@ class AppPrefs(context: Context) {
         const val PLAYER_HOLD_SEEK_MODE_SCRUB = "scrub"
         const val PLAYER_HOLD_SEEK_MODE_SCRUB_FIXED_TIME = "scrub_fixed_time"
         const val PLAYER_HOLD_SEEK_SPEED_DEFAULT = 3.0f
+        val PLAYER_HOLD_SCRUB_SECONDS_OPTIONS: Set<Int> = linkedSetOf(5, 8, 10, 12, 15, 17, 20, 22, 25, 27, 30)
+        const val PLAYER_HOLD_SCRUB_SECONDS_DEFAULT = 10
 
         const val DEFAULT_PLAYER_AUTO_SKIP_SERVER_BASE_URL = "https://bsbsb.top"
         const val FALLBACK_PLAYER_AUTO_SKIP_SERVER_BASE_URL = "http://154.222.28.109"
@@ -1130,6 +1262,7 @@ class AppPrefs(context: Context) {
         const val PLAYER_OSD_BTN_COIN = "coin"
         const val PLAYER_OSD_BTN_FAV = "fav"
         const val PLAYER_OSD_BTN_LIST_PANEL = "list_panel"
+        const val PLAYER_OSD_BTN_SPONSOR_SUBMIT = "sponsor_submit"
         const val PLAYER_OSD_BTN_ADVANCED = "advanced"
 
         val DEFAULT_PLAYER_OSD_BUTTONS: List<String> =
@@ -1140,6 +1273,7 @@ class AppPrefs(context: Context) {
                 PLAYER_OSD_BTN_DANMAKU,
                 PLAYER_OSD_BTN_COMMENTS,
                 PLAYER_OSD_BTN_DETAIL,
+                PLAYER_OSD_BTN_SPONSOR_SUBMIT,
                 PLAYER_OSD_BTN_UP,
                 PLAYER_OSD_BTN_LIST_PANEL,
                 PLAYER_OSD_BTN_ADVANCED,
@@ -1159,6 +1293,7 @@ class AppPrefs(context: Context) {
                 PLAYER_OSD_BTN_COIN,
                 PLAYER_OSD_BTN_FAV,
                 PLAYER_OSD_BTN_LIST_PANEL,
+                PLAYER_OSD_BTN_SPONSOR_SUBMIT,
                 PLAYER_OSD_BTN_ADVANCED,
             )
 
@@ -1174,6 +1309,7 @@ class AppPrefs(context: Context) {
         const val PLAYER_DOWN_KEY_OSD_FOCUS_COIN = "coin"
         const val PLAYER_DOWN_KEY_OSD_FOCUS_FAV = "fav"
         const val PLAYER_DOWN_KEY_OSD_FOCUS_LIST_PANEL = "list_panel"
+        const val PLAYER_DOWN_KEY_OSD_FOCUS_SPONSOR_SUBMIT = "sponsor_submit"
         const val PLAYER_DOWN_KEY_OSD_FOCUS_ADVANCED = "advanced"
 
         private const val PLAYER_DOWN_KEY_OSD_FOCUS_RECOMMEND_LEGACY = "recommend"
@@ -1185,6 +1321,21 @@ class AppPrefs(context: Context) {
             val md5 = java.security.MessageDigest.getInstance("MD5").digest(bytes)
             val hex = buildString(md5.size * 2) { md5.forEach { append(String.format(java.util.Locale.US, "%02x", it)) } }
             return "XY${hex[2]}${hex[12]}${hex[22]}$hex"
+        }
+
+        private fun isValidSponsorBlockPrivateUserId(text: String): Boolean {
+            val value = text.trim()
+            return value.length >= 30 && value.none { it.isWhitespace() }
+        }
+
+        private fun generateSponsorBlockPrivateUserId(): String {
+            val alphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+            val random = java.security.SecureRandom()
+            return buildString(40) {
+                repeat(40) {
+                    append(alphabet[random.nextInt(alphabet.length)])
+                }
+            }
         }
 
         private fun isValidUuid(text: String): Boolean {
@@ -1199,6 +1350,21 @@ class AppPrefs(context: Context) {
             val url = value.parseHttpUrl() ?: return null
             if (url.urlQuery() != null || url.urlFragment() != null) return null
             return url.toString().trimEnd('/')
+        }
+
+        fun normalizeThemePreset(value: String?): String {
+            return when (value?.trim()) {
+                THEME_PRESET_TV_PINK -> THEME_PRESET_TV_PINK
+                THEME_PRESET_TV_PINK_ILLUSTRATION -> THEME_PRESET_TV_PINK_ILLUSTRATION
+                else -> THEME_PRESET_DEFAULT
+            }
+        }
+
+        fun normalizeApiSource(value: String?): String {
+            return when (value?.trim()?.lowercase()) {
+                API_SOURCE_APP -> API_SOURCE_APP
+                else -> API_SOURCE_WEB
+            }
         }
     }
 

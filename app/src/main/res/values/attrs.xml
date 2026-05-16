@@ -10,7 +10,11 @@
     <!-- Theme preset support (non-player scope). -->
     <!-- Some layouts rely on Material's `?attr/colorBackground`. Define it locally for safety. -->
     <attr name="colorBackground" format="color" />
+    <attr name="blblPageBackdrop" format="reference|color" />
     <attr name="blblContentBackground" format="reference|color" />
+    <attr name="blblDialogSurface" format="color" />
+    <attr name="blblOnPageBackdrop" format="color" />
+    <attr name="blblOnPageBackdropSecondary" format="color" />
     <attr name="blblAccent" format="color" />
     <attr name="blblAccentContainer" format="color" />
     <attr name="blblAccentWeak" format="color" />

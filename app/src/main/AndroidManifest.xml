@@ -89,6 +89,12 @@
             android:screenOrientation="sensorLandscape"
             android:theme="@style/Theme.Blbl.Launcher.TvPink" />
 
+        <activity
+            android:name=".ui.SplashTvPinkIllustrationActivity"
+            android:banner="@drawable/tv_banner"
+            android:screenOrientation="sensorLandscape"
+            android:theme="@style/Theme.Blbl.Launcher.TvPinkIllustration" />
+
         <activity-alias
             android:name=".ui.MainLauncherDarkAlias"
             android:banner="@drawable/tv_banner"
@@ -108,6 +114,8 @@
             </intent-filter>
         </activity-alias>
 
+        <!-- Legacy themed aliases stay disabled by default, but keep their launcher filters so
+             devices with persisted alias state from older versions can still launch after upgrade. -->
         <activity-alias
             android:name=".ui.MainLauncherTvPinkAlias"
             android:banner="@drawable/tv_banner"
@@ -117,6 +125,25 @@
             android:label="@string/app_name"
             android:roundIcon="@mipmap/ic_launcher_round"
             android:targetActivity=".ui.SplashTvPinkActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".ui.MainLauncherTvPinkIllustrationAlias"
+            android:banner="@drawable/tv_banner"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher"
+            android:label="@string/app_name"
+            android:roundIcon="@mipmap/ic_launcher_round"
+            android:targetActivity=".ui.SplashTvPinkIllustrationActivity">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

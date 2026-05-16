@@ -1,8 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <selector xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- Always white for crisp readability on top of video frames. -->
-    <item android:color="@color/player_button_tint" android:state_selected="true" />
-    <item android:color="@color/player_button_tint" android:state_focused="true" />
-    <item android:color="@color/player_button_tint" android:state_pressed="true" />
-    <item android:color="@color/player_button_tint" />
+    <!-- Match comment sort chips: selected text is normal, unselected text is secondary. -->
+    <item android:color="@color/blbl_text" android:state_selected="true" />
+    <item android:color="@color/blbl_text_secondary" />
 </selector>

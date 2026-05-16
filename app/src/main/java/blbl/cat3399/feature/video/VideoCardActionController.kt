@@ -174,13 +174,7 @@ class VideoCardActionController(
     private suspend fun resolveAid(card: VideoCard): Long {
         card.aid?.takeIf { it > 0L }?.let { return it }
         val bvid = card.bvid.trim().takeIf { it.isNotBlank() } ?: throw BiliApiException(apiCode = -400, apiMessage = "missing_video_id")
-        val json = BiliApi.view(bvid)
-        val code = json.optInt("code", 0)
-        if (code != 0) {
-            val msg = json.optString("message", json.optString("msg", ""))
-            throw BiliApiException(apiCode = code, apiMessage = msg)
-        }
-        return json.optJSONObject("data")?.optLong("aid")?.takeIf { it > 0L }
+        return BiliApi.videoDetail(bvid).aid?.takeIf { it > 0L }
             ?: throw BiliApiException(apiCode = -400, apiMessage = "missing_video_id")
     }
 

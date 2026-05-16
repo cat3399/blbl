@@ -9,13 +9,37 @@ import blbl.cat3399.core.model.Danmaku
 import blbl.cat3399.core.model.DanmakuUserFilter
 import blbl.cat3399.core.model.FavFolder
 import blbl.cat3399.core.model.Following
+import blbl.cat3399.core.model.HistoryEntry
 import blbl.cat3399.core.model.LiveAreaParent
 import blbl.cat3399.core.model.LiveRoomCard
 import blbl.cat3399.core.model.VideoCard
 import blbl.cat3399.core.model.VideoTag
 import blbl.cat3399.core.prefs.AppPrefs
-import android.util.Base64
+import blbl.cat3399.core.api.video.ArchiveRelatedRequest
+import blbl.cat3399.core.api.video.UgcSeasonArchivesPage
+import blbl.cat3399.core.api.video.UgcSeasonArchivesRequest
+import blbl.cat3399.core.api.video.VideoApiGateway
+import blbl.cat3399.core.api.video.VideoCardPage
+import blbl.cat3399.core.api.video.VideoCollectionSectionsPage
+import blbl.cat3399.core.api.video.VideoCollectionSectionsRequest
+import blbl.cat3399.core.api.video.VideoDetail
+import blbl.cat3399.core.api.video.VideoDetailRequest
+import blbl.cat3399.core.api.video.VideoDynamicTagRequest
+import blbl.cat3399.core.api.video.VideoOnlineStatus
+import blbl.cat3399.core.api.video.VideoOnlineStatusRequest
+import blbl.cat3399.core.api.video.VideoPlayerInfo
+import blbl.cat3399.core.api.video.VideoPlayerInfoRequest
+import blbl.cat3399.core.api.video.VideoPlayRequest
+import blbl.cat3399.core.api.video.VideoPlayStream
+import blbl.cat3399.core.api.video.VideoPopularRequest
+import blbl.cat3399.core.api.video.VideoRecommendRequest
+import blbl.cat3399.core.api.video.VideoRegionLatestRequest
+import blbl.cat3399.core.api.video.VideoSeriesArchivesRequest
+import blbl.cat3399.core.api.video.VideoShotInfo
+import blbl.cat3399.core.api.video.VideoShotRequest
+import blbl.cat3399.core.api.video.VideoTagsRequest
 import blbl.cat3399.core.net.BiliClient
+import blbl.cat3399.core.net.PiliWebHeaders
 import blbl.cat3399.core.net.WebCookieMaintainer
 import blbl.cat3399.core.util.Format
 import blbl.cat3399.core.util.parseBangumiRedirectUrl
@@ -31,7 +55,6 @@ import kotlin.math.roundToLong
 
 object BiliApi {
     private const val TAG = "BiliApi"
-    private const val PILI_REFERER = "https://www.bilibili.com"
     private const val DYNAMIC_HOST_FEED_CONSUME_FEATURES =
         "itemOpusStyle,listOnlyfans,opusBigCover,onlyfansVote,decorationCard,onlyfansAssetsV2," +
             "forwardListHidden,ugcDelete,onlyfansQaCard,commentsNewVersion,avatarAutoTheme," +
@@ -54,41 +77,8 @@ object BiliApi {
         return data.optString("v_voucher", "").trim().takeIf { it.isNotBlank() }
     }
 
-    internal fun piliWebHeaders(targetUrl: String, includeCookie: Boolean = true): Map<String, String> {
-        val out = piliHeaders(includeMid = includeCookie).toMutableMap()
-        out["Referer"] = PILI_REFERER
-        // Tell OkHttp interceptor to not add Origin (PiliPlus does not send it for this flow).
-        out["X-Blbl-Skip-Origin"] = "1"
-        if (includeCookie) {
-            val cookie = BiliClient.cookies.cookieHeaderFor(targetUrl)
-            if (!cookie.isNullOrBlank()) out["Cookie"] = cookie
-        }
-        return out
-    }
-
-    private fun piliHeaders(includeMid: Boolean = true): Map<String, String> {
-        val headers =
-            mutableMapOf(
-                "env" to "prod",
-                "app-key" to "android64",
-                "x-bili-aurora-zone" to "sh001",
-            )
-        if (!includeMid) return headers
-        val midStr = BiliClient.cookies.getCookieValue("DedeUserID")?.trim().orEmpty()
-        val mid = midStr.toLongOrNull()?.takeIf { it > 0 } ?: return headers
-        headers["x-bili-mid"] = mid.toString()
-        genAuroraEid(mid)?.let { headers["x-bili-aurora-eid"] = it }
-        return headers
-    }
-
-    private fun genAuroraEid(mid: Long): String? {
-        if (mid <= 0) return null
-        val key = "ad1va46a7lza".toByteArray()
-        val input = mid.toString().toByteArray()
-        val out = ByteArray(input.size)
-        for (i in input.indices) out[i] = (input[i].toInt() xor key[i % key.size].toInt()).toByte()
-        return Base64.encodeToString(out, Base64.NO_PADDING or Base64.NO_WRAP)
-    }
+    internal fun piliWebHeaders(targetUrl: String, includeCookie: Boolean = true): Map<String, String> =
+        PiliWebHeaders.forUrl(targetUrl = targetUrl, includeCookie = includeCookie)
 
     data class GaiaVgateRegister(
         val gt: String,
@@ -209,7 +199,7 @@ object BiliApi {
     )
 
     data class HistoryPage(
-        val items: List<VideoCard>,
+        val items: List<HistoryEntry>,
         val cursor: HistoryCursor?,
     )
 
@@ -228,6 +218,9 @@ object BiliApi {
         val total: Int,
     )
 
+    private fun VideoCardPage<*>.toHasMorePage(): HasMorePage<VideoCard> =
+        HasMorePage(items = items, page = page, hasMore = hasMore, total = total)
+
     data class PgcFollowActionResult(
         val status: Int?,
         val toast: String?,
@@ -236,6 +229,8 @@ object BiliApi {
     data class LiveRoomInfo(
         val roomId: Long,
         val uid: Long,
+        val uname: String?,
+        val faceUrl: String?,
         val title: String,
         val liveStatus: Int,
         val areaName: String?,
@@ -263,16 +258,6 @@ object BiliApi {
         val host: String,
         val wssPort: Int,
         val wsPort: Int,
-    )
-
-    data class VideoShotInfo(
-        val pvData: String?,
-        val imgXLen: Int,
-        val imgYLen: Int,
-        val imgXSize: Int,
-        val imgYSize: Int,
-        val image: List<String>,
-        val index: List<Int>?,
     )
 
     suspend fun nav(): JSONObject {
@@ -412,6 +397,8 @@ object BiliApi {
 
     suspend fun liveRoomInfo(roomId: Long): LiveRoomInfo = LiveApi.liveRoomInfo(roomId = roomId)
 
+    suspend fun liveRoomEntryAction(roomId: Long) = LiveApi.liveRoomEntryAction(roomId = roomId)
+
     suspend fun livePlayUrl(roomId: Long, qn: Int, highBitrateEnabled: Boolean): LivePlayUrl =
         LiveApi.livePlayUrl(roomId = roomId, qn = qn, highBitrateEnabled = highBitrateEnabled)
 
@@ -447,78 +434,127 @@ object BiliApi {
                 )
             }
         val list = data.optJSONArray("list") ?: JSONArray()
-        val cards =
-            withContext(Dispatchers.Default) {
-                val out = ArrayList<VideoCard>(list.length())
-                for (i in 0 until list.length()) {
-                    val it = list.optJSONObject(i) ?: continue
-                    val history = it.optJSONObject("history") ?: JSONObject()
-                    val businessType = history.optString("business", "")
-                    if (businessType != "archive" && businessType != "pgc") continue
+        val items = withContext(Dispatchers.Default) { parseHistoryEntries(list) }
+        return HistoryPage(items = items, cursor = cursor)
+    }
 
-                    val bvid = history.optString("bvid", "").trim()
-                    val aid = history.optLong("oid").takeIf { v -> v > 0 }
-                    val cid = history.optLong("cid").takeIf { v -> v > 0 }
-                    val epId = history.optLong("epid").takeIf { v -> v > 0 }
-                    val seasonId =
-                        if (businessType == "pgc") {
-                            it.optLong("kid").takeIf { v -> v > 0 }
-                                ?: parseBangumiRedirectUrl(it.optString("uri", ""))?.seasonId
-                        } else {
-                            null
-                        }
+    private fun parseHistoryEntries(list: JSONArray): List<HistoryEntry> {
+        val out = ArrayList<HistoryEntry>(list.length())
+        for (i in 0 until list.length()) {
+            val obj = list.optJSONObject(i) ?: continue
+            val history = obj.optJSONObject("history") ?: continue
+            when (val businessType = history.optString("business", "")) {
+                "archive",
+                "pgc",
+                -> parseHistoryVideoCard(obj, history, businessType)?.let { out += HistoryEntry.Video(it) }
 
-                    // For archive items bvid should exist; for PGC items bvid may be absent so we fall back to aid/epId.
-                    if (businessType == "archive" && bvid.isBlank()) continue
-                    if (businessType == "pgc" && (epId == null || cid == null) && (bvid.isBlank() && aid == null)) continue
-
-                    val covers = it.optJSONArray("covers")
-                    val coverUrl =
-                        it.optString("cover", "").takeIf { s -> s.isNotBlank() }
-                            ?: covers?.optString(0)?.takeIf { s -> s.isNotBlank() }
-                            ?: ""
-
-                    val durationSec = it.optInt("duration", 0).coerceAtLeast(0)
-                    val viewAtSec = it.optLong("view_at").takeIf { v -> v > 0 }
-                    val rawProgressSec = it.optLong("progress")
-                    val progressFinished = rawProgressSec < 0 || (durationSec > 0 && rawProgressSec >= durationSec.toLong())
-                    val progressSec = rawProgressSec.takeIf { v -> v > 0 && !progressFinished }
-                    val showTitle = it.optString("show_title", "").trim().takeIf { s -> s.isNotBlank() }
-                    val badge = it.optString("badge", "").trim().takeIf { s -> s.isNotBlank() }
-                    val subtitleParts = buildList {
-                        viewAtSec?.let { add(Format.timeText(it)) }
-                        badge?.let { add(it) }
-                        showTitle?.let { add(it) }
-                    }
-                    val subtitle = subtitleParts.joinToString(" · ").takeIf { s -> s.isNotBlank() }
-                    out.add(
-                        VideoCard(
-                            bvid = bvid,
-                            cid = cid,
-                            aid = aid,
-                            epId = epId,
-                            seasonId = seasonId,
-                            business = businessType.takeIf { s -> s.isNotBlank() },
-                            title = it.optString("title", ""),
-                            coverUrl = coverUrl,
-                            durationSec = durationSec,
-                            ownerName = it.optString("author_name", ""),
-                            ownerFace = it.optString("author_face").takeIf { s -> s.isNotBlank() },
-                            ownerMid =
-                                it.optLong("author_mid").takeIf { v -> v > 0 }
-                                    ?: it.optLong("mid").takeIf { v -> v > 0 },
-                            view = null,
-                            danmaku = null,
-                            pubDate = null,
-                            pubDateText = subtitle,
-                            progressSec = progressSec,
-                            progressFinished = progressFinished,
-                        ),
-                    )
-                }
-                out
+                "live" -> parseHistoryLiveRoom(obj, history)?.let { out += HistoryEntry.Live(it) }
             }
-        return HistoryPage(items = cards, cursor = cursor)
+        }
+        return out
+    }
+
+    private fun parseHistoryVideoCard(
+        obj: JSONObject,
+        history: JSONObject,
+        businessType: String,
+    ): VideoCard? {
+        val bvid = history.optString("bvid", "").trim()
+        val aid = history.optLong("oid").takeIf { v -> v > 0 }
+        val cid = history.optLong("cid").takeIf { v -> v > 0 }
+        val epId = history.optLong("epid").takeIf { v -> v > 0 }
+        val seasonId =
+            if (businessType == "pgc") {
+                obj.optLong("kid").takeIf { v -> v > 0 }
+                    ?: parseBangumiRedirectUrl(obj.optString("uri", ""))?.seasonId
+            } else {
+                null
+            }
+
+        // For archive items bvid should exist; for PGC items bvid may be absent so we fall back to aid/epId.
+        if (businessType == "archive" && bvid.isBlank()) return null
+        if (businessType == "pgc" && (epId == null || cid == null) && (bvid.isBlank() && aid == null)) return null
+
+        val coverUrl =
+            obj.optString("cover", "").takeIf { s -> s.isNotBlank() }
+                ?: obj.optJSONArray("covers")?.optString(0)?.takeIf { s -> s.isNotBlank() }
+                ?: ""
+
+        val durationSec = obj.optInt("duration", 0).coerceAtLeast(0)
+        val viewAtSec = obj.optLong("view_at").takeIf { v -> v > 0 }
+        val rawProgressSec = obj.optLong("progress")
+        val progressFinished = rawProgressSec < 0 || (durationSec > 0 && rawProgressSec >= durationSec.toLong())
+        val progressSec = rawProgressSec.takeIf { v -> v > 0 && !progressFinished }
+        val showTitle = obj.optString("show_title", "").trim().takeIf { s -> s.isNotBlank() }
+        val badge = obj.optString("badge", "").trim().takeIf { s -> s.isNotBlank() }
+        val subtitleParts = buildList {
+            viewAtSec?.let { add(Format.timeText(it)) }
+            badge?.let { add(it) }
+            showTitle?.let { add(it) }
+        }
+        val subtitle = subtitleParts.joinToString(" · ").takeIf { s -> s.isNotBlank() }
+        return VideoCard(
+            bvid = bvid,
+            cid = cid,
+            aid = aid,
+            epId = epId,
+            seasonId = seasonId,
+            business = businessType.takeIf { s -> s.isNotBlank() },
+            title = obj.optString("title", ""),
+            coverUrl = coverUrl,
+            durationSec = durationSec,
+            ownerName = obj.optString("author_name", ""),
+            ownerFace = obj.optString("author_face").takeIf { s -> s.isNotBlank() },
+            ownerMid =
+                obj.optLong("author_mid").takeIf { v -> v > 0 }
+                    ?: obj.optLong("mid").takeIf { v -> v > 0 },
+            view = null,
+            danmaku = null,
+            pubDate = null,
+            pubDateText = subtitle,
+            progressSec = progressSec,
+            progressFinished = progressFinished,
+        )
+    }
+
+    private fun parseHistoryLiveRoom(
+        obj: JSONObject,
+        history: JSONObject,
+    ): LiveRoomCard? {
+        val roomId =
+            history.optLong("oid").takeIf { v -> v > 0 }
+                ?: obj.optLong("kid").takeIf { v -> v > 0 }
+                ?: parseLiveRoomIdFromUrl(obj.optString("uri", ""))
+                ?: return null
+        val areaName = obj.optString("tag_name", "").trim().takeIf { s -> s.isNotBlank() }
+        val liveStatus = obj.optInt("live_status", 0)
+        val coverUrl =
+            obj.optString("cover", "").trim().takeIf { it.isNotBlank() }
+                ?: obj.optJSONArray("covers")?.optString(0)?.trim()?.takeIf { it.isNotBlank() }
+                ?: ""
+        return LiveRoomCard(
+            roomId = roomId,
+            uid =
+                obj.optLong("author_mid").takeIf { v -> v > 0 }
+                    ?: obj.optLong("mid").takeIf { v -> v > 0 }
+                    ?: 0L,
+            title = obj.optString("title", ""),
+            uname = obj.optString("author_name", ""),
+            coverUrl = coverUrl,
+            faceUrl = obj.optString("author_face", "").trim().takeIf { it.isNotBlank() },
+            online = 0L,
+            isLive = liveStatus == 1,
+            parentAreaId = null,
+            parentAreaName = null,
+            areaId = null,
+            areaName = areaName,
+            keyframe = null,
+        )
+    }
+
+    private fun parseLiveRoomIdFromUrl(raw: String): Long? {
+        val path = raw.substringBefore('?').substringBefore('#').trimEnd('/')
+        return path.substringAfterLast('/', missingDelimiterValue = "").toLongOrNull()?.takeIf { it > 0 }
     }
 
     suspend fun toViewList(): List<VideoCard> = VideoApi.toViewList()
@@ -1278,39 +1314,57 @@ object BiliApi {
         freshIdx: Int = 1,
         ps: Int = 20,
         fetchRow: Int = 1,
-    ): List<VideoCard> = VideoApi.recommend(freshIdx = freshIdx, ps = ps, fetchRow = fetchRow)
+    ): List<VideoCard> =
+        VideoApiGateway
+            .recommend(VideoRecommendRequest(freshIdx = freshIdx, ps = ps, fetchRow = fetchRow))
+            .items
 
-    suspend fun popular(pn: Int = 1, ps: Int = 20): List<VideoCard> = VideoApi.popular(pn = pn, ps = ps)
+    suspend fun popular(pn: Int = 1, ps: Int = 20): List<VideoCard> = popularPage(pn = pn, ps = ps).items
 
     suspend fun popularPage(
         pn: Int = 1,
         ps: Int = 20,
-    ): HasMorePage<VideoCard> = VideoApi.popularPage(pn = pn, ps = ps)
+    ): HasMorePage<VideoCard> =
+        VideoApiGateway
+            .popular(VideoPopularRequest(pn = pn, ps = ps))
+            .toHasMorePage()
 
-    suspend fun regionLatest(rid: Int, pn: Int = 1, ps: Int = 20): List<VideoCard> = VideoApi.regionLatest(rid = rid, pn = pn, ps = ps)
+    suspend fun regionLatest(rid: Int, pn: Int = 1, ps: Int = 20): List<VideoCard> =
+        regionLatestPage(rid = rid, pn = pn, ps = ps).items
 
     suspend fun regionLatestPage(
         rid: Int,
         pn: Int = 1,
         ps: Int = 20,
-    ): HasMorePage<VideoCard> = VideoApi.regionLatestPage(rid = rid, pn = pn, ps = ps)
+    ): HasMorePage<VideoCard> =
+        VideoApiGateway
+            .regionLatest(VideoRegionLatestRequest(rid = rid, pn = pn, ps = ps))
+            .toHasMorePage()
 
     suspend fun dynamicTag(
         rid: Int,
         tagId: Long,
         pn: Int = 1,
         ps: Int = 20,
-    ): HasMorePage<VideoCard> = VideoApi.dynamicTag(rid = rid, tagId = tagId, pn = pn, ps = ps)
+    ): HasMorePage<VideoCard> =
+        VideoApiGateway
+            .dynamicTag(VideoDynamicTagRequest(rid = rid, tagId = tagId, pn = pn, ps = ps))
+            .toHasMorePage()
 
-    suspend fun view(bvid: String): JSONObject = VideoApi.view(bvid = bvid)
+    suspend fun videoDetail(bvid: String): VideoDetail =
+        VideoApiGateway.detail(VideoDetailRequest(bvid = bvid))
 
-    suspend fun view(aid: Long): JSONObject = VideoApi.view(aid = aid)
+    suspend fun videoDetail(aid: Long): VideoDetail =
+        VideoApiGateway.detail(VideoDetailRequest(aid = aid))
 
     suspend fun viewTags(
         bvid: String? = null,
         aid: Long? = null,
         cid: Long? = null,
-    ): List<VideoTag> = VideoApi.viewTags(bvid = bvid, aid = aid, cid = cid)
+    ): List<VideoTag> =
+        VideoApiGateway
+            .tags(VideoTagsRequest(bvid = bvid, aid = aid, cid = cid))
+            .tags
 
     suspend fun commentPage(
         type: Int,
@@ -1329,32 +1383,39 @@ object BiliApi {
         ps: Int = 20,
     ): JSONObject = VideoApi.commentRepliesPage(type = type, oid = oid, rootRpid = rootRpid, pn = pn, ps = ps)
 
-    suspend fun archiveRelated(bvid: String, aid: Long? = null): List<VideoCard> = VideoApi.archiveRelated(bvid = bvid, aid = aid)
+    suspend fun archiveRelated(bvid: String, aid: Long? = null): List<VideoCard> =
+        VideoApiGateway
+            .archiveRelated(ArchiveRelatedRequest(bvid = bvid, aid = aid))
+            .items
 
-    suspend fun seasonsArchivesList(
+    suspend fun ugcSeasonArchives(
         mid: Long,
         seasonId: Long,
         pageNum: Int = 1,
         pageSize: Int = 200,
         sortReverse: Boolean = false,
-    ): JSONObject =
-        VideoApi.seasonsArchivesList(
-            mid = mid,
-            seasonId = seasonId,
-            pageNum = pageNum,
-            pageSize = pageSize,
-            sortReverse = sortReverse,
+    ): UgcSeasonArchivesPage =
+        VideoApiGateway.ugcSeasonArchives(
+            UgcSeasonArchivesRequest(
+                mid = mid,
+                seasonId = seasonId,
+                pageNum = pageNum,
+                pageSize = pageSize,
+                sortReverse = sortReverse,
+            ),
         )
 
-    suspend fun seasonsSeriesList(
+    suspend fun collectionSections(
         mid: Long,
         pageNum: Int = 1,
         pageSize: Int = 20,
-    ): JSONObject =
-        VideoApi.seasonsSeriesList(
-            mid = mid,
-            pageNum = pageNum,
-            pageSize = pageSize,
+    ): VideoCollectionSectionsPage =
+        VideoApiGateway.collectionSections(
+            VideoCollectionSectionsRequest(
+                mid = mid,
+                pageNum = pageNum,
+                pageSize = pageSize,
+            ),
         )
 
     suspend fun seriesArchives(
@@ -1364,59 +1425,25 @@ object BiliApi {
         pageSize: Int = 20,
         sort: String = "desc",
         onlyNormal: Boolean = true,
-    ): JSONObject =
-        VideoApi.seriesArchives(
-            mid = mid,
-            seriesId = seriesId,
-            pageNum = pageNum,
-            pageSize = pageSize,
-            sort = sort,
-            onlyNormal = onlyNormal,
+    ): VideoCardPage<VideoSeriesArchivesRequest> =
+        VideoApiGateway.seriesArchives(
+            VideoSeriesArchivesRequest(
+                mid = mid,
+                seriesId = seriesId,
+                pageNum = pageNum,
+                pageSize = pageSize,
+                sort = sort,
+                onlyNormal = onlyNormal,
+            ),
         )
 
-    suspend fun onlineTotal(bvid: String, cid: Long): JSONObject = VideoApi.onlineTotal(bvid = bvid, cid = cid)
+    suspend fun videoOnlineStatus(bvid: String, cid: Long): VideoOnlineStatus =
+        VideoApiGateway.onlineStatus(VideoOnlineStatusRequest(bvid = bvid, cid = cid))
 
-    suspend fun playUrlDash(bvid: String, cid: Long, qn: Int = 80, fnval: Int = 16): JSONObject =
-        VideoApi.playUrlDash(bvid = bvid, cid = cid, qn = qn, fnval = fnval)
+    suspend fun playUrl(request: VideoPlayRequest): VideoPlayStream = VideoApiGateway.playUrl(request)
 
-    suspend fun playUrlDashTryLook(bvid: String, cid: Long, qn: Int = 80, fnval: Int = 16): JSONObject =
-        VideoApi.playUrlDashTryLook(bvid = bvid, cid = cid, qn = qn, fnval = fnval)
-
-    suspend fun pgcPlayUrl(
-        bvid: String? = null,
-        aid: Long? = null,
-        cid: Long? = null,
-        epId: Long? = null,
-        qn: Int = 80,
-        fnval: Int = 16,
-    ): JSONObject =
-        VideoApi.pgcPlayUrl(
-            bvid = bvid,
-            aid = aid,
-            cid = cid,
-            epId = epId,
-            qn = qn,
-            fnval = fnval,
-        )
-
-    suspend fun pgcPlayUrlTryLook(
-        bvid: String? = null,
-        aid: Long? = null,
-        cid: Long? = null,
-        epId: Long? = null,
-        qn: Int = 80,
-        fnval: Int = 16,
-    ): JSONObject =
-        VideoApi.pgcPlayUrlTryLook(
-            bvid = bvid,
-            aid = aid,
-            cid = cid,
-            epId = epId,
-            qn = qn,
-            fnval = fnval,
-        )
-
-    suspend fun playerWbiV2(bvid: String, cid: Long): JSONObject = VideoApi.playerWbiV2(bvid = bvid, cid = cid)
+    suspend fun videoPlayerInfo(bvid: String, cid: Long): VideoPlayerInfo =
+        VideoApiGateway.playerInfo(VideoPlayerInfoRequest(bvid = bvid, cid = cid))
 
     suspend fun historyReport(aid: Long, cid: Long, progressSec: Long, platform: String = "android") =
         VideoApi.historyReport(aid = aid, cid = cid, progressSec = progressSec, platform = platform)
@@ -2014,61 +2041,18 @@ object BiliApi {
         return sb.toString()
     }
 
-    suspend fun getWebVideoShot(
+    suspend fun videoShot(
         aid: Long? = null,
         bvid: String? = null,
         cid: Long? = null,
         needJsonArrayIndex: Boolean = false,
-    ): VideoShotInfo {
-        require(aid != null || bvid != null) { "missing aid/bvid" }
-
-        val params = buildMap<String, String> {
-            aid?.let { put("aid", it.toString()) }
-            bvid?.let { put("bvid", it) }
-            cid?.let { put("cid", it.toString()) }
-            put("index", if (needJsonArrayIndex) "1" else "0")
-        }
-
-        val url = BiliClient.withQuery(
-            "https://api.bilibili.com/x/player/videoshot",
-            params,
+    ): VideoShotInfo =
+        VideoApiGateway.videoShot(
+            VideoShotRequest(
+                aid = aid,
+                bvid = bvid,
+                cid = cid,
+                needJsonArrayIndex = needJsonArrayIndex,
+            ),
         )
-
-        val json = BiliClient.getJson(url)
-
-        val code = json.optInt("code", 0)
-        if (code != 0) {
-            val msg = json.optString("message", json.optString("msg", ""))
-            throw BiliApiException(apiCode = code, apiMessage = msg)
-        }
-
-        val data = json.optJSONObject("data") ?: JSONObject()
-
-        val images = buildList {
-            val arr = data.optJSONArray("image")
-            if (arr != null) {
-                for (i in 0 until arr.length()) {
-                    add(arr.optString(i))
-                }
-            }
-        }
-
-        val indexList = data.optJSONArray("index")?.let { arr ->
-            buildList {
-                for (i in 0 until arr.length()) {
-                    add(arr.optInt(i))
-                }
-            }
-        }
-
-        return VideoShotInfo(
-            pvData = data.optString("pvdata").takeIf { it.isNotBlank() },
-            imgXLen = data.optInt("img_x_len", 10),
-            imgYLen = data.optInt("img_y_len", 10),
-            imgXSize = data.optInt("img_x_size", 0),
-            imgYSize = data.optInt("img_y_size", 0),
-            image = images,
-            index = indexList,
-        )
-    }
 }

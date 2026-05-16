@@ -40,18 +40,22 @@
     <dimen name="video_card_subtitle_text_size">14sp</dimen>
     <dimen name="video_card_progress_bar_height">2.5dp</dimen>
     <dimen name="video_card_progress_bar_radius">1.2dp</dimen>
-    <dimen name="video_card_action_button_height">50dp</dimen>
-    <dimen name="video_card_action_group_margin_h">10dp</dimen>
-    <dimen name="video_card_action_gap">8dp</dimen>
-    <dimen name="video_card_action_icon_watch_later_size">30dp</dimen>
-    <dimen name="video_card_action_icon_detail_size">25dp</dimen>
-    <dimen name="video_card_action_icon_up_size">23dp</dimen>
-    <dimen name="video_card_action_icon_dismiss_size">24dp</dimen>
-    <dimen name="video_card_action_button_radius">14dp</dimen>
+    <dimen name="video_card_action_button_height">56dp</dimen>
+    <dimen name="video_card_action_group_margin_h">8dp</dimen>
+    <dimen name="video_card_action_gap">7dp</dimen>
+    <dimen name="video_card_action_icon_watch_later_size">42dp</dimen>
+    <dimen name="video_card_action_icon_detail_size">31dp</dimen>
+    <dimen name="video_card_action_icon_up_size">29dp</dimen>
+    <dimen name="video_card_action_icon_dismiss_size">30dp</dimen>
+    <dimen name="video_card_action_button_radius">16dp</dimen>
 
     <!-- Player: bottom recommend panel -->
     <dimen name="player_recommend_card_width">260dp</dimen>
     <dimen name="player_recommend_card_margin">6dp</dimen>
+    <dimen name="player_sponsor_submit_thumb_height">220dp</dimen>
+    <dimen name="player_sponsor_submit_timeline_height">62dp</dimen>
+    <dimen name="player_sponsor_submit_button_min_width">124dp</dimen>
+    <dimen name="player_sponsor_submit_button_height">44dp</dimen>
 
     <!-- Video detail: header -->
     <dimen name="video_detail_header_cover_width">480dp</dimen>
@@ -95,6 +99,12 @@
     <dimen name="focus_safe_padding_h">8dp</dimen>
     <dimen name="focus_safe_padding_v">4dp</dimen>
 
+    <!-- Settings: right-side focused rows need enough paint budget for focus scale. -->
+    <dimen name="settings_content_padding_h">20dp</dimen>
+    <dimen name="settings_content_padding_v">16dp</dimen>
+    <dimen name="settings_entry_focus_margin_h">10dp</dimen>
+    <dimen name="settings_entry_margin_bottom">14dp</dimen>
+
     <dimen name="search_hot_margin_bottom">14dp</dimen>
     <dimen name="search_hot_padding_h">18dp</dimen>
     <dimen name="search_hot_padding_v">14dp</dimen>
@@ -119,22 +129,6 @@
     <dimen name="player_clock_margin_start">14dp</dimen>
     <dimen name="player_clock_margin_end">16dp</dimen>
     <dimen name="player_clock_text_size">24sp</dimen>
-
-    <dimen name="player_up_quick_margin_start">12dp</dimen>
-    <dimen name="player_up_quick_margin_top">12dp</dimen>
-    <dimen name="player_up_quick_card_padding_h">4dp</dimen>
-    <dimen name="player_up_quick_card_padding_v">4dp</dimen>
-    <dimen name="player_up_quick_card_gap">4dp</dimen>
-    <dimen name="player_up_quick_card_radius">24dp</dimen>
-    <dimen name="player_up_quick_chip_height">40dp</dimen>
-    <dimen name="player_up_quick_profile_padding_h">4dp</dimen>
-    <dimen name="player_up_quick_follow_padding_h">14dp</dimen>
-    <dimen name="player_up_quick_follow_min_width">72dp</dimen>
-    <dimen name="player_up_quick_avatar_size">28dp</dimen>
-    <dimen name="player_up_quick_name_margin_start">8dp</dimen>
-    <dimen name="player_up_quick_name_max_width">160dp</dimen>
-    <dimen name="player_up_quick_name_text_size">16sp</dimen>
-    <dimen name="player_up_quick_follow_text_size">14sp</dimen>
 
     <dimen name="player_title_meta_margin_top">4dp</dimen>
     <dimen name="player_title_meta_padding_bottom">0dp</dimen>
@@ -168,6 +162,7 @@
     <dimen name="player_seek_hint_padding_h">14dp</dimen>
     <dimen name="player_seek_hint_padding_v">10dp</dimen>
     <dimen name="player_seek_hint_text_size">22sp</dimen>
+    <dimen name="player_seek_hint_max_width">900dp</dimen>
     <dimen name="player_touch_lock_button_size">48dp</dimen>
     <dimen name="player_touch_lock_button_padding">8dp</dimen>
     <dimen name="player_touch_lock_margin_start">18dp</dimen>
@@ -186,6 +181,7 @@
 
     <!-- Player: side panels (settings/comments) -->
     <dimen name="player_side_panel_width">360dp</dimen>
+    <dimen name="player_comments_panel_width">360dp</dimen>
     <dimen name="player_side_panel_margin">16dp</dimen>
     <dimen name="player_side_panel_margin_top">0dp</dimen>
     <dimen name="player_side_panel_margin_bottom">40dp</dimen>
@@ -193,6 +189,8 @@
     <dimen name="player_side_panel_elevation">10dp</dimen>
     <dimen name="player_side_panel_padding">8dp</dimen>
     <dimen name="player_side_panel_recycler_padding">4dp</dimen>
+    <dimen name="player_settings_recycler_padding_h">4dp</dimen>
+    <dimen name="player_comments_recycler_padding_h">2dp</dimen>
     <dimen name="player_side_panel_content_margin_top">8dp</dimen>
 
     <dimen name="player_comment_sort_label_text_size">14sp</dimen>
@@ -246,6 +244,9 @@
     <dimen name="player_comment_up_badge_text_size">11sp</dimen>
 
     <dimen name="player_comment_time_text_size">12sp</dimen>
+    <dimen name="player_comment_like_icon_size">13dp</dimen>
+    <dimen name="player_comment_like_icon_margin_start">10dp</dimen>
+    <dimen name="player_comment_like_count_margin_start">4dp</dimen>
     <dimen name="player_comment_message_margin_top">6dp</dimen>
     <dimen name="player_comment_message_text_size">14sp</dimen>
     <dimen name="player_comment_expand_padding_top">4dp</dimen>

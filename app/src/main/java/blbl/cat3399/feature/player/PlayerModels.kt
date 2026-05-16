@@ -1,5 +1,6 @@
 package blbl.cat3399.feature.player
 
+import blbl.cat3399.core.api.video.VideoMediaRequestProfile
 import blbl.cat3399.core.prefs.AppPrefs
 import blbl.cat3399.feature.player.danmaku.DanmakuSessionSettings
 import blbl.cat3399.feature.player.danmaku.DanmakuFontWeight
@@ -39,6 +40,8 @@ internal sealed interface Playable {
         val audioUrl: String,
         val videoUrlCandidates: List<String>,
         val audioUrlCandidates: List<String>,
+        val videoMediaRequestProfile: VideoMediaRequestProfile,
+        val audioMediaRequestProfile: VideoMediaRequestProfile,
         val videoTrackInfo: DashTrackInfo,
         val audioTrackInfo: DashTrackInfo,
         val qn: Int,
@@ -51,6 +54,7 @@ internal sealed interface Playable {
     data class VideoOnly(
         val videoUrl: String,
         val videoUrlCandidates: List<String>,
+        val videoMediaRequestProfile: VideoMediaRequestProfile,
         val qn: Int,
         val codecid: Int,
         val isDolbyVision: Boolean,
@@ -59,6 +63,7 @@ internal sealed interface Playable {
     data class Progressive(
         val url: String,
         val urlCandidates: List<String>,
+        val mediaRequestProfile: VideoMediaRequestProfile,
     ) : Playable
 }
 

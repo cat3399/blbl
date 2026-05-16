@@ -5,6 +5,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.widget.ImageViewCompat
 import androidx.recyclerview.widget.LinearLayoutManager
 import blbl.cat3399.R
+import blbl.cat3399.core.api.video.VideoDetail
 import blbl.cat3399.core.image.ImageLoader
 import blbl.cat3399.core.image.ImageUrl
 import blbl.cat3399.core.model.VideoCard
@@ -12,7 +13,6 @@ import blbl.cat3399.core.net.BiliClient
 import blbl.cat3399.core.prefs.AppPrefs
 import blbl.cat3399.core.util.Format
 import blbl.cat3399.feature.video.VideoCardAdapter
-import org.json.JSONObject
 
 private data class PlayerInfoShelfPayload(
     val title: String,
@@ -68,16 +68,15 @@ internal fun PlayerActivity.resetPlayerInfoPanelState() {
     refreshPlayerInfoPanelContent()
 }
 
-internal fun PlayerActivity.applyPlayerInfoViewData(viewData: JSONObject) {
-    val stat = viewData.optJSONObject("stat") ?: JSONObject()
-    currentPlayerDesc = viewData.optString("desc", "").trim().takeIf { it.isNotBlank() }
-    currentPlayerViewCount = statCount(stat, "view")
-    currentPlayerDanmakuCount = statCount(stat, "danmaku")
-    currentPlayerPubDateSec = viewData.optLong("pubdate").takeIf { viewData.has("pubdate") && it > 0L }
-    currentPlayerCommentCount = statCount(stat, "reply")
-    currentPlayerLikeCount = statCount(stat, "like")
-    currentPlayerCoinCount = statCount(stat, "coin")
-    currentPlayerFavCount = statCount(stat, "favorite")
+internal fun PlayerActivity.applyPlayerInfoVideoDetail(detail: VideoDetail) {
+    currentPlayerDesc = detail.description?.trim()?.takeIf { it.isNotBlank() }
+    currentPlayerViewCount = detail.stat.view
+    currentPlayerDanmakuCount = detail.stat.danmaku
+    currentPlayerPubDateSec = detail.pubDateSec
+    currentPlayerCommentCount = detail.stat.reply
+    currentPlayerLikeCount = detail.stat.like
+    currentPlayerCoinCount = detail.stat.coin
+    currentPlayerFavCount = detail.stat.favorite
     refreshPlayerInfoPanelContent()
 }
 
@@ -298,9 +297,4 @@ private fun PlayerActivity.playPlayerInfoRecommended(card: VideoCard) {
 
 private fun PlayerActivity.isPlayerInfoShelfPositionSelected(position: Int): Boolean {
     return !playerInfoShelfUsesRecommendFallback && position == partsListIndex
-}
-
-private fun statCount(stat: JSONObject, key: String): Long? {
-    if (!stat.has(key)) return null
-    return stat.optLong(key).coerceAtLeast(0L)
 }
