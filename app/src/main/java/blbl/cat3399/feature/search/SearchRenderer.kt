@@ -560,9 +560,9 @@ class SearchRenderer internal constructor(
         resultsGridController?.clearPendingFocusAfterLoadMore()
     }
 
-    fun onResultsApplied() {
+    fun onResultsApplied(isRefresh: Boolean) {
         binding.recyclerResults.postIfAlive(isAlive = { !released }) {
-            if (maybeConsumePendingFocusFirstResultCardAfterRefresh()) return@postIfAlive
+            if (isRefresh && maybeConsumePendingFocusFirstResultCardAfterRefresh()) return@postIfAlive
             maybeConsumePendingResultFocus()
             resultsGridController?.consumePendingFocusAfterLoadMore()
         }
