@@ -1002,18 +1002,6 @@ class PlayerActivity : BaseActivity() {
                     binding.videoShotPreview.setContentAspectRatio(width, height)
                     if (engine.kind != PlayerEngineKind.IjkPlayer) return
                     binding.ijkAspect.setAspectRatio(width.toFloat() / height.toFloat())
-                    when (val view = ijkRenderView) {
-                        is SurfaceView -> {
-                            runCatching { view.holder.setFixedSize(width, height) }
-                        }
-
-                        is TextureView -> {
-                            val surfaceTexture = view.surfaceTexture
-                            if (surfaceTexture != null) {
-                                runCatching { surfaceTexture.setDefaultBufferSize(width, height) }
-                            }
-                        }
-                    }
                 }
 
                 override fun onRenderedFirstFrame() {
