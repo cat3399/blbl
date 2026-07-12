@@ -234,6 +234,7 @@ class LivePlayerActivity : BaseActivity() {
         binding.btnCoin.visibility = View.GONE
         binding.btnFav.visibility = View.GONE
         binding.btnListPanel.visibility = View.GONE
+        binding.btnClosePlayer.visibility = View.GONE
         binding.btnComments.visibility = View.VISIBLE
 
         setupUpQuickCard()

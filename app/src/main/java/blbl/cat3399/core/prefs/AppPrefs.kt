@@ -1277,6 +1277,7 @@ class AppPrefs(context: Context) {
         const val PLAYER_OSD_BTN_LIST_PANEL = "list_panel"
         const val PLAYER_OSD_BTN_SPONSOR_SUBMIT = "sponsor_submit"
         const val PLAYER_OSD_BTN_ADVANCED = "advanced"
+        const val PLAYER_OSD_BTN_CLOSE_PLAYER = "close_player"
 
         val DEFAULT_PLAYER_OSD_BUTTONS: List<String> =
             listOf(
@@ -1290,6 +1291,7 @@ class AppPrefs(context: Context) {
                 PLAYER_OSD_BTN_UP,
                 PLAYER_OSD_BTN_LIST_PANEL,
                 PLAYER_OSD_BTN_ADVANCED,
+                PLAYER_OSD_BTN_CLOSE_PLAYER,
             )
 
         private val PLAYER_OSD_BUTTON_KEYS: Set<String> =
@@ -1308,6 +1310,7 @@ class AppPrefs(context: Context) {
                 PLAYER_OSD_BTN_LIST_PANEL,
                 PLAYER_OSD_BTN_SPONSOR_SUBMIT,
                 PLAYER_OSD_BTN_ADVANCED,
+                PLAYER_OSD_BTN_CLOSE_PLAYER,
             )
 
         const val PLAYER_DOWN_KEY_OSD_FOCUS_PREV = "prev"

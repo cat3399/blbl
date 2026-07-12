@@ -1693,6 +1693,7 @@ class SettingsInteractionHandler(
                 blbl.cat3399.core.prefs.AppPrefs.PLAYER_OSD_BTN_LIST_PANEL to "列表",
                 blbl.cat3399.core.prefs.AppPrefs.PLAYER_OSD_BTN_SPONSOR_SUBMIT to "上传广告片段",
                 blbl.cat3399.core.prefs.AppPrefs.PLAYER_OSD_BTN_ADVANCED to "更多设置",
+                blbl.cat3399.core.prefs.AppPrefs.PLAYER_OSD_BTN_CLOSE_PLAYER to "关闭播放器",
             )
         val keys = options.map { it.first }
         val labels = options.map { it.second }.toTypedArray()

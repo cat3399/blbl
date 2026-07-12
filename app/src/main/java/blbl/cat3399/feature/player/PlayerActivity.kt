@@ -2019,6 +2019,9 @@ class PlayerActivity : BaseActivity() {
         binding.btnAdvanced.setOnClickListener {
             toggleSettingsPanel()
         }
+        binding.btnClosePlayer.setOnClickListener {
+            binding.btnBack.performClick()
+        }
 
         installLikeButtonHoldInteraction()
         binding.btnLike.setOnClickListener { onLikeButtonClicked() }

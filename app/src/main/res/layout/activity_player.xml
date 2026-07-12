@@ -558,6 +558,7 @@
                 android:id="@+id/btn_advanced"
                 android:layout_width="?attr/playerOsdButtonTargetSize"
                 android:layout_height="?attr/playerOsdButtonTargetSize"
+                android:layout_marginEnd="?attr/playerOsdGap"
                 android:background="?attr/blblFocusBgRound"
                 android:contentDescription="@string/app_name"
                 android:focusable="true"
@@ -565,6 +566,19 @@
             android:scaleType="fitCenter"
             android:src="@drawable/ic_settings"
             app:tint="@color/player_button_tint" />
+
+            <ImageButton
+                android:id="@+id/btn_close_player"
+                android:layout_width="?attr/playerOsdButtonTargetSize"
+                android:layout_height="?attr/playerOsdButtonTargetSize"
+                android:background="?attr/blblFocusBgRound"
+                android:contentDescription="@string/player_btn_close_player"
+                android:focusable="true"
+                android:padding="?attr/playerOsdPadSmall"
+                android:scaleType="fitCenter"
+                android:src="@drawable/ic_player_close"
+                android:visibility="gone"
+                app:tint="@color/player_button_tint" />
         </LinearLayout>
 
         <TextView

@@ -271,6 +271,7 @@ object SettingsText {
                 if (enabled.contains(blbl.cat3399.core.prefs.AppPrefs.PLAYER_OSD_BTN_LIST_PANEL)) add("列表")
                 if (enabled.contains(blbl.cat3399.core.prefs.AppPrefs.PLAYER_OSD_BTN_SPONSOR_SUBMIT)) add("上传广告片段")
                 if (enabled.contains(blbl.cat3399.core.prefs.AppPrefs.PLAYER_OSD_BTN_ADVANCED)) add("更多设置")
+                if (enabled.contains(blbl.cat3399.core.prefs.AppPrefs.PLAYER_OSD_BTN_CLOSE_PLAYER)) add("关闭播放器")
             }
         if (labels.isEmpty()) return "无"
         if (labels.size <= 4) return labels.joinToString(separator = " / ")
