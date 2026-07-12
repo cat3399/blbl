@@ -6,6 +6,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.media3.common.Player
 import blbl.cat3399.core.api.BiliApi
 import blbl.cat3399.core.api.SponsorBlockApi
+import blbl.cat3399.core.api.SponsorBlockCategories
 import blbl.cat3399.core.api.video.VideoPlayStream
 import blbl.cat3399.core.api.video.VideoResumeTimeUnit
 import blbl.cat3399.core.log.AppLog
@@ -371,9 +372,24 @@ internal fun mergeAutoSkipSegments(
 
 internal fun PlayerActivity.setAutoSkipSegments(token: Int, segments: List<SkipSegment>) {
     if (token != autoSkipToken) return
-    autoSkipSegments = segments.sortedBy { it.startMs }
+    autoSkipSegments =
+        filterAutoSkipSegments(
+            segments = segments,
+            selectedCategories = BiliClient.prefs.playerAutoSkipSegmentCategories,
+        ).sortedBy { it.startMs }
     autoSkipMarkersDirty = true
     trace?.log("skipseg:set", "count=${autoSkipSegments.size}")
+}
+
+internal fun filterAutoSkipSegments(
+    segments: List<SkipSegment>,
+    selectedCategories: Collection<String>,
+): List<SkipSegment> {
+    val selected = SponsorBlockCategories.normalizeSelectedAutoSkipCategories(selectedCategories).toSet()
+    return segments.filter { segment ->
+        !segment.isAutoSkippable() ||
+            SponsorBlockCategories.normalizeAutoSkipCategory(segment.category) in selected
+    }
 }
 
 internal fun PlayerActivity.extractResumeCandidateFromPlayStream(playStream: VideoPlayStream): ResumeCandidate? {

@@ -319,6 +319,12 @@ class SettingsRenderer(
                         null,
                     ),
                     SettingEntry(
+                        SettingId.PlayerAutoSkipSegmentCategories,
+                        "自动跳过片段类型",
+                        SettingsText.playerAutoSkipSegmentCategoriesText(prefs.playerAutoSkipSegmentCategories),
+                        null,
+                    ),
+                    SettingEntry(
                         SettingId.PlayerAutoSkipServerBaseUrl,
                         "空降助手服务器地址",
                         prefs.playerAutoSkipServerBaseUrl,

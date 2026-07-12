@@ -2,6 +2,7 @@ package blbl.cat3399.core.prefs
 
 import android.content.Context
 import android.provider.Settings
+import blbl.cat3399.core.api.SponsorBlockCategories
 import blbl.cat3399.core.tv.isTvDevice
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import org.json.JSONArray
@@ -534,6 +535,22 @@ class AppPrefs(context: Context) {
     var playerAutoSkipSegmentsEnabled: Boolean
         get() = prefs.getBoolean(KEY_PLAYER_AUTO_SKIP_SEGMENTS_ENABLED, false)
         set(value) = prefs.edit().putBoolean(KEY_PLAYER_AUTO_SKIP_SEGMENTS_ENABLED, value).apply()
+
+    var playerAutoSkipSegmentCategories: List<String>
+        get() {
+            if (!prefs.contains(KEY_PLAYER_AUTO_SKIP_SEGMENT_CATEGORIES)) {
+                return SponsorBlockCategories.AUTO_SKIP_KEYS
+            }
+            return SponsorBlockCategories.normalizeSelectedAutoSkipCategories(
+                loadStringList(KEY_PLAYER_AUTO_SKIP_SEGMENT_CATEGORIES),
+            )
+        }
+        set(value) {
+            saveStringList(
+                KEY_PLAYER_AUTO_SKIP_SEGMENT_CATEGORIES,
+                SponsorBlockCategories.normalizeSelectedAutoSkipCategories(value),
+            )
+        }
 
     var playerAutoSkipServerBaseUrl: String
         get() =
@@ -1079,6 +1096,7 @@ class AppPrefs(context: Context) {
         private const val KEY_PLAYER_HOLD_SCRUB_FIXED_STEP_SECONDS = "player_hold_scrub_fixed_step_seconds"
         private const val KEY_PLAYER_AUTO_RESUME_ENABLED = "player_auto_resume_enabled"
         private const val KEY_PLAYER_AUTO_SKIP_SEGMENTS_ENABLED = "player_auto_skip_segments_enabled"
+        private const val KEY_PLAYER_AUTO_SKIP_SEGMENT_CATEGORIES = "player_auto_skip_segment_categories"
         private const val KEY_PLAYER_AUTO_SKIP_SERVER_BASE_URL = "player_auto_skip_server_base_url"
         private const val KEY_SPONSOR_BLOCK_PRIVATE_USER_ID = "sponsor_block_private_user_id"
         private const val KEY_PLAYER_OPEN_DETAIL_BEFORE_PLAY = "player_open_detail_before_play"

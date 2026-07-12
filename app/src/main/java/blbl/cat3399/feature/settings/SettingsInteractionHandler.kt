@@ -1303,6 +1303,10 @@ class SettingsInteractionHandler(
                 renderer.refreshSection(entry.id)
             }
 
+            SettingId.PlayerAutoSkipSegmentCategories -> {
+                showPlayerAutoSkipSegmentCategoriesDialog(state.currentSectionIndex, entry.id)
+            }
+
             SettingId.PlayerAutoSkipServerBaseUrl -> {
                 showPlayerAutoSkipServerBaseUrlDialog(state.currentSectionIndex, entry.id)
             }
@@ -2486,6 +2490,31 @@ class SettingsInteractionHandler(
                 prefs.playerAutoSkipServerBaseUrl = AppPrefs.DEFAULT_PLAYER_AUTO_SKIP_SERVER_BASE_URL
                 evictNetworkConnections()
                 AppToast.show(activity, "已重置空降助手服务器地址")
+                renderer.showSection(sectionIndex, focusId = focusId)
+            },
+        )
+    }
+
+    private fun showPlayerAutoSkipSegmentCategoriesDialog(sectionIndex: Int, focusId: SettingId) {
+        val prefs = BiliClient.prefs
+        val options = SettingsText.playerAutoSkipSegmentCategoryOptions
+        val keys = options.map { it.first }
+        val selected = prefs.playerAutoSkipSegmentCategories.toSet()
+        val checked = BooleanArray(keys.size) { index -> keys[index] in selected }
+
+        AppPopup.multiChoice(
+            context = activity,
+            title = "自动跳过片段类型",
+            items = options.map { it.second },
+            checked = checked,
+            minCheckedCount = 1,
+            onChanged = { finalChecked ->
+                prefs.playerAutoSkipSegmentCategories =
+                    keys.filterIndexed { index, _ ->
+                        index in finalChecked.indices && finalChecked[index]
+                    }
+            },
+            onDismiss = {
                 renderer.showSection(sectionIndex, focusId = focusId)
             },
         )

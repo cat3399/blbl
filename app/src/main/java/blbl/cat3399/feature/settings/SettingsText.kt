@@ -6,6 +6,7 @@ import android.content.res.Resources
 import android.media.MediaCodecInfo
 import android.media.MediaCodecList
 import android.os.Build
+import blbl.cat3399.core.api.SponsorBlockCategories
 import blbl.cat3399.core.prefs.AppPrefs
 import blbl.cat3399.core.prefs.CustomPageConfig
 import blbl.cat3399.core.prefs.PlayerPlaybackModes
@@ -19,6 +20,32 @@ import java.util.Locale
 import kotlin.math.roundToInt
 
 object SettingsText {
+    val playerAutoSkipSegmentCategoryOptions: List<Pair<String, String>> =
+        listOf(
+            SponsorBlockCategories.SPONSOR to "赞助/广告",
+            SponsorBlockCategories.SELF_PROMO to "自我推广",
+            SponsorBlockCategories.EXCLUSIVE_ACCESS to "品牌合作",
+            SponsorBlockCategories.INTERACTION to "三连提醒",
+            SponsorBlockCategories.INTRO to "片头",
+            SponsorBlockCategories.OUTRO to "片尾",
+            SponsorBlockCategories.PREVIEW to "预览",
+            SponsorBlockCategories.FILLER to "离题/填充",
+            SponsorBlockCategories.MUSIC_OFF_TOPIC to "非音乐内容",
+            SponsorBlockCategories.OTHER to "其他片段",
+        )
+
+    fun playerAutoSkipSegmentCategoriesText(categories: List<String>): String {
+        val normalized = SponsorBlockCategories.normalizeSelectedAutoSkipCategories(categories)
+        if (normalized.size == SponsorBlockCategories.AUTO_SKIP_KEYS.size) return "全部"
+        val labels =
+            playerAutoSkipSegmentCategoryOptions
+                .filter { (key, _) -> key in normalized }
+                .map { (_, label) -> label }
+        if (labels.isEmpty()) return "无"
+        if (labels.size <= 3) return labels.joinToString(" / ")
+        return labels.take(2).joinToString(" / ") + " 等${labels.size}项"
+    }
+
     fun audioText(id: Int): String =
         when (id) {
             30251 -> "Hi-Res 无损"
