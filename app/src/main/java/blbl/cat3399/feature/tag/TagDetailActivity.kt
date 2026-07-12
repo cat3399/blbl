@@ -10,7 +10,6 @@ import androidx.recyclerview.widget.RecyclerView
 import androidx.recyclerview.widget.SimpleItemAnimator
 import blbl.cat3399.R
 import blbl.cat3399.core.api.BiliApi
-import blbl.cat3399.core.api.BiliApiException
 import blbl.cat3399.core.log.AppLog
 import blbl.cat3399.core.model.VideoCard
 import blbl.cat3399.core.net.BiliClient
@@ -44,13 +43,7 @@ class TagDetailActivity : BaseActivity() {
 
     private lateinit var adapter: VideoCardAdapter
 
-    private val tagId: Long by lazy { intent.getLongExtra(EXTRA_TAG_ID, -1L).takeIf { it > 0L } ?: -1L }
     private val tagName: String by lazy { intent.getStringExtra(EXTRA_TAG_NAME).orEmpty().trim() }
-    private val rid: Int by lazy { intent.getIntExtra(EXTRA_RID, -1).takeIf { it > 0 } ?: -1 }
-
-    private enum class DataSource { DYNAMIC_TAG, SEARCH }
-
-    private var dataSource: DataSource = DataSource.DYNAMIC_TAG
 
     private val loadedStableKeys = HashSet<String>()
     private var isLoadingMore: Boolean = false
@@ -69,16 +62,11 @@ class TagDetailActivity : BaseActivity() {
         setContentView(binding.root)
         Immersive.apply(this, BiliClient.prefs.fullscreenEnabled)
 
-        dataSource =
-            when {
-                tagId > 0L && rid > 0 -> DataSource.DYNAMIC_TAG
-                tagName.isNotBlank() -> DataSource.SEARCH
-                else -> {
-                    AppToast.show(this, "缺少 tag_id/rid/tag_name")
-                    finish()
-                    return
-                }
-            }
+        if (tagName.isBlank()) {
+            AppToast.show(this, "缺少标签名称")
+            finish()
+            return
+        }
 
         binding.btnBack.setOnClickListener { finish() }
         binding.tvTitle.text = tagName.ifBlank { "标签" }
@@ -232,27 +220,12 @@ class TagDetailActivity : BaseActivity() {
         isLoadingMore = true
         val requestPage = page
         val startAt = SystemClock.uptimeMillis()
-        AppLog.d("TagDetail", "load start src=$dataSource rid=$rid tagId=$tagId page=$requestPage refresh=$isRefresh t=$startAt")
+        AppLog.d("TagDetail", "load start keyword=${tagName.take(20)} page=$requestPage refresh=$isRefresh t=$startAt")
 
         lifecycleScope.launch {
             try {
-                val res =
-                    when (dataSource) {
-                        DataSource.SEARCH -> fetchSearchPage(page = requestPage)
-                        DataSource.DYNAMIC_TAG ->
-                            try {
-                                fetchDynamicTagPage(page = requestPage)
-                            } catch (t: Throwable) {
-                                if (requestPage == 1 && adapter.itemCount <= 0 && shouldFallbackToSearchOnDynamicError(t)) {
-                                    if (fallbackToSearch(token = token, isRefresh = isRefresh, startAt = startAt, reason = "api_error")) return@launch
-                                }
-                                throw t
-                            }
-                    }
+                val res = fetchSearchPage(page = requestPage)
                 if (token != requestToken) return@launch
-                if (dataSource == DataSource.DYNAMIC_TAG && requestPage == 1 && res.items.isEmpty() && adapter.itemCount <= 0) {
-                    if (fallbackToSearch(token = token, isRefresh = isRefresh, startAt = startAt, reason = "empty")) return@launch
-                }
 
                 val visibleItems = VideoCardVisibilityFilter.filterVisibleFresh(res.items, loadedStableKeys)
                 visibleItems.forEach { loadedStableKeys.add(it.stableKey()) }
@@ -262,11 +235,11 @@ class TagDetailActivity : BaseActivity() {
                 page++
                 AppLog.i(
                     "TagDetail",
-                    "load ok src=$dataSource rid=$rid tagId=$tagId add=${visibleItems.size} total=${adapter.itemCount} hasMore=${res.hasMore} cost=${SystemClock.uptimeMillis() - startAt}ms",
+                    "load ok keyword=${tagName.take(20)} add=${visibleItems.size} total=${adapter.itemCount} hasMore=${res.hasMore} cost=${SystemClock.uptimeMillis() - startAt}ms",
                 )
             } catch (t: Throwable) {
                 if (t is CancellationException) throw t
-                AppLog.e("TagDetail", "load failed rid=$rid tagId=$tagId page=$page", t)
+                AppLog.e("TagDetail", "load failed keyword=${tagName.take(20)} page=$page", t)
                 AppToast.show(this@TagDetailActivity, "加载失败，可查看 Logcat(标签 BLBL)")
             } finally {
                 if (token == requestToken) binding.swipeRefresh.isRefreshing = false
@@ -274,45 +247,6 @@ class TagDetailActivity : BaseActivity() {
                 viewportFillMonitor?.scheduleCheck()
             }
         }
-    }
-
-    private fun shouldFallbackToSearchOnDynamicError(t: Throwable): Boolean {
-        val e = t as? BiliApiException ?: return false
-        return e.apiCode == -404
-    }
-
-    private suspend fun fallbackToSearch(
-        token: Int,
-        isRefresh: Boolean,
-        startAt: Long,
-        reason: String,
-    ): Boolean {
-        val keyword = tagName.trim()
-        if (keyword.isBlank()) return false
-
-        dataSource = DataSource.SEARCH
-        loadedStableKeys.clear()
-        endReached = false
-        page = 1
-        val search = fetchSearchPage(page = 1)
-        if (token != requestToken) return true
-        val visibleItems = VideoCardVisibilityFilter.filterVisibleFresh(search.items, loadedStableKeys)
-        visibleItems.forEach { loadedStableKeys.add(it.stableKey()) }
-        if (isRefresh) adapter.submit(visibleItems) else adapter.append(visibleItems)
-        maybeFocusFirstItem()
-        if (!search.hasMore || search.items.isEmpty()) endReached = true
-        page = 2
-        AppLog.i(
-            "TagDetail",
-            "load ok fallbackToSearch reason=$reason rid=$rid tagId=$tagId keyword=${keyword.take(20)} add=${visibleItems.size} total=${adapter.itemCount} hasMore=${search.hasMore} cost=${SystemClock.uptimeMillis() - startAt}ms",
-        )
-        return true
-    }
-
-    private suspend fun fetchDynamicTagPage(page: Int): BiliApi.HasMorePage<VideoCard> {
-        val safeRid = rid.takeIf { it > 0 } ?: error("dynamic_tag_invalid_rid")
-        val safeTagId = tagId.takeIf { it > 0L } ?: error("dynamic_tag_invalid_tag_id")
-        return BiliApi.dynamicTag(rid = safeRid, tagId = safeTagId, pn = page, ps = 24)
     }
 
     private suspend fun fetchSearchPage(page: Int): BiliApi.HasMorePage<VideoCard> {
@@ -343,16 +277,12 @@ class TagDetailActivity : BaseActivity() {
 
     private fun playbackHandle() =
         buildPagedVideoCardPlaybackHandle(
-            source = "TagDetail:$rid/$tagId",
+            source = "TagDetail:search:$tagName",
             cardsProvider = adapter::snapshot,
             nextCursorProvider = { page },
             hasMoreProvider = { !endReached },
         ) { targetPage ->
-            val res =
-                when (dataSource) {
-                    DataSource.SEARCH -> fetchSearchPage(page = targetPage)
-                    DataSource.DYNAMIC_TAG -> fetchDynamicTagPage(page = targetPage)
-                }
+            val res = fetchSearchPage(page = targetPage)
             VideoCardPlaylistPage(
                 cards = res.items,
                 nextCursor = targetPage + 1,
@@ -416,8 +346,6 @@ class TagDetailActivity : BaseActivity() {
     }
 
     companion object {
-        const val EXTRA_TAG_ID: String = "tag_id"
         const val EXTRA_TAG_NAME: String = "tag_name"
-        const val EXTRA_RID: String = "rid"
     }
 }
