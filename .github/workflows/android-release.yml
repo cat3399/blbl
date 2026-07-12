@@ -78,11 +78,19 @@ jobs:
           aws s3 cp "CHANGELOG.md" "s3://${R2_BUCKET}/${KEY_PREFIX}CHANGELOG.md" --endpoint-url "${ENDPOINT}" --content-type "text/markdown; charset=utf-8" --cache-control "no-cache"
           aws s3 cp "app/build/outputs/apk/release/app-release.apk" "s3://${R2_BUCKET}/${KEY_PREFIX}blbl-${CLEAN_VERSION}-release.apk" --endpoint-url "${ENDPOINT}" --content-type "application/vnd.android.package-archive"
           aws s3 cp "app/build/outputs/apk/release/app-release.apk" "s3://${R2_BUCKET}/${KEY_PREFIX}blbl-latest-release.apk" --endpoint-url "${ENDPOINT}" --content-type "application/vnd.android.package-archive" --cache-control "no-cache"
+      - name: Prepare named release APK
+        env:
+          VERSION_NAME: ${{ inputs.version_name }}
+        run: |
+          CLEAN_VERSION="${VERSION_NAME#v}"
+          DOWNLOAD_APK="app/build/outputs/apk/release/blbl-android-${CLEAN_VERSION}-release.apk"
+          cp "app/build/outputs/apk/release/app-release.apk" "${DOWNLOAD_APK}"
+          echo "DOWNLOAD_APK=${DOWNLOAD_APK}" >> "${GITHUB_ENV}"
       - name: Upload release APK
         uses: actions/upload-artifact@v4
         with:
-          name: app-release-apk
-          path: app/build/outputs/apk/release/app-release.apk
+          name: blbl-android-${{ inputs.version_name }}-release
+          path: ${{ env.DOWNLOAD_APK }}
       - name: Publish release APK to GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -103,4 +111,4 @@ jobs:
               gh release create "$RELEASE_TAG" --title "$RELEASE_TAG" --generate-notes --target "$GITHUB_SHA"
             fi
           fi
-          gh release upload "$RELEASE_TAG" "app/build/outputs/apk/release/app-release.apk#blbl-android-${VERSION_NAME}-release.apk" --clobber
+          gh release upload "$RELEASE_TAG" "$DOWNLOAD_APK" --clobber
