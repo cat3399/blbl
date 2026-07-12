@@ -99,6 +99,7 @@ internal fun PlayerActivity.initBottomCardPanel() {
                     append(card.title)
                 }
             },
+            isSelected = { _, position -> position == currentBottomPanelPlayingIndex() },
         )
 
     binding.recyclerRecommend.addOnScrollListener(
@@ -175,6 +176,26 @@ internal fun PlayerActivity.initBottomCardPanel() {
                 view.setOnKeyListener(null)
             }
         },
+    )
+}
+
+private fun PlayerActivity.currentBottomPanelPlayingIndex(): Int {
+    val items =
+        when (bottomCardPanelKind) {
+            PlayerVideoListKind.PAGE -> pageListItems
+            PlayerVideoListKind.PARTS -> partsListItems
+            PlayerVideoListKind.RECOMMEND -> return -1
+        }
+    val currentEp = currentEpId?.takeIf { it > 0L }
+    if (currentEp != null) {
+        val index = items.indexOfFirst { it.epId == currentEp }
+        if (index >= 0) return index
+    }
+    return pickPlaylistIndexForCurrentMedia(
+        list = items,
+        bvid = currentBvid,
+        aid = currentAid,
+        cid = currentCid.takeIf { it > 0L },
     )
 }
 
