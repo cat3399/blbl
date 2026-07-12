@@ -189,6 +189,8 @@ internal class VideoCommentsPanelController(
             VideoCommentsAdapter(
                 expandedRpids = expandedRpids,
                 onClick = { item -> onRootCommentClick(item) },
+                onTouchClick = { item -> onRootCommentTouchClick(item) },
+                onPictureClick = { item, index -> openItemPictures(item, index, requireThreadVisible = false) },
                 onLongClick = { item -> onRootCommentLongClick(item) },
             )
         views.comments.adapter = commentsAdapter
@@ -215,6 +217,7 @@ internal class VideoCommentsPanelController(
             VideoCommentsAdapter(
                 expandedRpids = expandedRpids,
                 onClick = { item -> onThreadCommentClick(item) },
+                onPictureClick = { item, index -> openItemPictures(item, index, requireThreadVisible = true) },
             )
         views.thread.adapter = threadAdapter
         views.thread.layoutManager = LinearLayoutManager(context)
@@ -302,10 +305,19 @@ internal class VideoCommentsPanelController(
 
         val hasPictures = item.pictures.isNotEmpty() || item.noteCvid > 0L
         if (hasPictures) {
-            openItemPictures(item, requireThreadVisible = false)
+            openItemPictures(item, startIndex = 0, requireThreadVisible = false)
             return
         }
 
+        if (item.replyCount <= 0) {
+            AppToast.show(context, context.getString(R.string.player_comment_thread_empty))
+            return
+        }
+        openThread(rootRpid = item.rpid)
+    }
+
+    private fun onRootCommentTouchClick(item: VideoCommentItem) {
+        if (!isActive() || isThreadVisible()) return
         if (item.replyCount <= 0) {
             AppToast.show(context, context.getString(R.string.player_comment_thread_empty))
             return
@@ -331,13 +343,17 @@ internal class VideoCommentsPanelController(
         if (!isActive() || !isThreadVisible()) return
         val hasPictures = item.pictures.isNotEmpty() || item.noteCvid > 0L
         if (!hasPictures) return
-        openItemPictures(item, requireThreadVisible = true)
+        openItemPictures(item, startIndex = 0, requireThreadVisible = true)
     }
 
-    private fun openItemPictures(item: VideoCommentItem, requireThreadVisible: Boolean) {
+    private fun openItemPictures(
+        item: VideoCommentItem,
+        startIndex: Int,
+        requireThreadVisible: Boolean,
+    ) {
         val viewer = imageViewer ?: return
         if (item.pictures.isNotEmpty()) {
-            viewer.open(urls = item.pictures, startIndex = 0)
+            viewer.open(urls = item.pictures, startIndex = startIndex)
             return
         }
         AppToast.show(context, "加载图片中…")
@@ -345,7 +361,7 @@ internal class VideoCommentsPanelController(
             if (!isActive()) return@load
             if (requireThreadVisible != isThreadVisible()) return@load
             if (urls.isEmpty()) return@load
-            viewer.open(urls = urls, startIndex = 0)
+            viewer.open(urls = urls, startIndex = startIndex)
         }
     }
 

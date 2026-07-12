@@ -4,6 +4,7 @@ import android.text.SpannableStringBuilder
 import android.text.Spanned
 import android.text.style.ForegroundColorSpan
 import android.view.LayoutInflater
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
@@ -21,6 +22,8 @@ import blbl.cat3399.databinding.ItemPlayerCommentBinding
 internal class VideoCommentsAdapter(
     private val expandedRpids: MutableSet<Long>,
     private val onClick: (VideoCommentItem) -> Unit,
+    private val onTouchClick: (VideoCommentItem) -> Unit = {},
+    private val onPictureClick: (VideoCommentItem, Int) -> Unit,
     private val onLongClick: (VideoCommentItem) -> Boolean = { false },
 ) : RecyclerView.Adapter<VideoCommentsAdapter.Vh>() {
     private val items = ArrayList<VideoCommentItem>()
@@ -88,6 +91,8 @@ internal class VideoCommentsAdapter(
                 notifyItemChanged(pos)
             },
             onClick = onClick,
+            onTouchClick = onTouchClick,
+            onPictureClick = onPictureClick,
             onLongClick = onLongClick,
         )
     }
@@ -103,15 +108,19 @@ internal class VideoCommentsAdapter(
 
     class Vh(private val binding: ItemPlayerCommentBinding) : RecyclerView.ViewHolder(binding.root) {
         private var boundRpid: Long = 0L
+        private var rootClickFromTouch = false
 
         fun bind(
             item: VideoCommentItem,
             isExpanded: Boolean,
             onExpand: (Long) -> Unit,
             onClick: (VideoCommentItem) -> Unit,
+            onTouchClick: (VideoCommentItem) -> Unit,
+            onPictureClick: (VideoCommentItem, Int) -> Unit,
             onLongClick: (VideoCommentItem) -> Boolean,
         ) {
             boundRpid = item.rpid
+            rootClickFromTouch = false
             val ctx = binding.root.context
             val previewUserColor = ContextCompat.getColor(ctx, R.color.blbl_blue)
             binding.root.setCardBackgroundColor(ContextCompat.getColor(ctx, android.R.color.black))
@@ -130,7 +139,7 @@ internal class VideoCommentsAdapter(
             val blankFallback = if (item.pictures.isNotEmpty() || item.noteCvid > 0L) "" else "-"
             EmoteSpannable.setText(binding.tvMessage, item.message, item.emotes, blankFallback = blankFallback)
             updateExpandHint(itemRpid = item.rpid, isExpanded = isExpanded)
-            bindPictures(item.pictures)
+            bindPictures(item, onPictureClick)
 
             run {
                 val previews = item.replyPreviews.take(2)
@@ -171,10 +180,21 @@ internal class VideoCommentsAdapter(
 
             ImageLoader.loadInto(binding.ivAvatar, ImageUrl.avatar(item.avatarUrl))
 
+            binding.root.setOnTouchListener { _, event ->
+                when (event.actionMasked) {
+                    MotionEvent.ACTION_DOWN -> rootClickFromTouch = true
+                    MotionEvent.ACTION_CANCEL -> rootClickFromTouch = false
+                }
+                false
+            }
             binding.root.setOnClickListener {
+                val wasTouch = rootClickFromTouch
+                rootClickFromTouch = false
                 val shouldExpand = !isExpanded && isMessageEllipsized(binding.tvMessage)
                 if (shouldExpand) {
                     onExpand(item.rpid)
+                } else if (wasTouch) {
+                    onTouchClick(item)
                 } else {
                     onClick(item)
                 }
@@ -204,8 +224,11 @@ internal class VideoCommentsAdapter(
             return layout.getEllipsisCount(last) > 0
         }
 
-        private fun bindPictures(pictures: List<String>) {
-            val urls = pictures.take(3).filter { it.isNotBlank() }
+        private fun bindPictures(
+            item: VideoCommentItem,
+            onPictureClick: (VideoCommentItem, Int) -> Unit,
+        ) {
+            val urls = item.pictures.take(3).filter { it.isNotBlank() }
             if (urls.isEmpty()) {
                 binding.rowPictures.visibility = View.GONE
                 ImageLoader.loadInto(binding.ivPicture1, null)
@@ -214,6 +237,9 @@ internal class VideoCommentsAdapter(
                 binding.ivPicture1.visibility = View.GONE
                 binding.ivPicture2.visibility = View.GONE
                 binding.ivPicture3.visibility = View.GONE
+                binding.ivPicture1.setOnClickListener(null)
+                binding.ivPicture2.setOnClickListener(null)
+                binding.ivPicture3.setOnClickListener(null)
                 return
             }
 
@@ -225,25 +251,31 @@ internal class VideoCommentsAdapter(
             if (v1 != null) {
                 binding.ivPicture1.visibility = View.VISIBLE
                 ImageLoader.loadInto(binding.ivPicture1, ImageUrl.commentThumbnail(v1))
+                binding.ivPicture1.setOnClickListener { onPictureClick(item, 0) }
             } else {
                 binding.ivPicture1.visibility = View.GONE
                 ImageLoader.loadInto(binding.ivPicture1, null)
+                binding.ivPicture1.setOnClickListener(null)
             }
 
             if (v2 != null) {
                 binding.ivPicture2.visibility = View.VISIBLE
                 ImageLoader.loadInto(binding.ivPicture2, ImageUrl.commentThumbnail(v2))
+                binding.ivPicture2.setOnClickListener { onPictureClick(item, 1) }
             } else {
                 binding.ivPicture2.visibility = View.GONE
                 ImageLoader.loadInto(binding.ivPicture2, null)
+                binding.ivPicture2.setOnClickListener(null)
             }
 
             if (v3 != null) {
                 binding.ivPicture3.visibility = View.VISIBLE
                 ImageLoader.loadInto(binding.ivPicture3, ImageUrl.commentThumbnail(v3))
+                binding.ivPicture3.setOnClickListener { onPictureClick(item, 2) }
             } else {
                 binding.ivPicture3.visibility = View.GONE
                 ImageLoader.loadInto(binding.ivPicture3, null)
+                binding.ivPicture3.setOnClickListener(null)
             }
         }
 
