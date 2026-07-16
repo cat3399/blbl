@@ -11,6 +11,7 @@ import androidx.media3.ui.SubtitleView
 import androidx.recyclerview.widget.RecyclerView
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
+import blbl.cat3399.core.log.AppLog
 import blbl.cat3399.core.net.BiliClient
 import blbl.cat3399.core.prefs.AppPrefs
 import blbl.cat3399.core.prefs.PlayerPlaybackModes
@@ -187,7 +188,29 @@ internal fun PlayerActivity.applyResolutionSetting(qn: Int) {
     if (shouldPersistPlayerSettingsToGlobal()) {
         persistResolutionPreference(BiliClient.prefs, qn)
     }
-    reloadStream(keepPosition = true)
+    val engine = player
+    pendingResolutionSuccessHintQn = qn.takeIf { it != session.actualQn }
+    AppLog.i(
+        "QualitySwitch",
+        "request qn=$qn actual=${session.actualQn} target=${session.targetQn} preferred=${session.preferredQn} " +
+            "engine=${engine?.kind?.prefValue ?: "null"} seamlessSource=${engine?.isSeamlessQualitySource == true} " +
+            "prefEnabled=${session.seamlessQualitySwitchEnabled} runtimeDisabled=$seamlessQualitySwitchDisabledForPlayback " +
+            "pos=${engine?.currentPosition ?: -1L} buffered=${engine?.bufferedPosition ?: -1L}",
+    )
+    val accepted = engine?.selectVideoQuality(qn) == true
+    AppLog.i("QualitySwitch", "selection result qn=$qn accepted=$accepted seamlessSource=${engine?.isSeamlessQualitySource == true}")
+    if (accepted) {
+        refreshSettingsPanel()
+        return
+    }
+    if (engine?.isSeamlessQualitySource == true) {
+        pendingResolutionSuccessHintQn = null
+        AppLog.w("QualitySwitch", "selection failed qn=$qn; keep current seamless track")
+        showSeekHint("切换失败", hold = false)
+        refreshSettingsPanel()
+        return
+    }
+    reloadStream(keepPosition = true, reason = "quality_select_rejected_qn_$qn")
     refreshSettingsPanel()
 }
 

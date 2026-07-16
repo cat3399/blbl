@@ -290,6 +290,8 @@ internal fun PlayerActivity.resetPlaybackStateForNewMedia(
     playbackConstraints = PlaybackConstraints()
     decodeFallbackAttemptCount = 0
     lastPickedDash = null
+    seamlessQualitySwitchDisabledForPlayback = false
+    pendingResolutionSuccessHintQn = null
     engine.stop()
     (engine as? ExoPlayerEngine)?.exoPlayer?.let { applySubtitleEnabled(it) }
     applyPlaybackMode(engine)
@@ -553,7 +555,14 @@ internal fun PlayerActivity.startPlayback(
                         lastPickedDash = playable
                         debug.cdnHost = runCatching { Uri.parse(playable.videoUrl).host }.getOrNull()
                         logPickedPlayable(source = "start", playable = playable)
-                        engine.setSource(PlaybackSource.Vod(playable = playable, subtitle = subtitleConfig, durationMs = currentViewDurationMs))
+                        engine.setSource(
+                            PlaybackSource.Vod(
+                                playable = playable,
+                                subtitle = subtitleConfig,
+                                durationMs = currentViewDurationMs,
+                                seamlessQualitySwitchEnabled = session.seamlessQualitySwitchEnabled && !seamlessQualitySwitchDisabledForPlayback,
+                            ),
+                        )
                         applyResolutionFallbackIfNeeded(requestedQn = session.targetQn, actualQn = playable.qn)
                         applyAudioFallbackIfNeeded(requestedAudioId = session.targetAudioId, actualAudioId = playable.audioId)
                     }
@@ -564,7 +573,14 @@ internal fun PlayerActivity.startPlayback(
                         (binding.recyclerSettings.adapter as? PlayerSettingsAdapter)?.let { refreshSettings(it) }
                         debug.cdnHost = runCatching { Uri.parse(playable.videoUrl).host }.getOrNull()
                         logPickedPlayable(source = "start", playable = playable)
-                        engine.setSource(PlaybackSource.Vod(playable = playable, subtitle = subtitleConfig, durationMs = currentViewDurationMs))
+                        engine.setSource(
+                            PlaybackSource.Vod(
+                                playable = playable,
+                                subtitle = subtitleConfig,
+                                durationMs = currentViewDurationMs,
+                                seamlessQualitySwitchEnabled = session.seamlessQualitySwitchEnabled && !seamlessQualitySwitchDisabledForPlayback,
+                            ),
+                        )
                         applyResolutionFallbackIfNeeded(requestedQn = session.targetQn, actualQn = playable.qn)
                     }
 
@@ -574,7 +590,14 @@ internal fun PlayerActivity.startPlayback(
                         (binding.recyclerSettings.adapter as? PlayerSettingsAdapter)?.let { refreshSettings(it) }
                         debug.cdnHost = runCatching { Uri.parse(playable.url).host }.getOrNull()
                         logPickedPlayable(source = "start", playable = playable)
-                        engine.setSource(PlaybackSource.Vod(playable = playable, subtitle = subtitleConfig, durationMs = currentViewDurationMs))
+                        engine.setSource(
+                            PlaybackSource.Vod(
+                                playable = playable,
+                                subtitle = subtitleConfig,
+                                durationMs = currentViewDurationMs,
+                                seamlessQualitySwitchEnabled = session.seamlessQualitySwitchEnabled && !seamlessQualitySwitchDisabledForPlayback,
+                            ),
+                        )
                     }
                 }
                 trace?.log("player:setSource:done")

@@ -285,6 +285,12 @@ class SettingsRenderer(
                         null,
                     ),
                     SettingEntry(SettingId.PlayerPreferredAudioId, "默认音轨", SettingsText.audioText(prefs.playerPreferredAudioId), null),
+                    SettingEntry(
+                        SettingId.PlayerSeamlessQualitySwitchEnabled,
+                        "无缝切换清晰度",
+                        if (prefs.playerSeamlessQualitySwitchEnabled) "开" else "关",
+                        null,
+                    ),
                     SettingEntry(SettingId.PlayerSpeed, "默认播放速度", String.format(java.util.Locale.US, "%.2fx", prefs.playerSpeed), null),
                     SettingEntry(
                         SettingId.PlayerShortSeekStepSeconds,

@@ -1213,6 +1213,12 @@ class SettingsInteractionHandler(
                 }
             }
 
+            SettingId.PlayerSeamlessQualitySwitchEnabled -> {
+                prefs.playerSeamlessQualitySwitchEnabled = !prefs.playerSeamlessQualitySwitchEnabled
+                AppToast.show(activity, "无缝切换清晰度：${if (prefs.playerSeamlessQualitySwitchEnabled) "开" else "关"}")
+                renderer.refreshSection(entry.id)
+            }
+
             SettingId.PlayerCdnPreference -> {
                 val options =
                     listOf(

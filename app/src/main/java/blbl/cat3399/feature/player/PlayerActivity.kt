@@ -82,6 +82,7 @@ import blbl.cat3399.feature.player.danmaku.DanmakuSessionSettings
 import blbl.cat3399.feature.player.danmaku.DanmakuFontWeight
 import blbl.cat3399.feature.player.danmaku.DanmakuLaneDensity
 import blbl.cat3399.feature.player.engine.BlblPlayerEngine
+import blbl.cat3399.feature.player.engine.DashPlaybackCatalogResolver
 import blbl.cat3399.feature.player.engine.ExoPlayerEngine
 import blbl.cat3399.feature.player.engine.IjkPlayerEngine
 import blbl.cat3399.feature.player.engine.IjkPlayerPlugin
@@ -226,6 +227,8 @@ class PlayerActivity : BaseActivity() {
     internal var currentBvid: String = ""
     internal var currentCid: Long = -1L
     internal var currentVideoIsPortrait: Boolean? = null
+    internal var seamlessQualitySwitchDisabledForPlayback: Boolean = false
+    internal var pendingResolutionSuccessHintQn: Int? = null
     internal var currentEpId: Long? = null
     internal var currentAid: Long? = null
     internal var currentSeasonId: Long? = null
@@ -799,6 +802,7 @@ class PlayerActivity : BaseActivity() {
         session = PlayerSessionSettings(
             playbackSpeed = prefs.playerSpeed,
             preferCodec = prefs.playerPreferredCodec,
+            seamlessQualitySwitchEnabled = prefs.playerSeamlessQualitySwitchEnabled,
             preferAudioId = prefs.playerPreferredAudioId,
             preferredQn = prefs.playerPreferredQn,
             targetQn = 0,
@@ -905,6 +909,17 @@ class PlayerActivity : BaseActivity() {
                     AppLog.e("Player", "onPlayerError", error)
                     val playbackException = error as? PlaybackException
                     if (playbackException != null) {
+                        if (engine.isSeamlessQualitySource && !seamlessQualitySwitchDisabledForPlayback) {
+                            seamlessQualitySwitchDisabledForPlayback = true
+                            AppLog.w(
+                                "Player",
+                                "seamless DASH playback failed; fallback to legacy source error=${playbackException.errorCodeName}",
+                                playbackException,
+                            )
+                            trace?.log("player:seamlessFallback", "error=${playbackException.errorCodeName}")
+                            reloadStream(keepPosition = true, resetConstraints = false, reason = "seamless_player_error")
+                            return
+                        }
                         val httpCode = findHttpResponseCode(playbackException)
                         trace?.log("player:error", "type=${playbackException.errorCodeName} http=${httpCode ?: -1}")
                         if (maybeReloadExpiredUrlAfterResume(playbackException, httpCode)) return
@@ -1002,6 +1017,15 @@ class PlayerActivity : BaseActivity() {
                     binding.videoShotPreview.setContentAspectRatio(width, height)
                     if (engine.kind != PlayerEngineKind.IjkPlayer) return
                     binding.ijkAspect.setAspectRatio(width.toFloat() / height.toFloat())
+                }
+
+                override fun onVideoTrackChanged(qn: Int, codecid: Int) {
+                    trace?.log("player:videoTrack", "qn=$qn codecid=$codecid pos=${engine.currentPosition}ms")
+                    applyResolutionFallbackIfNeeded(requestedQn = session.targetQn, actualQn = qn)
+                    pendingResolutionSuccessHintQn?.let {
+                        pendingResolutionSuccessHintQn = null
+                        showSeekHint("已切换到 ${qnLabel(qn)}", hold = false)
+                    }
                 }
 
                 override fun onRenderedFirstFrame() {
@@ -2882,7 +2906,22 @@ class PlayerActivity : BaseActivity() {
                     val audioUrl = audioUrlCandidates.firstOrNull().orEmpty()
                     val videoTrackInfo = dashTrackInfoOf(picked.info)
                     val audioTrackInfo = dashTrackInfoOf(audioPicked.track.info)
-                    return Playable.Dash(
+                    val orderedVideoItems = listOf(picked) + videoItems.filterNot { it == picked }
+                    val videoRepresentations =
+                        orderedVideoItems.mapNotNull { video ->
+                            val representationUrls = selectCdnUrls(video.urls, preference = BiliClient.prefs.playerCdnPreference)
+                            val primaryUrl = representationUrls.firstOrNull() ?: return@mapNotNull null
+                            Playable.DashVideoRepresentation(
+                                videoUrl = primaryUrl,
+                                videoUrlCandidates = representationUrls,
+                                videoMediaRequestProfile = video.mediaRequestProfile,
+                                videoTrackInfo = dashTrackInfoOf(video.info),
+                                qn = video.qn,
+                                codecid = video.codecid,
+                                isDolbyVision = video.isDolbyVision,
+                            )
+                        }
+                    val playable = Playable.Dash(
                         videoUrl = videoUrl,
                         audioUrl = audioUrl,
                         videoUrlCandidates = videoUrlCandidates,
@@ -2896,7 +2935,13 @@ class PlayerActivity : BaseActivity() {
                         audioId = audioPicked.id,
                         audioKind = audioPicked.kind,
                         isDolbyVision = pickedIsDolbyVision,
+                        videoRepresentations = videoRepresentations,
                     )
+                    return if (session.seamlessQualitySwitchEnabled) {
+                        DashPlaybackCatalogResolver.resolve(playable)
+                    } else {
+                        playable
+                    }
                 }
             }
         }
@@ -3013,11 +3058,16 @@ class PlayerActivity : BaseActivity() {
         return DefaultMediaSourceFactory(DefaultDataSource.Factory(this, factory)).createMediaSource(item)
     }
 
-    internal fun reloadStream(keepPosition: Boolean, resetConstraints: Boolean = true, autoPlay: Boolean = true) {
+    internal fun reloadStream(
+        keepPosition: Boolean,
+        resetConstraints: Boolean = true,
+        autoPlay: Boolean = true,
+        reason: String = "unspecified",
+    ) {
         // Defensive: Player/ExoPlayer must only be accessed on main thread.
         if (Thread.currentThread() !== Looper.getMainLooper().thread) {
             lifecycleScope.launch(Dispatchers.Main.immediate) {
-                reloadStream(keepPosition = keepPosition, resetConstraints = resetConstraints, autoPlay = autoPlay)
+                reloadStream(keepPosition = keepPosition, resetConstraints = resetConstraints, autoPlay = autoPlay, reason = reason)
             }
             return
         }
@@ -3026,6 +3076,12 @@ class PlayerActivity : BaseActivity() {
         val bvid = currentBvid
         if (cid <= 0 || bvid.isBlank()) return
         val pos = engine.currentPosition
+        val reloadStartedAtMs = SystemClock.elapsedRealtime()
+        AppLog.i(
+            "QualitySwitch",
+            "reload start reason=$reason keepPosition=$keepPosition resetConstraints=$resetConstraints autoPlay=$autoPlay " +
+                "savedPos=$pos currentQn=${session.actualQn} targetQn=${session.targetQn} seamlessSource=${engine.isSeamlessQualitySource}",
+        )
         lifecycleScope.launch {
             try {
                 val (qn, fnval) = playUrlParamsForSession()
@@ -3044,6 +3100,13 @@ class PlayerActivity : BaseActivity() {
                         fnval = fnval,
                         constraints = playbackConstraints,
                     )
+                val positionBeforeCommit = engine.currentPosition
+                AppLog.i(
+                    "QualitySwitch",
+                    "reload fetched reason=$reason costMs=${SystemClock.elapsedRealtime() - reloadStartedAtMs} " +
+                        "savedPos=$pos positionBeforeCommit=$positionBeforeCommit driftMs=${positionBeforeCommit - pos} " +
+                        "picked=${playable.javaClass.simpleName} pickedQn=${when (playable) { is Playable.Dash -> playable.qn; is Playable.VideoOnly -> playable.qn; is Playable.Progressive -> -1 }}",
+                )
                 playStream.durationMs?.let { currentViewDurationMs = it }
                 showRiskControlBypassHintIfNeeded(playStream)
                 lastAvailableQns = parseDashVideoQnList(playStream)
@@ -3058,7 +3121,14 @@ class PlayerActivity : BaseActivity() {
                         lastPickedDash = playable
                         debug.cdnHost = runCatching { Uri.parse(playable.videoUrl).host }.getOrNull()
                         logPickedPlayable(source = "reload", playable = playable)
-                        engine.setSource(PlaybackSource.Vod(playable = playable, subtitle = subtitleConfig, durationMs = currentViewDurationMs))
+                        engine.setSource(
+                            PlaybackSource.Vod(
+                                playable = playable,
+                                subtitle = subtitleConfig,
+                                durationMs = currentViewDurationMs,
+                                seamlessQualitySwitchEnabled = session.seamlessQualitySwitchEnabled && !seamlessQualitySwitchDisabledForPlayback,
+                            ),
+                        )
                         applyResolutionFallbackIfNeeded(requestedQn = session.targetQn, actualQn = playable.qn)
                         applyAudioFallbackIfNeeded(requestedAudioId = session.targetAudioId, actualAudioId = playable.audioId)
                     }
@@ -3068,7 +3138,14 @@ class PlayerActivity : BaseActivity() {
                         (binding.recyclerSettings.adapter as? PlayerSettingsAdapter)?.let { refreshSettings(it) }
                         debug.cdnHost = runCatching { Uri.parse(playable.videoUrl).host }.getOrNull()
                         logPickedPlayable(source = "reload", playable = playable)
-                        engine.setSource(PlaybackSource.Vod(playable = playable, subtitle = subtitleConfig, durationMs = currentViewDurationMs))
+                        engine.setSource(
+                            PlaybackSource.Vod(
+                                playable = playable,
+                                subtitle = subtitleConfig,
+                                durationMs = currentViewDurationMs,
+                                seamlessQualitySwitchEnabled = session.seamlessQualitySwitchEnabled && !seamlessQualitySwitchDisabledForPlayback,
+                            ),
+                        )
                         applyResolutionFallbackIfNeeded(requestedQn = session.targetQn, actualQn = playable.qn)
                     }
                     is Playable.Progressive -> {
@@ -3077,13 +3154,28 @@ class PlayerActivity : BaseActivity() {
                         (binding.recyclerSettings.adapter as? PlayerSettingsAdapter)?.let { refreshSettings(it) }
                         debug.cdnHost = runCatching { Uri.parse(playable.url).host }.getOrNull()
                         logPickedPlayable(source = "reload", playable = playable)
-                        engine.setSource(PlaybackSource.Vod(playable = playable, subtitle = subtitleConfig, durationMs = currentViewDurationMs))
+                        engine.setSource(
+                            PlaybackSource.Vod(
+                                playable = playable,
+                                subtitle = subtitleConfig,
+                                durationMs = currentViewDurationMs,
+                                seamlessQualitySwitchEnabled = session.seamlessQualitySwitchEnabled && !seamlessQualitySwitchDisabledForPlayback,
+                            ),
+                        )
                     }
                 }
                 schedulePlayUrlAutoRefresh(playable, reason = "reload_stream")
+                AppLog.i(
+                    "QualitySwitch",
+                    "reload commit reason=$reason seekTarget=${if (keepPosition) pos else -1L} positionBeforePrepare=${engine.currentPosition} " +
+                        "seamlessSource=${engine.isSeamlessQualitySource}",
+                )
                 engine.prepare()
                 (engine as? ExoPlayerEngine)?.exoPlayer?.let { applySubtitleEnabled(it) }
-                if (keepPosition) engine.seekTo(pos)
+                if (keepPosition) {
+                    engine.seekTo(pos)
+                    AppLog.i("QualitySwitch", "reload seek reason=$reason target=$pos")
+                }
                 engine.playWhenReady = autoPlay
             } catch (t: Throwable) {
                 AppLog.e("Player", "reloadStream failed", t)

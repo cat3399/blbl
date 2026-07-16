@@ -13,6 +13,7 @@ internal sealed interface PlaybackSource {
         val playable: Playable,
         val subtitle: MediaItem.SubtitleConfiguration?,
         val durationMs: Long? = null,
+        val seamlessQualitySwitchEnabled: Boolean = false,
     ) : PlaybackSource
 
     data class Live(
@@ -39,6 +40,11 @@ internal interface BlblPlayerEngine {
     val playbackSpeed: Float
     fun setPlaybackSpeed(speed: Float)
 
+    val isSeamlessQualitySource: Boolean
+        get() = false
+
+    fun selectVideoQuality(qn: Int): Boolean = false
+
     var repeatMode: Int
 
     fun setSource(source: PlaybackSource)
@@ -61,6 +67,8 @@ internal interface BlblPlayerEngine {
         fun onPositionDiscontinuity(newPositionMs: Long) {}
 
         fun onVideoSizeChanged(width: Int, height: Int) {}
+
+        fun onVideoTrackChanged(qn: Int, codecid: Int) {}
 
         fun onRenderedFirstFrame() {}
     }
