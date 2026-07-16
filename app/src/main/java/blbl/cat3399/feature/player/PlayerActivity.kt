@@ -1489,6 +1489,8 @@ class PlayerActivity : BaseActivity() {
         }
 
         if (event.action == KeyEvent.ACTION_UP) {
+            if (dispatchPlayerCustomShortcutIfNeeded(event)) return true
+
             if (
                 keyCode == KeyEvent.KEYCODE_BACK ||
                 keyCode == KeyEvent.KEYCODE_ESCAPE ||
@@ -1764,6 +1766,7 @@ class PlayerActivity : BaseActivity() {
 
     override fun onStop() {
         touchController?.onStop()
+        cancelPlayerCustomShortcutPending()
         cancelDeferredKeySeekPreview()
         exitTraceStopAtMs = SystemClock.elapsedRealtime()
         if (exitCleanupRequested || isFinishing) {

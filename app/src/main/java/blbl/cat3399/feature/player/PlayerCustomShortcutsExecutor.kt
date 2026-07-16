@@ -1,14 +1,20 @@
 package blbl.cat3399.feature.player
 
 import android.view.KeyEvent
+import android.view.ViewConfiguration
+import androidx.lifecycle.lifecycleScope
 import blbl.cat3399.core.net.BiliClient
 import blbl.cat3399.core.prefs.AppPrefs
 import blbl.cat3399.core.prefs.PlayerCustomShortcutAction
+import blbl.cat3399.core.prefs.PlayerCustomShortcutTrigger
 import blbl.cat3399.core.prefs.PlayerCustomShortcutsStore
 import blbl.cat3399.core.prefs.PlayerPlaybackModes
 import blbl.cat3399.feature.player.engine.ExoPlayerEngine
 import java.util.Locale
 import java.util.WeakHashMap
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlin.math.abs
 
 private class PlayerCustomShortcutToggleMemory {
@@ -26,6 +32,25 @@ private class PlayerCustomShortcutToggleMemory {
 }
 
 private val shortcutToggleMemoryByPlayer = WeakHashMap<PlayerActivity, PlayerCustomShortcutToggleMemory>()
+
+private class PlayerCustomShortcutPressState {
+    var keyCode: Int = 0
+    var longTriggered: Boolean = false
+    var shortAction: PlayerCustomShortcutAction? = null
+    var longAction: PlayerCustomShortcutAction? = null
+    var longPressJob: Job? = null
+
+    fun clear() {
+        longPressJob?.cancel()
+        longPressJob = null
+        keyCode = 0
+        longTriggered = false
+        shortAction = null
+        longAction = null
+    }
+}
+
+private val shortcutPressStateByPlayer = WeakHashMap<PlayerActivity, PlayerCustomShortcutPressState>()
 
 private fun PlayerActivity.shortcutToggleMemory(): PlayerCustomShortcutToggleMemory {
     return shortcutToggleMemoryByPlayer.getOrPut(this) { PlayerCustomShortcutToggleMemory() }
@@ -46,12 +71,72 @@ private fun PlayerActivity.showShortcutOsd() {
 }
 
 internal fun PlayerActivity.dispatchPlayerCustomShortcutIfNeeded(event: KeyEvent): Boolean {
-    if (event.action != KeyEvent.ACTION_DOWN) return false
-    if (event.repeatCount != 0) return false
-
     val keyCode = event.keyCode
     if (keyCode <= 0 || keyCode == KeyEvent.KEYCODE_UNKNOWN) return false
     if (PlayerCustomShortcutsStore.isForbiddenKeyCode(keyCode)) return false
+
+    val state = shortcutPressStateByPlayer.getOrPut(this) { PlayerCustomShortcutPressState() }
+    if (event.action == KeyEvent.ACTION_UP) {
+        if (state.keyCode != keyCode) return false
+        state.longPressJob?.cancel()
+        val shouldRunShort = !state.longTriggered
+        val shortAction = state.shortAction
+        state.clear()
+        if (shouldRunShort && shortAction != null && canDispatchPlayerCustomShortcut()) {
+            noteUserInteraction()
+            applyPlayerCustomShortcut(
+                keyCode = shortcutMemoryKey(keyCode, PlayerCustomShortcutTrigger.SHORT_PRESS),
+                action = shortAction,
+            )
+        }
+        return true
+    }
+    if (event.action != KeyEvent.ACTION_DOWN) return false
+    if (state.keyCode != 0 && state.keyCode != keyCode) state.clear()
+    if (event.repeatCount != 0) return state.keyCode == keyCode
+
+    if (!canDispatchPlayerCustomShortcut()) return false
+
+    val bindings = BiliClient.prefs.playerCustomShortcuts.filter { it.keyCode == keyCode }
+    val shortAction = bindings.firstOrNull { it.trigger == PlayerCustomShortcutTrigger.SHORT_PRESS }?.action
+    val longAction = bindings.firstOrNull { it.trigger == PlayerCustomShortcutTrigger.LONG_PRESS }?.action
+    if (longAction == null) {
+        val action = shortAction ?: return false
+        noteUserInteraction()
+        applyPlayerCustomShortcut(
+            keyCode = shortcutMemoryKey(keyCode, PlayerCustomShortcutTrigger.SHORT_PRESS),
+            action = action,
+        )
+        return true
+    }
+
+    state.clear()
+    state.keyCode = keyCode
+    state.shortAction = shortAction
+    state.longAction = longAction
+    state.longPressJob =
+        lifecycleScope.launch {
+            delay(ViewConfiguration.getLongPressTimeout().toLong())
+            if (state.keyCode != keyCode || state.longTriggered) return@launch
+            if (!canDispatchPlayerCustomShortcut()) {
+                state.clear()
+                return@launch
+            }
+            state.longTriggered = true
+            noteUserInteraction()
+            applyPlayerCustomShortcut(
+                keyCode = shortcutMemoryKey(keyCode, PlayerCustomShortcutTrigger.LONG_PRESS),
+                action = longAction,
+            )
+        }
+    return true
+}
+
+internal fun PlayerActivity.cancelPlayerCustomShortcutPending() {
+    shortcutPressStateByPlayer[this]?.clear()
+}
+
+private fun PlayerActivity.canDispatchPlayerCustomShortcut(): Boolean {
     if (
         !PlayerCustomShortcutInputPolicy.canDispatchInVod(
             hasInteractiveOsd = osdMode != PlayerActivity.OsdMode.Hidden,
@@ -61,12 +146,11 @@ internal fun PlayerActivity.dispatchPlayerCustomShortcutIfNeeded(event: KeyEvent
     ) {
         return false
     }
-
-    val binding = BiliClient.prefs.playerCustomShortcuts.firstOrNull { it.keyCode == keyCode } ?: return false
-    noteUserInteraction()
-    applyPlayerCustomShortcut(keyCode = keyCode, action = binding.action)
     return true
 }
+
+private fun shortcutMemoryKey(keyCode: Int, trigger: PlayerCustomShortcutTrigger): Int =
+    if (trigger == PlayerCustomShortcutTrigger.SHORT_PRESS) keyCode else keyCode xor Int.MIN_VALUE
 
 private fun PlayerActivity.applyPlayerCustomShortcut(keyCode: Int, action: PlayerCustomShortcutAction) {
     val memory = shortcutToggleMemory()

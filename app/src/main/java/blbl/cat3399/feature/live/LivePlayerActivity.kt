@@ -16,6 +16,7 @@ import android.view.SurfaceHolder
 import android.view.SurfaceView
 import android.view.TextureView
 import android.view.View
+import android.view.ViewConfiguration
 import android.view.ViewGroup
 import android.view.ViewGroup.MarginLayoutParams
 import android.widget.FrameLayout
@@ -41,6 +42,7 @@ import blbl.cat3399.core.model.Danmaku
 import blbl.cat3399.core.net.BiliClient
 import blbl.cat3399.core.prefs.AppPrefs
 import blbl.cat3399.core.prefs.PlayerCustomShortcutAction
+import blbl.cat3399.core.prefs.PlayerCustomShortcutTrigger
 import blbl.cat3399.core.prefs.PlayerCustomShortcutsStore
 import blbl.cat3399.core.ui.AppToast
 import blbl.cat3399.core.ui.BaseActivity
@@ -112,6 +114,10 @@ class LivePlayerActivity : BaseActivity() {
     private val shortcutPrevDanmakuTextSizeByKey = HashMap<Int, Float>()
     private val shortcutPrevDanmakuSpeedLevelByKey = HashMap<Int, Int>()
     private val shortcutPrevDanmakuAreaByKey = HashMap<Int, Float>()
+    private var shortcutPendingKeyCode: Int = 0
+    private var shortcutPendingShortAction: PlayerCustomShortcutAction? = null
+    private var shortcutLongTriggered: Boolean = false
+    private var shortcutLongPressJob: Job? = null
     private var debugJob: Job? = null
     private var autoFailoverJob: Job? = null
     private var liveEntryReportedRoomId: Long = 0L
@@ -495,6 +501,7 @@ class LivePlayerActivity : BaseActivity() {
 
     override fun onStop() {
         touchController?.onStop()
+        clearLiveCustomShortcutPending()
         super.onStop()
     }
 
@@ -657,6 +664,8 @@ class LivePlayerActivity : BaseActivity() {
         }
 
         if (event.action == KeyEvent.ACTION_UP) {
+            if (dispatchLiveCustomShortcutIfNeeded(event)) return true
+
             if (isExitKey(keyCode)) {
                 if (finishOnBackKeyUp) {
                     finishOnBackKeyUp = false
@@ -765,24 +774,103 @@ class LivePlayerActivity : BaseActivity() {
     }
 
     private fun dispatchLiveCustomShortcutIfNeeded(event: KeyEvent): Boolean {
-        if (event.action != KeyEvent.ACTION_DOWN) return false
-        if (event.repeatCount != 0) return false
-
         val keyCode = event.keyCode
         if (keyCode <= 0 || keyCode == KeyEvent.KEYCODE_UNKNOWN) return false
         if (PlayerCustomShortcutsStore.isForbiddenKeyCode(keyCode)) return false
-        if (
-            !PlayerCustomShortcutInputPolicy.canDispatchInLive(
-                hasInteractiveOsd = controlsVisible,
-                hasSettingsPanel = binding.settingsPanel.visibility == View.VISIBLE,
+
+        if (event.action == KeyEvent.ACTION_UP) {
+            if (shortcutPendingKeyCode != keyCode) return false
+            shortcutLongPressJob?.cancel()
+            val shouldRunShort = !shortcutLongTriggered
+            val shortAction = shortcutPendingShortAction
+            clearLiveCustomShortcutPending()
+            if (shouldRunShort && shortAction != null && canDispatchLiveCustomShortcut()) {
+                applyLiveCustomShortcut(
+                    keyCode = shortcutMemoryKey(keyCode, PlayerCustomShortcutTrigger.SHORT_PRESS),
+                    action = shortAction,
+                )
+            }
+            return true
+        }
+        if (event.action != KeyEvent.ACTION_DOWN) return false
+        if (shortcutPendingKeyCode != 0 && shortcutPendingKeyCode != keyCode) clearLiveCustomShortcutPending()
+        if (event.repeatCount != 0) return shortcutPendingKeyCode == keyCode
+
+        if (!canDispatchLiveCustomShortcut()) return false
+
+        val bindings = BiliClient.prefs.playerCustomShortcuts.filter { it.keyCode == keyCode }
+        val shortAction =
+            bindings.firstOrNull { it.trigger == PlayerCustomShortcutTrigger.SHORT_PRESS }
+                ?.action
+                ?.takeIf(::isLiveCustomShortcutActionSupported)
+        val longAction =
+            bindings.firstOrNull { it.trigger == PlayerCustomShortcutTrigger.LONG_PRESS }
+                ?.action
+                ?.takeIf(::isLiveCustomShortcutActionSupported)
+        if (longAction == null) {
+            val action = shortAction ?: return false
+            return applyLiveCustomShortcut(
+                keyCode = shortcutMemoryKey(keyCode, PlayerCustomShortcutTrigger.SHORT_PRESS),
+                action = action,
             )
-        ) {
-            return false
         }
 
-        val binding = BiliClient.prefs.playerCustomShortcuts.firstOrNull { it.keyCode == keyCode } ?: return false
+        clearLiveCustomShortcutPending()
+        shortcutPendingKeyCode = keyCode
+        shortcutPendingShortAction = shortAction
+        shortcutLongPressJob =
+            lifecycleScope.launch {
+                delay(ViewConfiguration.getLongPressTimeout().toLong())
+                if (shortcutPendingKeyCode != keyCode || shortcutLongTriggered) return@launch
+                if (!canDispatchLiveCustomShortcut()) {
+                    clearLiveCustomShortcutPending()
+                    return@launch
+                }
+                shortcutLongTriggered = true
+                applyLiveCustomShortcut(
+                    keyCode = shortcutMemoryKey(keyCode, PlayerCustomShortcutTrigger.LONG_PRESS),
+                    action = longAction,
+                )
+            }
+        return true
+    }
 
-        when (val action = binding.action) {
+    private fun canDispatchLiveCustomShortcut(): Boolean =
+        PlayerCustomShortcutInputPolicy.canDispatchInLive(
+            hasInteractiveOsd = controlsVisible,
+            hasSettingsPanel = binding.settingsPanel.visibility == View.VISIBLE,
+        )
+
+    private fun clearLiveCustomShortcutPending() {
+        shortcutLongPressJob?.cancel()
+        shortcutLongPressJob = null
+        shortcutPendingKeyCode = 0
+        shortcutPendingShortAction = null
+        shortcutLongTriggered = false
+    }
+
+    private fun shortcutMemoryKey(keyCode: Int, trigger: PlayerCustomShortcutTrigger): Int =
+        if (trigger == PlayerCustomShortcutTrigger.SHORT_PRESS) keyCode else keyCode xor Int.MIN_VALUE
+
+    private fun isLiveCustomShortcutActionSupported(action: PlayerCustomShortcutAction): Boolean =
+        when (action) {
+            PlayerCustomShortcutAction.ShowOsd,
+            PlayerCustomShortcutAction.OpenComments,
+            PlayerCustomShortcutAction.OpenSettings,
+            PlayerCustomShortcutAction.TogglePlayPause,
+            PlayerCustomShortcutAction.ToggleDanmaku,
+            is PlayerCustomShortcutAction.SetDanmakuOpacity,
+            is PlayerCustomShortcutAction.SetDanmakuTextSize,
+            is PlayerCustomShortcutAction.SetDanmakuSpeed,
+            is PlayerCustomShortcutAction.SetDanmakuArea,
+            PlayerCustomShortcutAction.ToggleDebugOverlay,
+            -> true
+
+            else -> false
+        }
+
+    private fun applyLiveCustomShortcut(keyCode: Int, action: PlayerCustomShortcutAction): Boolean {
+        when (action) {
             PlayerCustomShortcutAction.ShowOsd -> {
                 noteUserInteraction()
                 setControlsVisible(true)

@@ -34,6 +34,7 @@ import blbl.cat3399.core.prefs.CustomPageConfig
 import blbl.cat3399.core.prefs.CustomPageTabConfig
 import blbl.cat3399.core.prefs.PlayerCustomShortcut
 import blbl.cat3399.core.prefs.PlayerCustomShortcutAction
+import blbl.cat3399.core.prefs.PlayerCustomShortcutTrigger
 import blbl.cat3399.core.prefs.PlayerPlaybackModes
 import blbl.cat3399.core.prefs.PlayerCustomShortcutsStore
 import blbl.cat3399.core.ui.AppToast
@@ -1737,8 +1738,14 @@ class SettingsInteractionHandler(
 
         fun actionLabel(action: PlayerCustomShortcutAction): String = PlayerCustomShortcutCatalog.actionLabel(action)
 
+        fun triggerLabel(trigger: PlayerCustomShortcutTrigger): String =
+            when (trigger) {
+                PlayerCustomShortcutTrigger.SHORT_PRESS -> "短按"
+                PlayerCustomShortcutTrigger.LONG_PRESS -> "长按"
+            }
+
         fun bindingLabel(binding: PlayerCustomShortcut): String =
-            "${keyLabel(binding.keyCode)} → ${actionLabel(binding.action)}"
+            "${keyLabel(binding.keyCode)}（${triggerLabel(binding.trigger)}）→ ${actionLabel(binding.action)}"
 
         fun loadShortcuts(): List<PlayerCustomShortcut> = BiliClient.prefs.playerCustomShortcuts
 
@@ -1748,9 +1755,9 @@ class SettingsInteractionHandler(
             renderer.refreshSection(SettingId.PlayerCustomShortcuts)
         }
 
-        fun removeBinding(keyCode: Int) {
+        fun removeBinding(keyCode: Int, trigger: PlayerCustomShortcutTrigger) {
             val prefs = BiliClient.prefs
-            prefs.playerCustomShortcuts = PlayerCustomShortcutsStore.remove(prefs.playerCustomShortcuts, keyCode)
+            prefs.playerCustomShortcuts = PlayerCustomShortcutsStore.remove(prefs.playerCustomShortcuts, keyCode, trigger)
             renderer.refreshSection(SettingId.PlayerCustomShortcuts)
         }
 
@@ -1807,14 +1814,17 @@ class SettingsInteractionHandler(
         }
 
         class Controller {
-            fun showManager(focusKeyCode: Int? = null) {
+            fun showManager(
+                focusKeyCode: Int? = null,
+                focusTrigger: PlayerCustomShortcutTrigger? = null,
+            ) {
                 var replacing = false
                 val items = loadShortcuts()
                 var recyclerForLayout: RecyclerView? = null
                 val focusIndex =
                     if (items.isNotEmpty()) {
                         focusKeyCode?.let { key ->
-                            items.indexOfFirst { it.keyCode == key }.takeIf { it >= 0 }
+                            items.indexOfFirst { it.keyCode == key && (focusTrigger == null || it.trigger == focusTrigger) }.takeIf { it >= 0 }
                         } ?: 0
                     } else {
                         0
@@ -1836,7 +1846,7 @@ class SettingsInteractionHandler(
                                     return@PopupAction
                                 }
                                 replacing = true
-                                showClearConfirm(focusKeyCode = focusKeyCode)
+                                showClearConfirm(focusKeyCode = focusKeyCode, focusTrigger = focusTrigger)
                             },
                             PopupAction(
                                 role = PopupActionRole.NEUTRAL,
@@ -1848,7 +1858,7 @@ class SettingsInteractionHandler(
                                     return@PopupAction
                                 }
                                 replacing = true
-                                showDeletePicker(focusKeyCode = focusKeyCode)
+                                showDeletePicker(focusKeyCode = focusKeyCode, focusTrigger = focusTrigger)
                             },
                             PopupAction(
                                 role = PopupActionRole.NEGATIVE,
@@ -1860,7 +1870,7 @@ class SettingsInteractionHandler(
                                 dismissOnClick = false,
                             ) {
                                 replacing = true
-                                showKeyCapture()
+                                showTriggerPicker()
                             },
                         ),
                     preferredActionRole = PopupActionRole.POSITIVE,
@@ -1889,7 +1899,7 @@ class SettingsInteractionHandler(
                     recycler.adapter =
                         ShortcutListAdapter(items) { picked ->
                             replacing = true
-                            showActionPicker(keyCode = picked.keyCode, currentAction = picked.action)
+                            showActionPicker(keyCode = picked.keyCode, trigger = picked.trigger, currentAction = picked.action)
                         }
 
                     if (items.isNotEmpty()) {
@@ -1904,7 +1914,25 @@ class SettingsInteractionHandler(
                 }
             }
 
-            private fun showKeyCapture() {
+            private fun showTriggerPicker() {
+                var forward = false
+                val triggers = listOf(PlayerCustomShortcutTrigger.SHORT_PRESS, PlayerCustomShortcutTrigger.LONG_PRESS)
+                AppPopup.singleChoice(
+                    context = activity,
+                    title = "选择触发方式",
+                    items = triggers.map(::triggerLabel),
+                    checkedIndex = 0,
+                    onDismiss = {
+                        if (!forward) showManager()
+                    },
+                ) { which, _ ->
+                    val trigger = triggers.getOrNull(which) ?: return@singleChoice
+                    forward = true
+                    showKeyCapture(trigger)
+                }
+            }
+
+            private fun showKeyCapture(trigger: PlayerCustomShortcutTrigger) {
                 var forward = false
                 var captureView: TextView? = null
                 AppPopup.custom(
@@ -1918,7 +1946,7 @@ class SettingsInteractionHandler(
                         captureView?.post { captureView?.requestFocus() }
                     },
                     onDismiss = {
-                        if (!forward) showManager()
+                        if (!forward) showTriggerPicker()
                     },
                 ) { dialogContext ->
                     val tv =
@@ -1949,16 +1977,20 @@ class SettingsInteractionHandler(
                             return@setOnKeyListener true
                         }
 
-                        val existing = loadShortcuts().firstOrNull { it.keyCode == keyCode }?.action
+                        val existing = loadShortcuts().firstOrNull { it.keyCode == keyCode && it.trigger == trigger }?.action
                         forward = true
-                        showActionPicker(keyCode = keyCode, currentAction = existing)
+                        showActionPicker(keyCode = keyCode, trigger = trigger, currentAction = existing)
                         true
                     }
                     tv
                 }
             }
 
-            private fun showActionPicker(keyCode: Int, currentAction: PlayerCustomShortcutAction?) {
+            private fun showActionPicker(
+                keyCode: Int,
+                trigger: PlayerCustomShortcutTrigger,
+                currentAction: PlayerCustomShortcutAction?,
+            ) {
                 var forward = false
                 val options = PlayerCustomShortcutCatalog.actionOptions()
 
@@ -1968,34 +2000,39 @@ class SettingsInteractionHandler(
 
                 AppPopup.singleChoice(
                     context = activity,
-                    title = "选择动作（${keyLabel(keyCode)}）",
+                    title = "选择动作（${keyLabel(keyCode)} · ${triggerLabel(trigger)}）",
                     items = options.map { it.label },
                     checkedIndex = checked,
                     onDismiss = {
-                        if (!forward) showManager(focusKeyCode = keyCode)
+                        if (!forward) showManager(focusKeyCode = keyCode, focusTrigger = trigger)
                     },
                 ) { which, _ ->
                     val picked = options.getOrNull(which) ?: return@singleChoice
                     if (picked.requiresValue) {
                         forward = true
-                        showValuePicker(keyCode = keyCode, actionType = picked.type, currentAction = currentAction)
+                        showValuePicker(keyCode = keyCode, trigger = trigger, actionType = picked.type, currentAction = currentAction)
                         return@singleChoice
                     }
 
                     val action = PlayerCustomShortcutCatalog.createAction(picked.type) ?: return@singleChoice
 
                     forward = true
-                    upsert(PlayerCustomShortcut(keyCode = keyCode, action = action))
-                    showManager(focusKeyCode = keyCode)
+                    upsert(PlayerCustomShortcut(keyCode = keyCode, trigger = trigger, action = action))
+                    showManager(focusKeyCode = keyCode, focusTrigger = trigger)
                 }
             }
 
-            private fun showValuePicker(keyCode: Int, actionType: String, currentAction: PlayerCustomShortcutAction?) {
+            private fun showValuePicker(
+                keyCode: Int,
+                trigger: PlayerCustomShortcutTrigger,
+                actionType: String,
+                currentAction: PlayerCustomShortcutAction?,
+            ) {
                 var forward = false
-                val title = "${keyLabel(keyCode)} → ${PlayerCustomShortcutCatalog.actionTitle(actionType)}"
+                val title = "${keyLabel(keyCode)}（${triggerLabel(trigger)}）→ ${PlayerCustomShortcutCatalog.actionTitle(actionType)}"
 
                 fun cancelBackToActionPicker() {
-                    if (!forward) showActionPicker(keyCode = keyCode, currentAction = currentAction)
+                    if (!forward) showActionPicker(keyCode = keyCode, trigger = trigger, currentAction = currentAction)
                 }
 
                 val config =
@@ -2004,7 +2041,7 @@ class SettingsInteractionHandler(
                         currentAction = currentAction,
                     ) ?: run {
                         AppToast.show(activity, "未知动作：$actionType")
-                        showActionPicker(keyCode = keyCode, currentAction = currentAction)
+                        showActionPicker(keyCode = keyCode, trigger = trigger, currentAction = currentAction)
                         return
                     }
 
@@ -2017,33 +2054,42 @@ class SettingsInteractionHandler(
                 ) { which, _ ->
                     val action = config.choices.getOrNull(which)?.action ?: return@singleChoice
                     forward = true
-                    upsert(PlayerCustomShortcut(keyCode = keyCode, action = action))
-                    showManager(focusKeyCode = keyCode)
+                    upsert(PlayerCustomShortcut(keyCode = keyCode, trigger = trigger, action = action))
+                    showManager(focusKeyCode = keyCode, focusTrigger = trigger)
                 }
             }
 
-            private fun showDeletePicker(focusKeyCode: Int?) {
+            private fun showDeletePicker(
+                focusKeyCode: Int?,
+                focusTrigger: PlayerCustomShortcutTrigger?,
+            ) {
                 var forward = false
                 val items = loadShortcuts()
                 val labels = items.map { bindingLabel(it) }
-                val checked = focusKeyCode?.let { k -> items.indexOfFirst { it.keyCode == k }.takeIf { it >= 0 } } ?: 0
+                val checked =
+                    focusKeyCode?.let { k ->
+                        items.indexOfFirst { it.keyCode == k && (focusTrigger == null || it.trigger == focusTrigger) }.takeIf { it >= 0 }
+                    } ?: 0
                 AppPopup.singleChoice(
                     context = activity,
                     title = "删除快捷键",
                     items = labels.ifEmpty { listOf("暂无快捷键") },
                     checkedIndex = checked,
                     onDismiss = {
-                        if (!forward) showManager(focusKeyCode = focusKeyCode)
+                        if (!forward) showManager(focusKeyCode = focusKeyCode, focusTrigger = focusTrigger)
                     },
                 ) { which, _ ->
                     val picked = items.getOrNull(which) ?: return@singleChoice
                     forward = true
-                    removeBinding(picked.keyCode)
+                    removeBinding(picked.keyCode, picked.trigger)
                     showManager()
                 }
             }
 
-            private fun showClearConfirm(focusKeyCode: Int?) {
+            private fun showClearConfirm(
+                focusKeyCode: Int?,
+                focusTrigger: PlayerCustomShortcutTrigger?,
+            ) {
                 var forward = false
                 AppPopup.confirm(
                     context = activity,
@@ -2059,10 +2105,10 @@ class SettingsInteractionHandler(
                     },
                     onNegative = {
                         forward = true
-                        showManager(focusKeyCode = focusKeyCode)
+                        showManager(focusKeyCode = focusKeyCode, focusTrigger = focusTrigger)
                     },
                     onDismiss = {
-                        if (!forward) showManager(focusKeyCode = focusKeyCode)
+                        if (!forward) showManager(focusKeyCode = focusKeyCode, focusTrigger = focusTrigger)
                     },
                 )
             }
