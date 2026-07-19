@@ -7,6 +7,7 @@
     android:layout_marginVertical="10dp"
     android:clickable="true"
     android:focusable="true"
+    android:nextFocusRight="@id/recycler_right"
     android:stateListAnimator="@animator/blbl_focus_scale"
     app:cardBackgroundColor="@color/blbl_settings_left_card_bg"
     app:cardCornerRadius="14dp"
