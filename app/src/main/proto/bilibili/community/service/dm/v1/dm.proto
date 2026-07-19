@@ -1,0 +1,39 @@
+syntax = "proto3";
+
+package bilibili.community.service.dm.v1;
+
+option java_multiple_files = true;
+option java_package = "bilibili.community.service.dm.v1";
+
+service DM {
+  rpc DmView(DmViewReq) returns (DmViewReply);
+}
+
+message DmViewReq {
+  int64 pid = 1;
+  int64 oid = 2;
+  int32 type = 3;
+  string spmid = 4;
+  int32 is_hard_boot = 5;
+  string context_ext = 6;
+}
+
+message DmViewReply {
+  bool closed = 1;
+  reserved 2;
+  VideoSubtitle subtitle = 3;
+}
+
+message VideoSubtitle {
+  string lan = 1;
+  string lan_doc = 2;
+  repeated SubtitleItem subtitles = 3;
+}
+
+message SubtitleItem {
+  int64 id = 1;
+  string id_str = 2;
+  string lan = 3;
+  string lan_doc = 4;
+  string subtitle_url = 5;
+}

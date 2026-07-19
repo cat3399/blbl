@@ -511,7 +511,7 @@ internal fun PlayerActivity.startPlayback(
                     if (subtitleSupported && session.subtitleEnabled) {
                         async(Dispatchers.IO) {
                             trace?.log("subtitle:start", "reason=start_enabled")
-                            prepareSubtitleConfig(detail, resolvedBvid, cid, trace)
+                            prepareSubtitleConfig(detail, resolvedBvid, cid, currentAid, trace)
                                 .also { trace?.log("subtitle:done", "reason=start_enabled ok=${it != null}") }
                         }
                             .also(startupJobs::add)

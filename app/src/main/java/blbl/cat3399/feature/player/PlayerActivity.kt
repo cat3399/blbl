@@ -2463,7 +2463,7 @@ class PlayerActivity : BaseActivity() {
                     trace?.log("subtitle:load:start", "reason=$reason")
                     val config =
                         withContext(Dispatchers.IO) {
-                            prepareSubtitleConfig(detail, bvid, cid, trace)
+                            prepareSubtitleConfig(detail, bvid, cid, currentAid, trace)
                         }
                     if (expectedPlaybackToken != autoResumeToken || currentBvid != bvid || currentCid != cid) {
                         trace?.log("subtitle:load:skip", "reason=stale")
@@ -3193,10 +3193,11 @@ class PlayerActivity : BaseActivity() {
         detail: VideoDetail,
         bvid: String,
         cid: Long,
+        aid: Long?,
         trace: PlaybackTrace?,
     ): MediaItem.SubtitleConfiguration? {
         trace?.log("subtitle:items:start")
-        val items = fetchSubtitleItems(detail, bvid, cid, trace)
+        val items = fetchSubtitleItems(detail, bvid, cid, aid, trace)
         trace?.log("subtitle:items:done", "count=${items.size}")
         subtitleItems = items
         val chosen = pickSubtitleItem(items) ?: return null
@@ -3232,16 +3233,32 @@ class PlayerActivity : BaseActivity() {
         detail: VideoDetail,
         bvid: String,
         cid: Long,
+        aid: Long?,
         trace: PlaybackTrace?,
     ): List<SubtitleItem> {
         trace?.log("subtitle:videoPlayerInfo:start")
         val playerInfo = runCatching { BiliApi.videoPlayerInfo(bvid = bvid, cid = cid) }.getOrNull()
         trace?.log("subtitle:videoPlayerInfo:done", "ok=${playerInfo != null}")
         val playerSubtitles = playerInfo?.subtitles.orEmpty()
-        if (playerSubtitles.isEmpty() && playerInfo?.needLoginSubtitle == true && !BiliClient.cookies.hasSessData()) {
-            return emptyList()
-        }
         if (playerSubtitles.isEmpty()) {
+            val safeAid = aid?.takeIf { it > 0L } ?: detail.aid?.takeIf { it > 0L }
+            if (safeAid != null) {
+                trace?.log("subtitle:dmView:start", "aid=$safeAid cid=$cid")
+                val dmSubtitles =
+                    runCatching { BiliApi.dmViewSubtitles(aid = safeAid, cid = cid) }
+                        .onFailure { AppLog.w("Player", "dmView subtitle failed aid=$safeAid cid=$cid", it) }
+                        .getOrDefault(emptyList())
+                trace?.log("subtitle:dmView:done", "count=${dmSubtitles.size}")
+                if (dmSubtitles.isNotEmpty()) {
+                    return dmSubtitles.map { subtitle ->
+                        SubtitleItem(
+                            lan = subtitle.language.ifBlank { "unknown" },
+                            lanDoc = subtitle.languageDoc.ifBlank { subtitle.language },
+                            url = normalizeUrl(subtitle.url),
+                        )
+                    }
+                }
+            }
             // Fallback: try older view payload (some responses may include it).
             if (detail.subtitles.isEmpty()) return emptyList()
             return detail.subtitles.map { subtitle ->

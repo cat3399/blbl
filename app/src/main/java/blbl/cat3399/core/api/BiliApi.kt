@@ -37,6 +37,7 @@ import blbl.cat3399.core.api.video.VideoRegionRankRequest
 import blbl.cat3399.core.api.video.VideoSeriesArchivesRequest
 import blbl.cat3399.core.api.video.VideoShotInfo
 import blbl.cat3399.core.api.video.VideoShotRequest
+import blbl.cat3399.core.api.video.VideoSubtitle
 import blbl.cat3399.core.api.video.VideoTagsRequest
 import blbl.cat3399.core.net.BiliClient
 import blbl.cat3399.core.net.PiliWebHeaders
@@ -1444,6 +1445,9 @@ object BiliApi {
 
     suspend fun videoPlayerInfo(bvid: String, cid: Long): VideoPlayerInfo =
         VideoApiGateway.playerInfo(VideoPlayerInfoRequest(bvid = bvid, cid = cid))
+
+    suspend fun dmViewSubtitles(aid: Long, cid: Long): List<VideoSubtitle> =
+        blbl.cat3399.core.api.video.app.DmViewGrpcApi.subtitles(aid = aid, cid = cid)
 
     suspend fun historyReport(aid: Long, cid: Long, progressSec: Long, platform: String = "android") =
         VideoApi.historyReport(aid = aid, cid = cid, progressSec = progressSec, platform = platform)
