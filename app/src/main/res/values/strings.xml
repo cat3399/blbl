@@ -71,6 +71,7 @@
     <string name="search_user_action_enter_live">进入直播间</string>
     <string name="search_user_action_open_profile">查看主页</string>
     <string name="search_unsupported">该分类暂未实现</string>
+    <string name="search_no_results">没有找到相关结果</string>
     <string name="label_following">关注</string>
     <string name="label_follower">粉丝</string>
     <string name="label_coins">银币</string>

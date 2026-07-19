@@ -488,6 +488,12 @@ class SearchRenderer internal constructor(
             binding.tvQuery.requestFocus()
             true
         }
+        binding.tvResultsPlaceholder.setOnKeyListener { _, keyCode, event ->
+            if (event.action != KeyEvent.ACTION_DOWN || keyCode != KeyEvent.KEYCODE_DPAD_UP) {
+                return@setOnKeyListener false
+            }
+            focusSelectedTab()
+        }
         updateSortUi()
 
         binding.swipeRefresh.setOnRefreshListener { interactor.resetAndLoad() }
@@ -587,6 +593,7 @@ class SearchRenderer internal constructor(
 
     fun onResultsApplied(isRefresh: Boolean) {
         binding.recyclerResults.postIfAlive(isAlive = { !released }) {
+            updateCurrentResultState()
             if (isRefresh && maybeConsumePendingFocusFirstResultCardAfterRefresh()) return@postIfAlive
             maybeConsumePendingResultFocus()
             resultsGridController?.consumePendingFocusAfterLoadMore()
@@ -704,6 +711,13 @@ class SearchRenderer internal constructor(
         val recycler = binding.recyclerResults
         val isUiAlive = { !released && fragment.isAdded && fragment.isResumed && isResultsVisible() }
         val itemCount = recycler.adapter?.itemCount ?: 0
+        if (itemCount <= 0) {
+            val focused = fragment.activity?.currentFocus
+            val canMoveFocus = focused == null || FocusTreeUtils.isDescendantOf(focused, recycler)
+            if (canMoveFocus) binding.tvResultsPlaceholder.requestFocus()
+            state.pendingFocusFirstResultCardAfterRefresh = false
+            return true
+        }
         recycler.requestFocusFirstItemOrSelfAfterRefresh(
             itemCount = itemCount,
             smoothScroll = false,
@@ -737,7 +751,8 @@ class SearchRenderer internal constructor(
 
         val adapter = binding.recyclerResults.adapter
         if (adapter == null || adapter.itemCount <= 0) {
-            binding.recyclerResults.requestFocus()
+            binding.tvResultsPlaceholder.requestFocus()
+            state.clearPendingResultFocusRequests()
             return true
         }
 
@@ -878,6 +893,13 @@ class SearchRenderer internal constructor(
 
         binding.tvResultsPlaceholder.visibility = View.GONE
         binding.swipeRefresh.visibility = View.VISIBLE
+    }
+
+    private fun updateCurrentResultState() {
+        val hasResults = (binding.recyclerResults.adapter?.itemCount ?: 0) > 0
+        binding.swipeRefresh.visibility = View.VISIBLE
+        binding.tvResultsPlaceholder.visibility = if (hasResults) View.GONE else View.VISIBLE
+        if (!hasResults) binding.tvResultsPlaceholder.text = viewContext.getString(R.string.search_no_results)
     }
 
     fun clearResultsForTab(index: Int) {
