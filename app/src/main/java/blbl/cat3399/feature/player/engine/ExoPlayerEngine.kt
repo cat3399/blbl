@@ -330,7 +330,12 @@ internal class ExoPlayerEngine(
                 val seamlessApplied =
                     if (source.seamlessQualitySwitchEnabled && dash != null) {
                         runCatching {
-                            setSeamlessVodDash(dash = dash, subtitle = source.subtitle, durationMs = source.durationMs)
+                            setSeamlessVodDash(
+                                dash = dash,
+                                subtitle = source.subtitle,
+                                durationMs = source.durationMs,
+                                initialPositionMs = source.initialPositionMs,
+                            )
                         }.onFailure { throwable ->
                             AppLog.w("QualitySwitch", "build seamless DASH source failed; fallback to legacy source", throwable)
                         }.isSuccess
@@ -339,7 +344,11 @@ internal class ExoPlayerEngine(
                     }
                 if (!seamlessApplied) {
                     AppLog.w("QualitySwitch", "using legacy source seamlessRequested=${source.seamlessQualitySwitchEnabled} dash=${dash != null}")
-                    setVodPlayable(source.playable, subtitle = source.subtitle)
+                    setVodPlayable(
+                        playable = source.playable,
+                        subtitle = source.subtitle,
+                        initialPositionMs = source.initialPositionMs,
+                    )
                 }
             }
 
@@ -471,6 +480,7 @@ internal class ExoPlayerEngine(
         dash: Playable.Dash,
         subtitle: MediaItem.SubtitleConfiguration?,
         durationMs: Long?,
+        initialPositionMs: Long?,
     ) {
         val videos = dash.videoRepresentations.filter { it.videoTrackInfo.segmentBase != null }
         require(videos.size > 1) { "Seamless DASH needs at least two video representations" }
@@ -513,7 +523,10 @@ internal class ExoPlayerEngine(
                 .buildUpon()
                 .clearOverridesOfType(C.TRACK_TYPE_VIDEO)
                 .build()
-        exoPlayer.setMediaSource(DefaultMediaSourceFactory(dataSourceFactory).createMediaSource(item))
+        setMediaSource(
+            mediaSource = DefaultMediaSourceFactory(dataSourceFactory).createMediaSource(item),
+            initialPositionMs = initialPositionMs,
+        )
         seamlessQualitySource = true
         seamlessAvailableQns = videos.mapTo(LinkedHashSet()) { it.qn }
         seamlessAvailableTracks = videos.mapTo(LinkedHashSet()) { it.qn to it.codecid }
@@ -599,7 +612,11 @@ internal class ExoPlayerEngine(
         return "videoGroups=${groups.joinToString()}"
     }
 
-    private fun setVodPlayable(playable: Playable, subtitle: MediaItem.SubtitleConfiguration?) {
+    private fun setVodPlayable(
+        playable: Playable,
+        subtitle: MediaItem.SubtitleConfiguration?,
+        initialPositionMs: Long?,
+    ) {
         when (playable) {
             is Playable.Dash -> {
                 val videoFactory =
@@ -614,7 +631,10 @@ internal class ExoPlayerEngine(
                         urlCandidates = playable.audioUrlCandidates,
                         mediaRequestProfile = playable.audioMediaRequestProfile,
                     )
-                exoPlayer.setMediaSource(buildMerged(videoFactory, audioFactory, playable.videoUrl, playable.audioUrl, subtitle))
+                setMediaSource(
+                    mediaSource = buildMerged(videoFactory, audioFactory, playable.videoUrl, playable.audioUrl, subtitle),
+                    initialPositionMs = initialPositionMs,
+                )
             }
 
             is Playable.VideoOnly -> {
@@ -624,7 +644,10 @@ internal class ExoPlayerEngine(
                         urlCandidates = playable.videoUrlCandidates,
                         mediaRequestProfile = playable.videoMediaRequestProfile,
                     )
-                exoPlayer.setMediaSource(buildProgressive(mainFactory, playable.videoUrl, subtitle))
+                setMediaSource(
+                    mediaSource = buildProgressive(mainFactory, playable.videoUrl, subtitle),
+                    initialPositionMs = initialPositionMs,
+                )
             }
 
             is Playable.Progressive -> {
@@ -634,8 +657,20 @@ internal class ExoPlayerEngine(
                         urlCandidates = playable.urlCandidates,
                         mediaRequestProfile = playable.mediaRequestProfile,
                     )
-                exoPlayer.setMediaSource(buildProgressive(mainFactory, playable.url, subtitle))
+                setMediaSource(
+                    mediaSource = buildProgressive(mainFactory, playable.url, subtitle),
+                    initialPositionMs = initialPositionMs,
+                )
             }
+        }
+    }
+
+    private fun setMediaSource(mediaSource: MediaSource, initialPositionMs: Long?) {
+        val initialPosition = initialPositionMs?.takeIf { it > 0L }
+        if (initialPosition != null) {
+            exoPlayer.setMediaSource(mediaSource, initialPosition)
+        } else {
+            exoPlayer.setMediaSource(mediaSource)
         }
     }
 }

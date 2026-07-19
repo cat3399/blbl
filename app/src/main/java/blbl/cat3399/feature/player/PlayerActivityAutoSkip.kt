@@ -7,20 +7,26 @@ import androidx.media3.common.Player
 import blbl.cat3399.core.api.BiliApi
 import blbl.cat3399.core.api.SponsorBlockApi
 import blbl.cat3399.core.api.SponsorBlockCategories
+import blbl.cat3399.core.api.video.VideoPlayResume
 import blbl.cat3399.core.api.video.VideoPlayStream
 import blbl.cat3399.core.api.video.VideoResumeTimeUnit
 import blbl.cat3399.core.log.AppLog
 import blbl.cat3399.core.net.BiliClient
 import blbl.cat3399.feature.player.engine.BlblPlayerEngine
 import java.util.LinkedHashMap
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
 private const val AUTO_SKIP_LOG_TAG = "PlayerAutoSkip"
+private const val AUTO_RESUME_LOG_TAG = "PlayerAutoResume"
+private const val AUTO_RESUME_FALLBACK_TIMEOUT_MS = 1_200L
 
 internal fun PlayerActivity.autoSkipCategoryLabel(category: String?): String {
     val c = category?.trim().orEmpty()
@@ -394,13 +400,17 @@ internal fun filterAutoSkipSegments(
 
 internal fun PlayerActivity.extractResumeCandidateFromPlayStream(playStream: VideoPlayStream): ResumeCandidate? {
     val resume = playStream.resume ?: return null
-    val time = resume.rawTime.takeIf { it > 0 } ?: return null
+    return resumeCandidateOf(resume = resume, source = "playurl")
+}
+
+internal fun resumeCandidateOf(resume: VideoPlayResume, source: String): ResumeCandidate? {
+    val time = resume.rawTime.takeIf { it > 0L } ?: return null
     val hint =
         when (resume.timeUnit) {
             VideoResumeTimeUnit.SECONDS -> RawTimeUnitHint.SECONDS_LIKELY
             VideoResumeTimeUnit.MILLIS -> RawTimeUnitHint.MILLIS_LIKELY
         }
-    return ResumeCandidate(rawTime = time, rawTimeUnitHint = hint, source = "playurl")
+    return ResumeCandidate(rawTime = time, rawTimeUnitHint = hint, source = source)
 }
 
 internal fun normalizeResumePositionMs(raw: Long, hint: RawTimeUnitHint, durationMs: Long?): Long? {
@@ -421,87 +431,143 @@ internal fun normalizeResumePositionMs(raw: Long, hint: RawTimeUnitHint, duratio
     return if (raw >= 10_000L) raw else raw * 1000
 }
 
-internal fun PlayerActivity.shouldAutoResumeTo(positionMs: Long, durationMs: Long?): Boolean {
+internal fun shouldAutoResumeTo(positionMs: Long, durationMs: Long?): Boolean {
     if (positionMs < 5_000L) return false
     val dur = durationMs?.takeIf { it > 0 } ?: return true
     return positionMs < (dur - 10_000L).coerceAtLeast(0L)
 }
 
-internal fun PlayerActivity.maybeScheduleAutoResume(
+internal data class InitialResumePosition(
+    val positionMs: Long,
+    val source: String,
+)
+
+internal fun resolveInitialResumePosition(
+    candidate: ResumeCandidate,
+    durationMs: Long?,
+): InitialResumePosition? {
+    val targetMs = normalizeResumePositionMs(candidate.rawTime, candidate.rawTimeUnitHint, durationMs) ?: return null
+    if (!shouldAutoResumeTo(targetMs, durationMs)) return null
+    val clamped = durationMs?.let { duration -> targetMs.coerceIn(0L, (duration - 500L).coerceAtLeast(0L)) } ?: targetMs
+    return InitialResumePosition(positionMs = clamped, source = candidate.source)
+}
+
+internal fun resumeIntentMatchesCurrentMedia(
+    currentCid: Long,
+    currentEpId: Long?,
+    expectedCid: Long?,
+    expectedEpId: Long?,
+): Boolean {
+    val cidMatches = expectedCid == null || expectedCid == currentCid
+    val epIdMatches = expectedEpId == null || (currentEpId != null && currentEpId == expectedEpId)
+    return cidMatches && epIdMatches
+}
+
+internal fun resumeHistoryMatchesCurrentCid(
+    currentCid: Long,
+    lastCid: Long?,
+    strictCidMatch: Boolean,
+): Boolean =
+    when {
+        lastCid != null -> lastCid == currentCid
+        strictCidMatch -> false
+        else -> true
+    }
+
+private fun PlayerActivity.consumeIntentResumeCandidate(cid: Long): ResumeCandidate? {
+    val candidate = pendingIntentResumeCandidate
+    val expectedCid = pendingIntentResumeCid
+    val expectedEpId = pendingIntentResumeEpId
+    pendingIntentResumeCandidate = null
+    pendingIntentResumeCid = null
+    pendingIntentResumeEpId = null
+    if (candidate == null) return null
+    return candidate.takeIf {
+        resumeIntentMatchesCurrentMedia(
+            currentCid = cid,
+            currentEpId = currentEpId,
+            expectedCid = expectedCid,
+            expectedEpId = expectedEpId,
+        )
+    }
+}
+
+internal suspend fun PlayerActivity.resolveInitialAutoResume(
     playStream: VideoPlayStream,
     bvid: String,
     cid: Long,
     playbackToken: Int,
-) {
-    if (!BiliClient.prefs.playerAutoResumeEnabled) return
-    if (autoResumeCancelledByUser) return
-    if (playbackToken != autoResumeToken) return
-    val engine = player ?: return
+): InitialResumePosition? {
+    val intentCandidate = consumeIntentResumeCandidate(cid)
+    if (!BiliClient.prefs.playerAutoResumeEnabled) return null
+    if (autoResumeCancelledByUser) return null
+    if (playbackToken != autoResumeToken) return null
 
-    pendingIntentResumeCandidate?.let { cand ->
-        val expectedCid = pendingIntentResumeCid
-        val expectedEpId = pendingIntentResumeEpId
-        val epId = currentEpId
-        val cidMatches = expectedCid == null || expectedCid == cid
-        val epIdMatches = expectedEpId == null || (epId != null && epId == expectedEpId)
-        pendingIntentResumeCandidate = null
-        pendingIntentResumeCid = null
-        pendingIntentResumeEpId = null
-        if (cidMatches && epIdMatches) {
-            scheduleAutoResume(engine = engine, candidate = cand, playbackToken = playbackToken)
-            return
-        }
+    val durationMs = currentViewDurationMs
+    intentCandidate?.let { candidate ->
+        return resolveInitialResumePosition(candidate = candidate, durationMs = durationMs)
     }
 
     val strictCidMatch = isMultiPagePlaylist(partsListItems, currentBvid)
-    extractResumeCandidateFromPlayStream(playStream)?.let { cand ->
-        val lastCid = playStream.resume?.lastCid
-        when {
-            lastCid != null && lastCid != cid -> Unit
-            strictCidMatch && lastCid == null -> Unit
-            else -> {
-                scheduleAutoResume(engine = engine, candidate = cand, playbackToken = playbackToken)
-                return
-            }
+    val playStreamResume = playStream.resume
+    if (
+        playStreamResume != null &&
+        resumeHistoryMatchesCurrentCid(
+            currentCid = cid,
+            lastCid = playStreamResume.lastCid,
+            strictCidMatch = strictCidMatch,
+        )
+    ) {
+        extractResumeCandidateFromPlayStream(playStream)?.let { candidate ->
+            return resolveInitialResumePosition(candidate = candidate, durationMs = durationMs)
         }
     }
 
-    autoResumeJob?.cancel()
-    autoResumeJob =
-        lifecycleScope.launch {
-            val playerInfo = runCatching { BiliApi.videoPlayerInfo(bvid = bvid, cid = cid) }.getOrNull() ?: return@launch
-            if (!isActive) return@launch
-            if (playbackToken != autoResumeToken) return@launch
-            if (autoResumeCancelledByUser) return@launch
-            val lastCid = playerInfo.resume?.lastCid?.takeIf { it > 0 }
-            if (lastCid != null && lastCid != cid) return@launch
-            if (strictCidMatch && lastCid == null) return@launch
-            val resume = playerInfo.resume?.rawTime?.takeIf { it > 0 } ?: return@launch
-            val hint =
-                when {
-                    resume >= 10_000L -> RawTimeUnitHint.MILLIS_LIKELY
-                    else -> RawTimeUnitHint.UNKNOWN
+    val playerInfo =
+        try {
+            withTimeout(AUTO_RESUME_FALLBACK_TIMEOUT_MS) {
+                withContext(Dispatchers.IO) {
+                    BiliApi.videoPlayerInfo(bvid = bvid, cid = cid)
                 }
-            val cand = ResumeCandidate(rawTime = resume, rawTimeUnitHint = hint, source = "videoPlayerInfo")
-            scheduleAutoResume(engine = engine, candidate = cand, playbackToken = playbackToken)
+            }
+        } catch (_: TimeoutCancellationException) {
+            AppLog.w(
+                AUTO_RESUME_LOG_TAG,
+                "resume fallback timed out bvid=$bvid cid=$cid timeoutMs=$AUTO_RESUME_FALLBACK_TIMEOUT_MS",
+            )
+            return null
+        } catch (throwable: Throwable) {
+            if (throwable is CancellationException) throw throwable
+            AppLog.w(AUTO_RESUME_LOG_TAG, "load resume fallback failed bvid=$bvid cid=$cid", throwable)
+            return null
         }
+    if (playbackToken != autoResumeToken || autoResumeCancelledByUser) return null
+    val fallbackResume = playerInfo.resume ?: return null
+    if (
+        !resumeHistoryMatchesCurrentCid(
+            currentCid = cid,
+            lastCid = fallbackResume.lastCid,
+            strictCidMatch = strictCidMatch,
+        )
+    ) {
+        return null
+    }
+    val fallbackCandidate = resumeCandidateOf(resume = fallbackResume, source = "videoPlayerInfo") ?: return null
+    return resolveInitialResumePosition(candidate = fallbackCandidate, durationMs = durationMs)
 }
 
-internal fun PlayerActivity.scheduleAutoResume(engine: BlblPlayerEngine, candidate: ResumeCandidate, playbackToken: Int) {
+internal fun PlayerActivity.scheduleInitialAutoResumeHint(
+    engine: BlblPlayerEngine,
+    initialResume: InitialResumePosition,
+    playbackToken: Int,
+) {
     if (autoResumeCancelledByUser) return
     autoResumeJob?.cancel()
     dismissAutoResumeHint()
-    trace?.log("resume:pending", "src=${candidate.source} raw=${candidate.rawTime}")
-
-    val previewDurationMs = engine.duration.takeIf { it > 0 } ?: currentViewDurationMs
-    val previewTargetMs = normalizeResumePositionMs(candidate.rawTime, candidate.rawTimeUnitHint, previewDurationMs)
-    if (previewTargetMs == null) return
-    if (!shouldAutoResumeTo(previewTargetMs, previewDurationMs)) return
+    trace?.log("resume:initial", "to=${initialResume.positionMs}ms src=${initialResume.source}")
 
     autoResumeJob =
         lifecycleScope.launch {
-            // Seeking too early (while the beginning is still buffering) can cause some long videos to get stuck
-            // with a black screen. Wait until the player becomes READY, then seek immediately.
             val readyDeadlineAtMs = SystemClock.elapsedRealtime() + 30_000L
             while (isActive) {
                 if (autoResumeCancelledByUser) return@launch
@@ -519,13 +585,7 @@ internal fun PlayerActivity.scheduleAutoResume(engine: BlblPlayerEngine, candida
             if (playbackToken != autoResumeToken) return@launch
             val p = player ?: return@launch
             if (p !== engine) return@launch
-
-            val durationMs = p.duration.takeIf { it > 0 } ?: currentViewDurationMs
-            val targetMs = normalizeResumePositionMs(candidate.rawTime, candidate.rawTimeUnitHint, durationMs) ?: return@launch
-            if (!shouldAutoResumeTo(targetMs, durationMs)) return@launch
-            val clamped = durationMs?.let { dur -> targetMs.coerceIn(0L, (dur - 500L).coerceAtLeast(0L)) } ?: targetMs
-            trace?.log("resume:seek", "to=${clamped}ms src=${candidate.source}")
-            p.seekTo(clamped)
-            showAutoResumeHint(targetMs = clamped)
+            trace?.log("resume:ready", "at=${p.currentPosition}ms src=${initialResume.source}")
+            showAutoResumeHint(targetMs = initialResume.positionMs)
         }
 }

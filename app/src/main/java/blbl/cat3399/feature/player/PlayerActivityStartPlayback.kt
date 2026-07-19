@@ -530,6 +530,22 @@ internal fun PlayerActivity.startPlayback(
                     trace?.log("duration:playurl", "duration=${durationMs}ms")
                 }
                 showRiskControlBypassHintIfNeeded(playStream)
+                val initialResume =
+                    if (pendingSeekMs == null) {
+                        resolveInitialAutoResume(
+                            playStream = playStream,
+                            bvid = resolvedBvid,
+                            cid = cid,
+                            playbackToken = autoResumeToken,
+                        )
+                    } else {
+                        null
+                    }
+                val initialPositionMs = pendingSeekMs?.coerceAtLeast(0L) ?: initialResume?.positionMs
+                trace?.log(
+                    "player:initialPosition",
+                    "position=${initialPositionMs ?: -1L}ms source=${initialResume?.source ?: if (pendingSeekMs != null) "engine_switch" else "none"}",
+                )
                 lastAvailableQns = parseDashVideoQnList(playStream)
                 lastAvailableAudioIds = parseDashAudioIdList(playStream, constraints = playbackConstraints)
                 logPlayUrlTrackSummary(source = "start", stream = playStream, constraints = playbackConstraints)
@@ -563,6 +579,7 @@ internal fun PlayerActivity.startPlayback(
                                 playable = playable,
                                 subtitle = subtitleConfig,
                                 durationMs = currentViewDurationMs,
+                                initialPositionMs = initialPositionMs,
                                 seamlessQualitySwitchEnabled = session.seamlessQualitySwitchEnabled && !seamlessQualitySwitchDisabledForPlayback,
                             ),
                         )
@@ -581,6 +598,7 @@ internal fun PlayerActivity.startPlayback(
                                 playable = playable,
                                 subtitle = subtitleConfig,
                                 durationMs = currentViewDurationMs,
+                                initialPositionMs = initialPositionMs,
                                 seamlessQualitySwitchEnabled = session.seamlessQualitySwitchEnabled && !seamlessQualitySwitchDisabledForPlayback,
                             ),
                         )
@@ -598,6 +616,7 @@ internal fun PlayerActivity.startPlayback(
                                 playable = playable,
                                 subtitle = subtitleConfig,
                                 durationMs = currentViewDurationMs,
+                                initialPositionMs = initialPositionMs,
                                 seamlessQualitySwitchEnabled = session.seamlessQualitySwitchEnabled && !seamlessQualitySwitchDisabledForPlayback,
                             ),
                         )
@@ -609,16 +628,14 @@ internal fun PlayerActivity.startPlayback(
                 engine.prepare()
                 trace?.log("player:playWhenReady")
                 engine.playWhenReady = pendingPlayWhenReady ?: true
-                if (pendingSeekMs != null && pendingSeekMs > 0L) {
-                    engine.seekTo(pendingSeekMs)
-                }
                 updateSubtitleButton()
-                maybeScheduleAutoResume(
-                    playStream = playStream,
-                    bvid = resolvedBvid,
-                    cid = cid,
-                    playbackToken = autoResumeToken,
-                )
+                initialResume?.let { resume ->
+                    scheduleInitialAutoResumeHint(
+                        engine = engine,
+                        initialResume = resume,
+                        playbackToken = autoResumeToken,
+                    )
+                }
                 maybeStartAutoSkipSegments(
                     playStream = playStream,
                     bvid = resolvedBvid,

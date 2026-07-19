@@ -13,6 +13,7 @@ internal sealed interface PlaybackSource {
         val playable: Playable,
         val subtitle: MediaItem.SubtitleConfiguration?,
         val durationMs: Long? = null,
+        val initialPositionMs: Long? = null,
         val seamlessQualitySwitchEnabled: Boolean = false,
     ) : PlaybackSource
 

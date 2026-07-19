@@ -613,9 +613,8 @@ class PlayerActivity : BaseActivity() {
 
     private fun enqueueExitProgressReport(reason: String) {
         val trace = trace
-        // If auto-resume is pending, the player is briefly at position ~= 0.
-        // Reporting during this window can overwrite server-side history to "1s" and cause a restart-from-beginning loop
-        // after Activity recreation.
+        // Keep the resumed position uncommitted during the short undo window, so pressing BACK to restart from zero
+        // cannot race with an immediate history report of the resumed position.
         if (autoResumeHintVisible) {
             trace?.log("report:skip", "autoResumeHint=1 reason=$reason")
             return
@@ -2333,7 +2332,7 @@ class PlayerActivity : BaseActivity() {
         if (!shouldReportAnyProgressNow()) return
         val token = reportToken
         val exo = player ?: return
-        // Prevent a premature "sec=1" report when auto-resume is about to seek to the real position.
+        // Do not commit the resumed position until the user-facing restart-from-zero window has closed.
         if (autoResumeHintVisible) {
             trace?.log("report:skip", "autoResumeHint=1 reason=$reason force=${if (force) 1 else 0}")
             return
@@ -3155,6 +3154,7 @@ class PlayerActivity : BaseActivity() {
                                 playable = playable,
                                 subtitle = subtitleConfig,
                                 durationMs = currentViewDurationMs,
+                                initialPositionMs = pos.takeIf { keepPosition },
                                 seamlessQualitySwitchEnabled = session.seamlessQualitySwitchEnabled && !seamlessQualitySwitchDisabledForPlayback,
                             ),
                         )
@@ -3172,6 +3172,7 @@ class PlayerActivity : BaseActivity() {
                                 playable = playable,
                                 subtitle = subtitleConfig,
                                 durationMs = currentViewDurationMs,
+                                initialPositionMs = pos.takeIf { keepPosition },
                                 seamlessQualitySwitchEnabled = session.seamlessQualitySwitchEnabled && !seamlessQualitySwitchDisabledForPlayback,
                             ),
                         )
@@ -3188,6 +3189,7 @@ class PlayerActivity : BaseActivity() {
                                 playable = playable,
                                 subtitle = subtitleConfig,
                                 durationMs = currentViewDurationMs,
+                                initialPositionMs = pos.takeIf { keepPosition },
                                 seamlessQualitySwitchEnabled = session.seamlessQualitySwitchEnabled && !seamlessQualitySwitchDisabledForPlayback,
                             ),
                         )
@@ -3201,10 +3203,6 @@ class PlayerActivity : BaseActivity() {
                 )
                 engine.prepare()
                 (engine as? ExoPlayerEngine)?.exoPlayer?.let { applySubtitleEnabled(it) }
-                if (keepPosition) {
-                    engine.seekTo(pos)
-                    AppLog.i("QualitySwitch", "reload seek reason=$reason target=$pos")
-                }
                 engine.playWhenReady = autoPlay
             } catch (t: Throwable) {
                 AppLog.e("Player", "reloadStream failed", t)

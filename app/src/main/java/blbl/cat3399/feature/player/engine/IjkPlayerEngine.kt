@@ -209,6 +209,7 @@ internal class IjkPlayerEngine(
         runCatching { p.setSurface(videoSurface) }
         runCatching { p.setLooping(repeatModeInternal == Player.REPEAT_MODE_ONE) }
         runCatching { p.setSpeed(playbackSpeedInternal) }
+        applyInitialPosition(p, dataSource)
 
         try {
             when (dataSource) {
@@ -284,6 +285,25 @@ internal class IjkPlayerEngine(
     override fun prepare() {
         prepareRequested = true
         startPrepareIfPossible(reason = "explicit_prepare")
+    }
+
+    private fun applyInitialPosition(p: IjkMediaPlayer, source: PlaybackSource) {
+        val vod = source as? PlaybackSource.Vod ?: return
+        val positionMs = vod.initialPositionMs?.takeIf { it > 0L } ?: return
+        if (vod.playable is Playable.Dash) {
+            pendingSeekMs = null
+            runCatching {
+                p.setOption(IjkMediaPlayer.OPT_CATEGORY_PLAYER, "seek-at-start", positionMs)
+            }.onSuccess {
+                markVisibleSeekPosition(positionMs, clearsOnFirstFrame = true)
+            }.onFailure { throwable ->
+                AppLog.w("IjkEngine", "set initial DASH position failed positionMs=$positionMs", throwable)
+                clearVisibleSeekPosition()
+            }
+        } else {
+            pendingSeekMs = positionMs
+            markVisibleSeekPosition(positionMs, clearsOnFirstFrame = false)
+        }
     }
 
     override fun play() {
