@@ -446,6 +446,10 @@ internal fun PlayerActivity.beginKeySeekPending(keyCode: Int, direction: Int, sh
             if (direction < 0) {
                 // Long-press LEFT: always use preview-scrub rewind (independent of hold-seek mode setting).
                 startHoldScrub(direction = direction, showControls = showControls)
+            } else if (binding.seekProgress.isFocused) {
+                // The focused timeline owns LEFT/RIGHT hold semantics and must not inherit the
+                // fullscreen hold-to-speed preference.
+                startHoldScrub(direction = direction, showControls = showControls)
             } else {
                 startHoldSeek(direction = direction, showControls = showControls)
             }

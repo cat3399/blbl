@@ -1752,7 +1752,11 @@ class PlayerActivity : BaseActivity() {
 
                 if (event.repeatCount > 0) {
                     clearKeySeekPending()
-                    startHoldSeek(direction = +1, showControls = false)
+                    if (binding.seekProgress.isFocused) {
+                        startHoldScrub(direction = +1, showControls = false)
+                    } else {
+                        startHoldSeek(direction = +1, showControls = false)
+                    }
                     return true
                 }
 
