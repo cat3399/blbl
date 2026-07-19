@@ -1186,6 +1186,20 @@ class SettingsInteractionHandler(
                 }
             }
 
+            SettingId.PlayerPreferredQnPgc -> {
+                val options =
+                    PlaybackSettingChoices.resolutionQns.map { it to SettingsText.qnText(it) }
+                showChoiceDialog(
+                    title = "PGC 默认画质",
+                    items = options.map { it.second },
+                    current = SettingsText.qnText(prefs.playerPreferredQnPgc),
+                ) { selected ->
+                    val qn = options.firstOrNull { it.second == selected }?.first
+                    if (qn != null) prefs.playerPreferredQnPgc = qn
+                    renderer.refreshSection(entry.id)
+                }
+            }
+
             SettingId.PlayerPreferredQnPortrait -> {
                 val options =
                     PlaybackSettingChoices.resolutionQns.map { it to SettingsText.qnText(it) }

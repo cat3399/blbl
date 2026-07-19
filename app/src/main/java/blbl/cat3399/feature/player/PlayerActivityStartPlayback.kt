@@ -362,6 +362,9 @@ internal fun PlayerActivity.startPlayback(
             ?: parseBangumiSeasonIdFromSource(pageListSource)
     currentCid = -1L
     currentVideoIsPortrait = null
+    if (isPgcLikePlayback()) {
+        session = session.copy(preferredQn = BiliClient.prefs.playerPreferredQnPgc, targetQn = 0)
+    }
 
     trace =
         PlayerActivity.PlaybackTrace(
@@ -1118,7 +1121,12 @@ internal fun PlayerActivity.applyPerVideoPreferredQn(detail: VideoDetail, cid: L
 
     val isPortraitVideo = (effectiveW > 0 && effectiveH > 0 && effectiveH > effectiveW)
     currentVideoIsPortrait = isPortraitVideo
-    val preferredQn = if (isPortraitVideo) prefs.playerPreferredQnPortrait else prefs.playerPreferredQn
+    val preferredQn =
+        when {
+            isPgcLikePlayback() -> prefs.playerPreferredQnPgc
+            isPortraitVideo -> prefs.playerPreferredQnPortrait
+            else -> prefs.playerPreferredQn
+        }
     if (session.preferredQn != preferredQn) {
         session = session.copy(preferredQn = preferredQn)
     }

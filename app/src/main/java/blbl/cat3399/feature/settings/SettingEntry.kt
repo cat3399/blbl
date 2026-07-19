@@ -41,6 +41,7 @@ enum class SettingId(
 
     // 播放设置
     PlayerPreferredQn("player_preferred_qn"),
+    PlayerPreferredQnPgc("player_preferred_qn_pgc"),
     PlayerPreferredQnPortrait("player_preferred_qn_portrait"),
     PlayerPreferredAudioId("player_preferred_audio_id"),
     PlayerSeamlessQualitySwitchEnabled("player_seamless_quality_switch_enabled"),

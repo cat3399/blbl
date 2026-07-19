@@ -293,6 +293,12 @@ class SettingsRenderer(
                         SettingsText.qnText(prefs.playerPreferredQnPortrait),
                         null,
                     ),
+                    SettingEntry(
+                        SettingId.PlayerPreferredQnPgc,
+                        "PGC 默认画质",
+                        SettingsText.qnText(prefs.playerPreferredQnPgc),
+                        null,
+                    ),
                     SettingEntry(SettingId.PlayerPreferredAudioId, "默认音轨", SettingsText.audioText(prefs.playerPreferredAudioId), null),
                     SettingEntry(
                         SettingId.PlayerSeamlessQualitySwitchEnabled,

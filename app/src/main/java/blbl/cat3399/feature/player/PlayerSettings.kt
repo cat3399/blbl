@@ -145,6 +145,10 @@ internal fun PlayerActivity.toggleDanmakuReloadSettingFlag(
 }
 
 private fun PlayerActivity.persistResolutionPreference(prefs: AppPrefs, qn: Int) {
+    if (isPgcLikePlayback()) {
+        prefs.playerPreferredQnPgc = qn
+        return
+    }
     when (currentVideoIsPortrait) {
         true -> prefs.playerPreferredQnPortrait = qn
         false -> prefs.playerPreferredQn = qn
