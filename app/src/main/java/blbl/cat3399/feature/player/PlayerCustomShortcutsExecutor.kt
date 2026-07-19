@@ -213,14 +213,14 @@ private fun PlayerActivity.applyPlayerCustomShortcut(keyCode: Int, action: Playe
                 return
             }
             if (!subtitleAvailabilityKnown) {
-                showSeekHint("字幕：加载中", hold = false)
+                toggleSubtitles(exo)
                 return
             }
             if (!subtitleAvailable) {
                 showSeekHint("字幕：暂无", hold = false)
                 return
             }
-            applySubtitleEnabledSetting(!session.subtitleEnabled, exo)
+            toggleSubtitles(exo)
             val state = if (session.subtitleEnabled) "开" else "关"
             showSeekHint("字幕：$state", hold = false)
         }
