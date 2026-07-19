@@ -9,7 +9,6 @@
     android:background="@drawable/bg_setting_entry"
     android:clickable="true"
     android:focusable="true"
-    android:nextFocusLeft="@id/recycler_left"
     android:padding="18dp"
     android:stateListAnimator="@animator/blbl_focus_scale">
 
