@@ -9,7 +9,7 @@ import kotlin.math.roundToInt
 internal object PlaybackSettingChoices {
     val resolutionQns: List<Int> = listOf(16, 32, 64, 74, 80, 100, 112, 116, 120, 125, 126, 127, 129)
     val audioTrackIds: List<Int> = listOf(30251, 30250, 30280, 30232, 30216)
-    val playbackSpeeds: List<Float> = listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f)
+    val playbackSpeeds: List<Float> = listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f, 2.25f, 2.5f, 2.75f)
     val extendedPlaybackSpeeds: List<Float> = playbackSpeeds + listOf(3.0f, 4.0f)
     val subtitleTextSizes: List<Int> = (10..60 step 2).toList()
     val subtitleBottomPaddingPercents: List<Int> = (0..30 step 2).toList()
