@@ -5,6 +5,7 @@ import android.os.Bundle
 import android.view.KeyEvent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 import blbl.cat3399.core.io.CreateDocumentContract
 import blbl.cat3399.core.net.BiliClient
 import blbl.cat3399.core.ui.BaseActivity
@@ -120,6 +121,27 @@ class SettingsActivity : BaseActivity() {
         }
 
         val keyCode = event.keyCode
+        if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
+            val focused = currentFocus
+            val holder = focused?.let { binding.recyclerLeft.findContainingViewHolder(it) }
+            val position = holder?.bindingAdapterPosition ?: RecyclerView.NO_POSITION
+            if (position != RecyclerView.NO_POSITION) {
+                if (event.action == KeyEvent.ACTION_DOWN && !event.isCanceled) {
+                    renderer.enterSectionContent(position)
+                }
+                return true
+            }
+        }
+        if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT) {
+            val focused = currentFocus
+            val focusInContent = focused != null && FocusTreeUtils.isDescendantOf(focused, binding.recyclerRight)
+            if (focusInContent) {
+                if (event.action == KeyEvent.ACTION_DOWN && !event.isCanceled) {
+                    renderer.focusSectionTab(state.currentSectionIndex)
+                }
+                return true
+            }
+        }
         if (isBackLikeKey(keyCode)) {
             if (event.action == KeyEvent.ACTION_DOWN) {
                 val focused = currentFocus

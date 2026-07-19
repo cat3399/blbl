@@ -165,6 +165,15 @@ class SettingsRenderer(
         return focusLeftAt(safeIndex)
     }
 
+    fun enterSectionContent(index: Int): Boolean {
+        if (index !in 0 until leftAdapter.itemCount) return false
+        showSection(index, keepScroll = index == state.currentSectionIndex)
+        binding.recyclerRight.doOnPreDraw {
+            focusRightAt(0)
+        }
+        return true
+    }
+
     fun isNavKey(keyCode: Int): Boolean {
         return when (keyCode) {
             KeyEvent.KEYCODE_DPAD_UP,
