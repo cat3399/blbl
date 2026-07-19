@@ -1489,9 +1489,34 @@ class PlayerActivity : BaseActivity() {
             }
         }
 
-        if (event.action == KeyEvent.ACTION_UP) {
-            if (dispatchPlayerCustomShortcutIfNeeded(event)) return true
+        if (event.action == KeyEvent.ACTION_DOWN && isInteractionKey(keyCode)) noteUserInteraction()
 
+        when (val shortcutResult = dispatchPlayerCustomShortcutIfNeeded(event)) {
+            PlayerCustomShortcutDispatchResult.NotHandled -> Unit
+            PlayerCustomShortcutDispatchResult.Consumed -> return true
+            is PlayerCustomShortcutDispatchResult.RunDefaultShortPress -> {
+                return dispatchDefaultPlayerShortPress(
+                    downEvent = shortcutResult.downEvent,
+                    upEvent = shortcutResult.upEvent,
+                )
+            }
+        }
+
+        return dispatchPlayerKeyEventWithoutCustomShortcut(event)
+    }
+
+    private fun dispatchDefaultPlayerShortPress(downEvent: KeyEvent, upEvent: KeyEvent): Boolean {
+        return PlayerDefaultShortPressDispatcher.dispatchAndConsume(
+            context = this,
+            downEvent = downEvent,
+            upEvent = upEvent,
+            dispatchDefaultEvent = ::dispatchPlayerKeyEventWithoutCustomShortcut,
+        )
+    }
+
+    private fun dispatchPlayerKeyEventWithoutCustomShortcut(event: KeyEvent): Boolean {
+        val keyCode = event.keyCode
+        if (event.action == KeyEvent.ACTION_UP) {
             if (
                 keyCode == KeyEvent.KEYCODE_BACK ||
                 keyCode == KeyEvent.KEYCODE_ESCAPE ||
@@ -1531,10 +1556,6 @@ class PlayerActivity : BaseActivity() {
         }
 
         if (event.action != KeyEvent.ACTION_DOWN) return super.dispatchKeyEvent(event)
-
-        if (isInteractionKey(keyCode)) noteUserInteraction()
-
-        if (dispatchPlayerCustomShortcutIfNeeded(event)) return true
 
         when (keyCode) {
             KeyEvent.KEYCODE_MENU,
