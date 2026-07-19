@@ -889,6 +889,12 @@ class AppPrefs(context: Context) {
         prefs.edit().remove(KEY_SEARCH_HISTORY).apply()
     }
 
+    fun removeSearchHistory(keyword: String) {
+        val target = keyword.trim()
+        if (target.isBlank()) return
+        searchHistory = searchHistory.filterNot { it.equals(target, ignoreCase = true) }
+    }
+
     fun exportConfigSnapshotJson(): JSONObject =
         SharedPreferencesSnapshot.encode(
             prefs = prefs,

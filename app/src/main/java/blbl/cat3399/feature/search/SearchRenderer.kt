@@ -24,6 +24,7 @@ import blbl.cat3399.core.ui.hideImeReliable
 import blbl.cat3399.core.ui.postIfAlive
 import blbl.cat3399.core.ui.requestFocusAdapterPositionReliable
 import blbl.cat3399.core.ui.requestFocusFirstItemOrSelfAfterRefresh
+import blbl.cat3399.core.ui.setDpadItemKeyHandler
 import blbl.cat3399.core.ui.showImeReliable
 import blbl.cat3399.core.ui.uiScaler
 import blbl.cat3399.databinding.FragmentSearchBinding
@@ -52,6 +53,7 @@ class SearchRenderer internal constructor(
     val userAdapter get() = adapters.userAdapter
 
     private var resultsGridController: DpadGridController? = null
+    private var suggestGridController: DpadGridController? = null
 
     fun setupInput() {
         setupQueryInput()
@@ -89,12 +91,12 @@ class SearchRenderer internal constructor(
         binding.recyclerSuggest.addOnChildAttachStateChangeListener(
             object : RecyclerView.OnChildAttachStateChangeListener {
                 override fun onChildViewAttachedToWindow(view: View) {
-                    view.setOnKeyListener { v, keyCode, event ->
-                        if (event.action != KeyEvent.ACTION_DOWN) return@setOnKeyListener false
-                        val holder = binding.recyclerSuggest.findContainingViewHolder(v) ?: return@setOnKeyListener false
+                    view.setDpadItemKeyHandler { v, keyCode, event ->
+                        if (event.action != KeyEvent.ACTION_DOWN) return@setDpadItemKeyHandler false
+                        val holder = binding.recyclerSuggest.findContainingViewHolder(v) ?: return@setDpadItemKeyHandler false
                         val pos =
                             holder.bindingAdapterPosition.takeIf { it != RecyclerView.NO_POSITION }
-                                ?: return@setOnKeyListener false
+                                ?: return@setDpadItemKeyHandler false
 
                         when (keyCode) {
                             KeyEvent.KEYCODE_DPAD_LEFT -> {
@@ -103,25 +105,25 @@ class SearchRenderer internal constructor(
                             }
 
                             KeyEvent.KEYCODE_DPAD_UP -> {
-                                if (pos == 0) return@setOnKeyListener true
+                                if (pos == 0) return@setDpadItemKeyHandler true
                                 // Top edge: don't escape to sidebar.
                                 if (!binding.recyclerSuggest.canScrollVertically(-1)) {
                                     val lm =
                                         binding.recyclerSuggest.layoutManager as? StaggeredGridLayoutManager
-                                            ?: return@setOnKeyListener false
+                                            ?: return@setDpadItemKeyHandler false
                                     val first = IntArray(lm.spanCount)
                                     lm.findFirstVisibleItemPositions(first)
-                                    if (first.any { it == pos }) return@setOnKeyListener true
+                                    if (first.any { it == pos }) return@setDpadItemKeyHandler true
                                 }
                                 false
                             }
 
                             KeyEvent.KEYCODE_DPAD_DOWN -> {
                                 val last = (binding.recyclerSuggest.adapter?.itemCount ?: 0) - 1
-                                if (pos != last) return@setOnKeyListener false
+                                if (pos != last) return@setDpadItemKeyHandler false
                                 if (binding.btnClearHistory.visibility == View.VISIBLE) {
                                     binding.btnClearHistory.requestFocus()
-                                    return@setOnKeyListener true
+                                    return@setDpadItemKeyHandler true
                                 }
                                 // Bottom edge: don't escape to sidebar.
                                 true
@@ -143,11 +145,32 @@ class SearchRenderer internal constructor(
                 }
 
                 override fun onChildViewDetachedFromWindow(view: View) {
-                    view.setOnKeyListener(null)
+                    view.setDpadItemKeyHandler(null)
                     view.onFocusChangeListener = null
                 }
             },
         )
+
+        suggestGridController =
+            DpadGridController(
+                recyclerView = binding.recyclerSuggest,
+                callbacks =
+                    object : DpadGridController.Callbacks {
+                        override fun onTopEdge(): Boolean = true
+
+                        override fun onLeftEdge(): Boolean = focusLastKey()
+
+                        override fun onRightEdge() = Unit
+
+                        override fun canLoadMore(): Boolean = false
+
+                        override fun loadMore() = Unit
+                    },
+                config =
+                    DpadGridController.Config(
+                        isEnabled = { fragment.isResumed && !isResultsVisible() },
+                    ),
+            ).also { it.install() }
 
         binding.recyclerHot.adapter = hotAdapter
         binding.recyclerHot.layoutManager =
@@ -528,6 +551,8 @@ class SearchRenderer internal constructor(
         released = true
         resultsGridController?.release()
         resultsGridController = null
+        suggestGridController?.release()
+        suggestGridController = null
     }
 
     fun isResultsVisible(): Boolean = binding.panelResults.visibility == View.VISIBLE
@@ -588,20 +613,29 @@ class SearchRenderer internal constructor(
     }
 
     fun updateMiddleUi(history: List<String>, extra: List<String>) {
-        val merged = LinkedHashMap<String, String>()
+        val merged = LinkedHashMap<String, SearchSuggestionItem>()
         for (s in history) {
             val key = s.trim().lowercase()
             if (key.isBlank()) continue
-            if (merged[key] == null) merged[key] = s
+            if (merged[key] == null) merged[key] = SearchSuggestionItem(keyword = s, isHistory = true)
         }
         for (s in extra) {
             val key = s.trim().lowercase()
             if (key.isBlank()) continue
-            if (merged[key] == null) merged[key] = s
+            if (merged[key] == null) merged[key] = SearchSuggestionItem(keyword = s, isHistory = false)
         }
         val list = merged.values.toList()
         binding.recyclerSuggest.visibility = if (list.isNotEmpty()) View.VISIBLE else View.INVISIBLE
         suggestAdapter.submit(list)
+    }
+
+    fun focusSuggestionAfterRemoval(removedPosition: Int) {
+        val count = suggestAdapter.itemCount
+        if (count <= 0) {
+            focusFirstKey()
+            return
+        }
+        focusHistoryAt(removedPosition.coerceAtMost(count - 1))
     }
 
     fun updateHotUi(keywords: List<String>) {
