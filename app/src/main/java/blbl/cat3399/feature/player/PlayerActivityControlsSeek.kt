@@ -217,6 +217,7 @@ internal fun PlayerActivity.cancelVideoShotPreviewHide() {
 
 internal fun PlayerActivity.hideVideoShotPreviewNow() {
     cancelVideoShotPreviewHide()
+    videoShotPreviewRequestId += 1L
     binding.videoShotPreview.visibility = View.GONE
     videoShotFetchJob?.cancel()
 }
@@ -226,6 +227,7 @@ internal fun PlayerActivity.scheduleHideVideoShotPreviewAfterSeek() {
     videoShotPreviewHideJob =
         lifecycleScope.launch {
             delay(PlayerActivity.VIDEOSHOT_PREVIEW_HIDE_AFTER_SEEK_MS)
+            videoShotPreviewRequestId += 1L
             binding.videoShotPreview.visibility = View.GONE
             videoShotFetchJob?.cancel()
             videoShotPreviewHideJob = null
@@ -239,7 +241,6 @@ internal fun PlayerActivity.showVideoShotPreviewForSeek(
     trackView: View,
 ) {
     cancelVideoShotPreviewHide()
-    binding.videoShotPreview.visibility = View.VISIBLE
     updateVideoShotPreview(progress, max, positionMs, trackView)
 }
 
@@ -811,8 +812,12 @@ internal fun PlayerActivity.updateVideoShotPreview(
     }
 
     val previewView = binding.videoShotPreview
-    val shot = currentVideoShot ?: return
-    val cache = videoShotImageCache ?: return
+    val shot = currentVideoShot
+    val cache = videoShotImageCache
+    if (shot == null || cache == null) {
+        hideVideoShotPreviewNow()
+        return
+    }
     previewView.setContentAspectRatio(
         width = currentVideoContentWidth ?: shot.fallbackAspectWidth,
         height = currentVideoContentHeight ?: shot.fallbackAspectHeight,
@@ -821,7 +826,10 @@ internal fun PlayerActivity.updateVideoShotPreview(
         disableVideoShotPreviewForCurrentVideo(reason = "draw", throwable = t)
     }
 
+    val requestId = videoShotPreviewRequestId + 1L
+    videoShotPreviewRequestId = requestId
     videoShotFetchJob?.cancel()
+    previewView.visibility = if (previewView.spriteFrame == null) View.INVISIBLE else View.VISIBLE
     videoShotFetchJob = lifecycleScope.launch {
         delay(16) // 16ms 防抖
         val frame =
@@ -833,12 +841,19 @@ internal fun PlayerActivity.updateVideoShotPreview(
                 return@launch
             }
 
-        if (currentVideoShot !== shot || videoShotImageCache !== cache) return@launch
+        if (
+            videoShotPreviewRequestId != requestId ||
+            currentVideoShot !== shot ||
+            videoShotImageCache !== cache
+        ) {
+            return@launch
+        }
 
         previewView.spriteFrame = frame
         positionVideoShotPreviewX(previewView, trackView, progress, max)
+        previewView.visibility = View.VISIBLE
         previewView.post {
-            if (previewView.spriteFrame === frame) {
+            if (videoShotPreviewRequestId == requestId && previewView.spriteFrame === frame) {
                 positionVideoShotPreviewX(previewView, trackView, progress, max)
             }
         }
@@ -847,6 +862,7 @@ internal fun PlayerActivity.updateVideoShotPreview(
 
 internal fun PlayerActivity.disableVideoShotPreviewForCurrentVideo(reason: String, throwable: Throwable? = null) {
     AppLog.w("Player", "disable videoShot preview reason=$reason bvid=$currentBvid cid=$currentCid", throwable)
+    videoShotPreviewRequestId += 1L
     videoShotFetchJob?.cancel()
     videoShotFetchJob = null
     videoShotImageCache?.clear()

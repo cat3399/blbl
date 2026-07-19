@@ -347,6 +347,7 @@ class PlayerActivity : BaseActivity() {
     internal var currentVideoShot: VideoShot? = null
     internal var videoShotImageCache: VideoShotImageCache? = null
     internal var videoShotFetchJob: Job? = null
+    internal var videoShotPreviewRequestId: Long = 0L
     internal var startupEnhancementJob: Job? = null
     internal var currentVideoContentWidth: Int? = null
     internal var currentVideoContentHeight: Int? = null
