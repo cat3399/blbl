@@ -61,6 +61,7 @@ internal class VideoCommentImageView
         private var lastY = 0f
         private var dragging = false
         private var multiTouchActive = false
+        private var multiTouchGesture = false
 
         init {
             scaleType = ScaleType.MATRIX
@@ -76,6 +77,7 @@ internal class VideoCommentImageView
             offsetY = 0f
             dragging = false
             multiTouchActive = false
+            multiTouchGesture = false
             updateMatrix()
             notifyZoomStateIfChanged(wasZoomed)
         }
@@ -127,10 +129,12 @@ internal class VideoCommentImageView
                     lastY = event.y
                     dragging = false
                     multiTouchActive = false
+                    multiTouchGesture = false
                 }
 
                 MotionEvent.ACTION_POINTER_DOWN -> {
                     multiTouchActive = true
+                    multiTouchGesture = true
                     dragging = false
                 }
 
@@ -172,23 +176,40 @@ internal class VideoCommentImageView
                 MotionEvent.ACTION_UP -> {
                     val x = event.x
                     val y = event.y
+                    val totalDx = x - downX
+                    val totalDy = y - downY
+                    val isHorizontalSwipe =
+                        !multiTouchGesture &&
+                            !scaleDetector.isInProgress &&
+                            !isZoomed() &&
+                            dragging &&
+                            abs(totalDx) >= swipeThresholdPx &&
+                            abs(totalDx) > abs(totalDy) * SWIPE_DIRECTION_RATIO
                     val isTap =
-                        !multiTouchActive &&
+                        !multiTouchGesture &&
                             !scaleDetector.isInProgress &&
                             !dragging &&
-                            abs(x - downX) <= touchSlopPx &&
-                            abs(y - downY) <= touchSlopPx
-                    if (isTap) {
+                            abs(totalDx) <= touchSlopPx &&
+                            abs(totalDy) <= touchSlopPx
+                    if (isHorizontalSwipe) {
+                        if (totalDx > 0f) {
+                            onNavigatePrevious?.invoke()
+                        } else {
+                            onNavigateNext?.invoke()
+                        }
+                    } else if (isTap) {
                         handleTap(x = x, y = y)
                     }
                     dragging = false
                     multiTouchActive = false
+                    multiTouchGesture = false
                     performClick()
                 }
 
                 MotionEvent.ACTION_CANCEL -> {
                     dragging = false
                     multiTouchActive = false
+                    multiTouchGesture = false
                 }
             }
 
@@ -310,7 +331,12 @@ internal class VideoCommentImageView
             private const val DPAD_TOGGLE_SCALE = 2f
             private const val SCALE_EPSILON = 0.01f
             private const val EDGE_TAP_RATIO = 0.2f
+            private const val SWIPE_MIN_DP = 32f
+            private const val SWIPE_DIRECTION_RATIO = 1.25f
             private const val DPAD_PAN_STEP_RATIO = 0.12f
             private const val DPAD_PAN_MIN_DP = 48f
         }
+
+        private val swipeThresholdPx: Float
+            get() = max(touchSlopPx * 2f, density * SWIPE_MIN_DP)
     }
