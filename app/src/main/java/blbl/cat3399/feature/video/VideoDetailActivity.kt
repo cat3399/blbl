@@ -862,6 +862,45 @@ class VideoDetailActivity : BaseActivity() {
                     val b = ViewVideoCommentsPopupBinding.inflate(LayoutInflater.from(dialogContext))
                     val commentViews = IncludeVideoCommentsPanelContentBinding.bind(b.commentsPopupContent)
                     val imageViews = IncludeVideoCommentImageViewerContentBinding.bind(b.commentImageViewer)
+                    // The popup card has a tighter width than the player side panel. Reserve
+                    // extra horizontal focus-safe space for the shared 1.04x comment-card scale.
+                    val focusSafeH = resources.getDimensionPixelSize(R.dimen.player_comments_recycler_padding_h)
+                    listOf(commentViews.recyclerComments, commentViews.recyclerCommentThread).forEach { recycler ->
+                        recycler.setPadding(
+                            focusSafeH * 2,
+                            recycler.paddingTop,
+                            focusSafeH * 2,
+                            recycler.paddingBottom + focusSafeH * 8,
+                        )
+                        recycler.addOnChildAttachStateChangeListener(
+                            object : androidx.recyclerview.widget.RecyclerView.OnChildAttachStateChangeListener {
+                                override fun onChildViewAttachedToWindow(child: View) {
+                                    child.setOnFocusChangeListener { focusedCard, hasFocus ->
+                                        if (!hasFocus) return@setOnFocusChangeListener
+                                        recycler.post {
+                                            val visible = android.graphics.Rect()
+                                            if (!recycler.getGlobalVisibleRect(visible)) return@post
+                                            val location = IntArray(2)
+                                            focusedCard.getLocationOnScreen(location)
+                                            val cardTop = location[1]
+                                            val cardBottom = cardTop + focusedCard.height
+                                            val safeInset = focusSafeH
+                                            val delta = when {
+                                                cardBottom + safeInset > visible.bottom -> cardBottom + safeInset - visible.bottom
+                                                cardTop - safeInset < visible.top -> cardTop - safeInset - visible.top
+                                                else -> 0
+                                            }
+                                            if (delta != 0) recycler.scrollBy(0, delta)
+                                        }
+                                    }
+                                }
+
+                                override fun onChildViewDetachedFromWindow(child: View) {
+                                    child.setOnFocusChangeListener(null)
+                                }
+                            },
+                        )
+                    }
                     popupBinding = b
 
                     imageViewer =

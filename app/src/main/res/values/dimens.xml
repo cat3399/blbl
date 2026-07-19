@@ -191,7 +191,7 @@
     <dimen name="player_side_panel_padding">8dp</dimen>
     <dimen name="player_side_panel_recycler_padding">4dp</dimen>
     <dimen name="player_settings_recycler_padding_h">4dp</dimen>
-    <dimen name="player_comments_recycler_padding_h">2dp</dimen>
+    <dimen name="player_comments_recycler_padding_h">12dp</dimen>
     <dimen name="player_comments_recycler_padding_v">10dp</dimen>
     <dimen name="player_side_panel_content_margin_top">8dp</dimen>
 
