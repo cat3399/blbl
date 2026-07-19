@@ -1,5 +1,6 @@
 package blbl.cat3399.feature.video.comment
 
+import blbl.cat3399.core.note.NoteImage
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -40,7 +41,7 @@ internal fun parseVideoCommentReplyItem(
     val content = obj.optJSONObject("content") ?: JSONObject()
     val message = content.optString("message", "").trim()
     val emotes = parseVideoCommentEmoteMap(content.optJSONObject("emote"))
-    val pictures = parseVideoCommentPictureUrls(content.optJSONArray("pictures"))
+    val pictures = parseVideoCommentPictures(content.optJSONArray("pictures"))
     val noteCvid =
         obj.optString("note_cvid_str", "").trim().toLongOrNull()
             ?: obj.optLong("note_cvid", 0L)
@@ -84,6 +85,28 @@ internal data class VideoCommentReplyPreview(
     val emotes: Map<String, String> = emptyMap(),
 )
 
+internal data class VideoCommentPicture(
+    val url: String,
+    val width: Int? = null,
+    val height: Int? = null,
+) {
+    val dimensionRatio: String?
+        get() = imageDimensionRatio(width = width, height = height)
+}
+
+internal fun imageDimensionRatio(width: Int?, height: Int?): String? {
+    val safeWidth = width?.takeIf { it > 0 } ?: return null
+    val safeHeight = height?.takeIf { it > 0 } ?: return null
+    return "$safeWidth:$safeHeight"
+}
+
+internal fun NoteImage.toVideoCommentPicture(): VideoCommentPicture =
+    VideoCommentPicture(
+        url = url,
+        width = width,
+        height = height,
+    )
+
 internal data class VideoCommentItem(
     val key: String,
     val rpid: Long,
@@ -94,7 +117,7 @@ internal data class VideoCommentItem(
     val avatarUrl: String?,
     val message: String,
     val emotes: Map<String, String> = emptyMap(),
-    val pictures: List<String> = emptyList(),
+    val pictures: List<VideoCommentPicture> = emptyList(),
     val noteCvid: Long = 0L,
     val ctimeSec: Long,
     val likeCount: Long,
@@ -139,9 +162,9 @@ private fun parseVideoCommentEmoteMap(obj: JSONObject?): Map<String, String> {
     return out
 }
 
-private fun parseVideoCommentPictureUrls(arr: JSONArray?): List<String> {
+private fun parseVideoCommentPictures(arr: JSONArray?): List<VideoCommentPicture> {
     if (arr == null || arr.length() <= 0) return emptyList()
-    val out = ArrayList<String>(arr.length().coerceAtMost(6))
+    val out = ArrayList<VideoCommentPicture>(arr.length().coerceAtMost(6))
     for (i in 0 until arr.length()) {
         val obj = arr.optJSONObject(i) ?: continue
         val rawUrl = obj.optString("img_src", "").trim()
@@ -151,7 +174,13 @@ private fun parseVideoCommentPictureUrls(arr: JSONArray?): List<String> {
                 rawUrl.startsWith("//") -> "https:$rawUrl"
                 else -> continue
             }
-        out.add(url)
+        out.add(
+            VideoCommentPicture(
+                url = url,
+                width = obj.optInt("img_width", 0).takeIf { it > 0 },
+                height = obj.optInt("img_height", 0).takeIf { it > 0 },
+            ),
+        )
         if (out.size >= 6) break
     }
     return out

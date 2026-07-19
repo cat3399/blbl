@@ -18,11 +18,12 @@ internal class VideoCommentImageViewerController(
     private val fallbackFocusProvider: () -> View?,
 ) {
     private val focusReturn = FocusReturn()
-    private var urls: List<String> = emptyList()
+    private var pictures: List<VideoCommentPicture> = emptyList()
     private var index: Int = 0
 
     init {
         views.container.visibility = View.GONE
+        views.image.setSourceDimensions(width = null, height = null)
         ImageLoader.loadInto(views.image, null)
         views.image.resetViewport()
 
@@ -65,12 +66,16 @@ internal class VideoCommentImageViewerController(
 
     fun isVisible(): Boolean = views.container.visibility == View.VISIBLE
 
-    fun open(urls: List<String>, startIndex: Int = 0): Boolean {
-        val safeUrls = urls.map { it.trim() }.filter { it.isNotBlank() }
-        if (safeUrls.isEmpty()) return false
+    fun open(pictures: List<VideoCommentPicture>, startIndex: Int = 0): Boolean {
+        val safePictures =
+            pictures.mapNotNull { picture ->
+                val url = picture.url.trim().takeIf { it.isNotBlank() } ?: return@mapNotNull null
+                if (url == picture.url) picture else picture.copy(url = url)
+            }
+        if (safePictures.isEmpty()) return false
 
-        this.urls = safeUrls
-        index = startIndex.coerceIn(0, safeUrls.lastIndex)
+        this.pictures = safePictures
+        index = startIndex.coerceIn(0, safePictures.lastIndex)
         focusReturn.capture(currentFocusProvider())
 
         views.container.visibility = View.VISIBLE
@@ -86,9 +91,10 @@ internal class VideoCommentImageViewerController(
         if (!isVisible()) return
 
         views.container.visibility = View.GONE
+        views.image.setSourceDimensions(width = null, height = null)
         ImageLoader.loadInto(views.image, null)
         views.image.resetViewport()
-        urls = emptyList()
+        pictures = emptyList()
         index = 0
 
         if (!restoreFocus) {
@@ -180,38 +186,40 @@ internal class VideoCommentImageViewerController(
     }
 
     private fun render() {
-        val currentUrls = urls
-        if (currentUrls.isEmpty()) {
+        val currentPictures = pictures
+        if (currentPictures.isEmpty()) {
             close()
             return
         }
 
-        val idx = index.coerceIn(0, currentUrls.lastIndex)
+        val idx = index.coerceIn(0, currentPictures.lastIndex)
         index = idx
+        val picture = currentPictures[idx]
         views.image.resetViewport()
-        ImageLoader.loadInto(views.image, currentUrls[idx])
+        views.image.setSourceDimensions(width = picture.width, height = picture.height)
+        ImageLoader.loadInto(views.image, picture.url)
         updateNavigationUi()
     }
 
     private fun previous() {
-        if (urls.size <= 1) return
+        if (pictures.size <= 1) return
         if (index <= 0) return
         index -= 1
         render()
     }
 
     private fun next() {
-        if (urls.size <= 1) return
-        if (index >= urls.lastIndex) return
+        if (pictures.size <= 1) return
+        if (index >= pictures.lastIndex) return
         index += 1
         render()
     }
 
     private fun updateNavigationUi() {
-        val showNavigation = urls.size > 1 && !views.image.isZoomed()
+        val showNavigation = pictures.size > 1 && !views.image.isZoomed()
         views.previous.visibility =
             if (showNavigation && index > 0) View.VISIBLE else View.GONE
         views.next.visibility =
-            if (showNavigation && index < urls.lastIndex) View.VISIBLE else View.GONE
+            if (showNavigation && index < pictures.lastIndex) View.VISIBLE else View.GONE
     }
 }

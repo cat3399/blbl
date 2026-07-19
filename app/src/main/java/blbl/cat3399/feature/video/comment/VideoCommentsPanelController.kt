@@ -353,15 +353,18 @@ internal class VideoCommentsPanelController(
     ) {
         val viewer = imageViewer ?: return
         if (item.pictures.isNotEmpty()) {
-            viewer.open(urls = item.pictures, startIndex = startIndex)
+            viewer.open(pictures = item.pictures, startIndex = startIndex)
             return
         }
         AppToast.show(context, "加载图片中…")
-        NoteImageRepository.load(item.noteCvid) { urls ->
+        NoteImageRepository.load(item.noteCvid) { images ->
             if (!isActive()) return@load
             if (requireThreadVisible != isThreadVisible()) return@load
-            if (urls.isEmpty()) return@load
-            viewer.open(urls = urls, startIndex = startIndex)
+            if (images.isEmpty()) return@load
+            viewer.open(
+                pictures = images.map { it.toVideoCommentPicture() },
+                startIndex = startIndex,
+            )
         }
     }
 

@@ -10,6 +10,7 @@ import android.view.MotionEvent
 import android.view.ScaleGestureDetector
 import android.view.ViewConfiguration
 import androidx.appcompat.widget.AppCompatImageView
+import androidx.constraintlayout.widget.ConstraintLayout
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
@@ -70,6 +71,10 @@ internal class VideoCommentImageView
 
         fun isZoomed(): Boolean = zoomScale > MIN_SCALE + SCALE_EPSILON
 
+        fun setSourceDimensions(width: Int?, height: Int?) {
+            updateLayoutDimensionRatio(imageDimensionRatio(width = width, height = height))
+        }
+
         fun resetViewport() {
             val wasZoomed = isZoomed()
             zoomScale = MIN_SCALE
@@ -109,6 +114,9 @@ internal class VideoCommentImageView
 
         override fun setImageBitmap(bm: Bitmap?) {
             super.setImageBitmap(bm)
+            if (bm != null) {
+                setSourceDimensions(width = bm.width, height = bm.height)
+            }
             scheduleViewportReset()
         }
 
@@ -312,6 +320,13 @@ internal class VideoCommentImageView
                 height > 0 &&
                 drawable.intrinsicWidth > 0 &&
                 drawable.intrinsicHeight > 0
+        }
+
+        private fun updateLayoutDimensionRatio(ratio: String?) {
+            val params = layoutParams as? ConstraintLayout.LayoutParams ?: return
+            if (params.dimensionRatio == ratio) return
+            params.dimensionRatio = ratio
+            layoutParams = params
         }
 
         private fun notifyZoomStateIfChanged(previousZoomed: Boolean) {

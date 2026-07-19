@@ -52,7 +52,7 @@ internal class VideoCommentsAdapter(
         notifyItemRangeInserted(start, list.size)
     }
 
-    fun updatePictures(rpid: Long, pictures: List<String>) {
+    fun updatePictures(rpid: Long, pictures: List<VideoCommentPicture>) {
         if (pictures.isEmpty()) return
         val idx = items.indexOfFirst { it.rpid == rpid }
         if (idx !in items.indices) return
@@ -101,8 +101,11 @@ internal class VideoCommentsAdapter(
         if (item.pictures.isNotEmpty()) return
         if (item.noteCvid <= 0L) return
         if (!requestedNotePictures.add(item.rpid)) return
-        NoteImageRepository.load(item.noteCvid) { urls ->
-            updatePictures(item.rpid, urls)
+        NoteImageRepository.load(item.noteCvid) { images ->
+            updatePictures(
+                item.rpid,
+                images.map { it.toVideoCommentPicture() },
+            )
         }
     }
 
@@ -228,8 +231,8 @@ internal class VideoCommentsAdapter(
             item: VideoCommentItem,
             onPictureClick: (VideoCommentItem, Int) -> Unit,
         ) {
-            val urls = item.pictures.take(3).filter { it.isNotBlank() }
-            if (urls.isEmpty()) {
+            val pictures = item.pictures.take(3).filter { it.url.isNotBlank() }
+            if (pictures.isEmpty()) {
                 binding.rowPictures.visibility = View.GONE
                 ImageLoader.loadInto(binding.ivPicture1, null)
                 ImageLoader.loadInto(binding.ivPicture2, null)
@@ -244,13 +247,13 @@ internal class VideoCommentsAdapter(
             }
 
             binding.rowPictures.visibility = View.VISIBLE
-            val v1 = urls.getOrNull(0)
-            val v2 = urls.getOrNull(1)
-            val v3 = urls.getOrNull(2)
+            val v1 = pictures.getOrNull(0)
+            val v2 = pictures.getOrNull(1)
+            val v3 = pictures.getOrNull(2)
 
             if (v1 != null) {
                 binding.ivPicture1.visibility = View.VISIBLE
-                ImageLoader.loadInto(binding.ivPicture1, ImageUrl.commentThumbnail(v1))
+                ImageLoader.loadInto(binding.ivPicture1, ImageUrl.commentThumbnail(v1.url))
                 binding.ivPicture1.setOnClickListener { onPictureClick(item, 0) }
             } else {
                 binding.ivPicture1.visibility = View.GONE
@@ -260,7 +263,7 @@ internal class VideoCommentsAdapter(
 
             if (v2 != null) {
                 binding.ivPicture2.visibility = View.VISIBLE
-                ImageLoader.loadInto(binding.ivPicture2, ImageUrl.commentThumbnail(v2))
+                ImageLoader.loadInto(binding.ivPicture2, ImageUrl.commentThumbnail(v2.url))
                 binding.ivPicture2.setOnClickListener { onPictureClick(item, 1) }
             } else {
                 binding.ivPicture2.visibility = View.GONE
@@ -270,7 +273,7 @@ internal class VideoCommentsAdapter(
 
             if (v3 != null) {
                 binding.ivPicture3.visibility = View.VISIBLE
-                ImageLoader.loadInto(binding.ivPicture3, ImageUrl.commentThumbnail(v3))
+                ImageLoader.loadInto(binding.ivPicture3, ImageUrl.commentThumbnail(v3.url))
                 binding.ivPicture3.setOnClickListener { onPictureClick(item, 2) }
             } else {
                 binding.ivPicture3.visibility = View.GONE
