@@ -54,10 +54,25 @@ jobs:
           fi
 
       - name: Install packaging tools
+        shell: bash
         run: |
+          set -euo pipefail
+
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            awscli binutils curl unzip zip
+            binutils curl unzip zip
+
+          if ! command -v aws >/dev/null 2>&1; then
+            aws_install_dir="$(mktemp -d "${RUNNER_TEMP}/aws-cli.XXXXXX")"
+            curl --fail --silent --show-error --location \
+              --output "${aws_install_dir}/awscliv2.zip" \
+              "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip"
+            unzip -q "${aws_install_dir}/awscliv2.zip" -d "$aws_install_dir"
+            sudo "${aws_install_dir}/aws/install"
+            hash -r
+          fi
+
+          aws --version
 
       - name: Validate and package kernels
         id: package
