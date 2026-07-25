@@ -1,5 +1,6 @@
 package blbl.cat3399.feature.player
 
+import android.os.Build
 import android.os.SystemClock
 import android.view.View
 import androidx.lifecycle.lifecycleScope
@@ -70,19 +71,24 @@ internal fun PlayerActivity.updateProgressUi() {
                 .toInt()
                 .coerceIn(0, PlayerActivity.SEEK_MAX)
         binding.seekProgress.secondaryProgress = bufferedProgress
-        binding.progressPersistentBottom.secondaryProgress = bufferedProgress
         binding.progressSeekOsd.secondaryProgress = bufferedProgress
 
+        val actualProgress =
+            ((pos.toDouble() / duration.toDouble()) * PlayerActivity.SEEK_MAX)
+                .toInt()
+                .coerceIn(0, PlayerActivity.SEEK_MAX)
         if (!uiScrubbing) {
-            val p = ((pos.toDouble() / duration.toDouble()) * PlayerActivity.SEEK_MAX).toInt().coerceIn(0, PlayerActivity.SEEK_MAX)
-            binding.seekProgress.progress = p
+            binding.seekProgress.progress = actualProgress
         }
         val pNow = ((uiPos.toDouble() / duration.toDouble()) * PlayerActivity.SEEK_MAX).toInt().coerceIn(0, PlayerActivity.SEEK_MAX)
-        binding.progressPersistentBottom.progress = pNow
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            binding.progressPersistentBottom.setProgress(actualProgress, true)
+        } else {
+            binding.progressPersistentBottom.progress = actualProgress
+        }
         binding.progressSeekOsd.progress = pNow
     } else {
         binding.seekProgress.secondaryProgress = 0
-        binding.progressPersistentBottom.secondaryProgress = 0
         binding.progressPersistentBottom.progress = 0
         binding.progressSeekOsd.secondaryProgress = 0
         binding.progressSeekOsd.progress = 0
