@@ -40,6 +40,8 @@ class SettingsEntryAdapter(
 
     fun indexOfId(id: SettingId): Int = items.indexOfFirst { it.id == id }
 
+    fun idAt(position: Int): SettingId? = items.getOrNull(position)?.id
+
     override fun getItemId(position: Int): Long {
         return items.getOrNull(position)?.id?.key?.hashCode()?.toLong() ?: RecyclerView.NO_ID
     }

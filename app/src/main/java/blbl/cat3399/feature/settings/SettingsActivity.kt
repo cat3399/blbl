@@ -3,6 +3,7 @@ package blbl.cat3399.feature.settings
 import android.net.Uri
 import android.os.Bundle
 import android.view.KeyEvent
+import android.view.View
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -22,6 +23,7 @@ class SettingsActivity : BaseActivity() {
     private lateinit var rightAdapter: SettingsEntryAdapter
     private lateinit var renderer: SettingsRenderer
     private lateinit var interactionHandler: SettingsInteractionHandler
+    private val focusKeyState = SettingsFocusKeyState()
 
     private val gaiaVgateLauncher =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -121,33 +123,13 @@ class SettingsActivity : BaseActivity() {
         }
 
         val keyCode = event.keyCode
-        if (keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) {
-            val focused = currentFocus
-            val holder = focused?.let { binding.recyclerLeft.findContainingViewHolder(it) }
-            val position = holder?.bindingAdapterPosition ?: RecyclerView.NO_POSITION
-            if (position != RecyclerView.NO_POSITION) {
-                if (event.action == KeyEvent.ACTION_DOWN && !event.isCanceled) {
-                    renderer.enterSectionContent(position)
-                }
-                return true
-            }
-        }
-        if (keyCode == KeyEvent.KEYCODE_DPAD_LEFT) {
-            val focused = currentFocus
-            val focusInContent = focused != null && FocusTreeUtils.isDescendantOf(focused, binding.recyclerRight)
-            if (focusInContent) {
-                if (event.action == KeyEvent.ACTION_DOWN && !event.isCanceled) {
-                    renderer.focusSectionTab(state.currentSectionIndex)
-                }
-                return true
-            }
-        }
+        if (handleExplicitFocusKey(event)) return true
         if (isBackLikeKey(keyCode)) {
             if (event.action == KeyEvent.ACTION_DOWN) {
                 val focused = currentFocus
                 val focusInContent = focused != null && FocusTreeUtils.isDescendantOf(focused, binding.recyclerRight)
                 if (focusInContent) {
-                    renderer.focusSectionTab(state.currentSectionIndex)
+                    renderer.focusActiveSectionTab()
                 } else {
                     finish()
                 }
@@ -160,6 +142,86 @@ class SettingsActivity : BaseActivity() {
             return true
         }
         return super.dispatchKeyEvent(event)
+    }
+
+    private fun handleExplicitFocusKey(event: KeyEvent): Boolean {
+        val keyCode = event.keyCode
+        val isDpadDirection =
+            keyCode == KeyEvent.KEYCODE_DPAD_UP ||
+                keyCode == KeyEvent.KEYCODE_DPAD_DOWN ||
+                keyCode == KeyEvent.KEYCODE_DPAD_LEFT ||
+                keyCode == KeyEvent.KEYCODE_DPAD_RIGHT
+        if (!isDpadDirection) return false
+
+        return when (event.action) {
+            KeyEvent.ACTION_DOWN ->
+                focusKeyState.onDown(keyCode, event.repeatCount) {
+                    if (event.isCanceled) return@onDown false
+                    handleFocusKeyDown(keyCode)
+                }
+
+            KeyEvent.ACTION_UP -> focusKeyState.onUp(keyCode)
+            else -> false
+        }
+    }
+
+    private fun handleFocusKeyDown(keyCode: Int): Boolean {
+        val focused = currentFocus ?: return false
+        if (keyCode == KeyEvent.KEYCODE_DPAD_DOWN && focused == binding.btnBack) {
+            return renderer.focusLastSectionTab()
+        }
+
+        if (FocusTreeUtils.isDescendantOf(focused, binding.recyclerLeft)) {
+            val leftPosition = focusedAdapterPosition(binding.recyclerLeft, focused)
+            return when (keyCode) {
+                KeyEvent.KEYCODE_DPAD_UP -> {
+                    when (leftPosition) {
+                        RecyclerView.NO_POSITION -> true
+                        0 -> binding.btnBack.requestFocus()
+                        else -> false
+                    }
+                }
+
+                KeyEvent.KEYCODE_DPAD_DOWN ->
+                    shouldStopSettingsVerticalFocus(
+                        position = leftPosition,
+                        itemCount = leftAdapter.itemCount,
+                        direction = SettingsVerticalDirection.Down,
+                    )
+
+                KeyEvent.KEYCODE_DPAD_RIGHT -> renderer.focusActiveSectionContent()
+                else -> false
+            }
+        }
+
+        if (FocusTreeUtils.isDescendantOf(focused, binding.recyclerRight)) {
+            val rightPosition = focusedAdapterPosition(binding.recyclerRight, focused)
+            return when (keyCode) {
+                KeyEvent.KEYCODE_DPAD_UP ->
+                    shouldStopSettingsVerticalFocus(
+                        position = rightPosition,
+                        itemCount = rightAdapter.itemCount,
+                        direction = SettingsVerticalDirection.Up,
+                    )
+
+                KeyEvent.KEYCODE_DPAD_DOWN ->
+                    shouldStopSettingsVerticalFocus(
+                        position = rightPosition,
+                        itemCount = rightAdapter.itemCount,
+                        direction = SettingsVerticalDirection.Down,
+                    )
+
+                KeyEvent.KEYCODE_DPAD_LEFT -> renderer.focusActiveSectionTab()
+                else -> false
+            }
+        }
+
+        return false
+    }
+
+    private fun focusedAdapterPosition(recyclerView: RecyclerView, focused: View): Int {
+        return recyclerView.findContainingViewHolder(focused)?.bindingAdapterPosition
+            ?: RecyclerView.NO_POSITION
     }
 
     private fun isBackLikeKey(keyCode: Int): Boolean {

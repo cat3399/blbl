@@ -3,12 +3,12 @@ package blbl.cat3399.feature.settings
 import android.os.Build
 import android.view.KeyEvent
 import android.view.View
-import androidx.core.view.doOnPreDraw
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import blbl.cat3399.BuildConfig
 import blbl.cat3399.core.net.BiliClient
 import blbl.cat3399.core.ui.FocusTreeUtils
+import blbl.cat3399.core.ui.requestFocusAdapterPositionReliable
 import blbl.cat3399.databinding.ActivitySettingsBinding
 import blbl.cat3399.feature.player.AudioBalanceLevel
 import blbl.cat3399.feature.player.engine.IjkPlayerPlugin
@@ -32,10 +32,14 @@ class SettingsRenderer(
                 if (newFocus == null) return@OnGlobalFocusChangeListener
                 when {
                     newFocus == binding.btnBack -> {
+                        state.focusRequestToken++
+                        state.pendingRestoreRightId = null
                         state.pendingRestoreBack = false
                     }
 
                     FocusTreeUtils.isDescendantOf(newFocus, binding.recyclerLeft) -> {
+                        state.focusRequestToken++
+                        state.pendingRestoreRightId = null
                         val holder = binding.recyclerLeft.findContainingViewHolder(newFocus) ?: return@OnGlobalFocusChangeListener
                         val pos =
                             holder.bindingAdapterPosition.takeIf { it != RecyclerView.NO_POSITION }
@@ -47,8 +51,11 @@ class SettingsRenderer(
                     FocusTreeUtils.isDescendantOf(newFocus, binding.recyclerRight) -> {
                         val itemView = binding.recyclerRight.findContainingItemView(newFocus) ?: newFocus
                         val id = itemView.tag as? SettingId
-                        if (id != null) state.lastFocusedRightId = id
-                        if (state.pendingRestoreRightId == id) state.pendingRestoreRightId = null
+                        if (id != null && rightAdapter.indexOfId(id) != RecyclerView.NO_POSITION) {
+                            state.focusRequestToken++
+                            state.rememberFocusedRightId(id)
+                            state.pendingRestoreRightId = null
+                        }
                     }
                 }
             }.also { binding.root.viewTreeObserver.addOnGlobalFocusChangeListener(it) }
@@ -60,6 +67,7 @@ class SettingsRenderer(
     }
 
     fun showSection(index: Int, keepScroll: Boolean = index == state.currentSectionIndex, focusId: SettingId? = null) {
+        state.focusRequestToken++
         val lm = binding.recyclerRight.layoutManager as? LinearLayoutManager
         val scrollAnchor =
             if (keepScroll && lm != null) {
@@ -93,9 +101,9 @@ class SettingsRenderer(
         onSectionShown(sectionName.orEmpty())
 
         state.pendingRestoreRightId = focusId
-        val token = ++state.focusRequestToken
-        binding.recyclerRight.doOnPreDraw {
-            if (token != state.focusRequestToken) return@doOnPreDraw
+        val token = ++state.sectionRenderToken
+        binding.recyclerRight.post {
+            if (token != state.sectionRenderToken) return@post
             if (keepScroll && lm != null) {
                 scrollAnchor?.let { (position, offset) ->
                     lm.scrollToPositionWithOffset(position, offset)
@@ -111,7 +119,11 @@ class SettingsRenderer(
 
     fun refreshAboutSectionKeepPosition() {
         if (sections.getOrNull(state.currentSectionIndex) != "关于应用") return
-        showSection(state.currentSectionIndex, keepScroll = true, focusId = state.lastFocusedRightId)
+        showSection(
+            state.currentSectionIndex,
+            keepScroll = true,
+            focusId = state.lastFocusedRightIdForCurrentSection(),
+        )
     }
 
     fun ensureInitialFocus() {
@@ -141,7 +153,7 @@ class SettingsRenderer(
             }
         }
 
-        val rightId = state.lastFocusedRightId
+        val rightId = state.lastFocusedRightIdForCurrentSection()
         if (rightId != null) {
             if (focusRightById(rightId)) return true
         }
@@ -155,23 +167,39 @@ class SettingsRenderer(
         return true
     }
 
-    fun focusSectionTab(index: Int): Boolean {
+    fun focusActiveSectionTab(): Boolean {
         val count = leftAdapter.itemCount
         if (count <= 0) return false
         val safeIndex =
-            index.takeIf { it in 0 until count }
+            state.currentSectionIndex.takeIf { it in 0 until count }
                 ?: state.lastFocusedLeftIndex.takeIf { it in 0 until count }
                 ?: 0
         return focusLeftAt(safeIndex)
     }
 
-    fun enterSectionContent(index: Int): Boolean {
-        if (index !in 0 until leftAdapter.itemCount) return false
-        showSection(index, keepScroll = index == state.currentSectionIndex)
-        binding.recyclerRight.doOnPreDraw {
-            focusRightAt(0)
-        }
-        return true
+    fun focusLastSectionTab(): Boolean {
+        val count = leftAdapter.itemCount
+        if (count <= 0) return false
+        val safeIndex =
+            state.lastFocusedLeftIndex.takeIf { it in 0 until count }
+                ?: state.currentSectionIndex.takeIf { it in 0 until count }
+                ?: 0
+        return focusLeftAt(safeIndex)
+    }
+
+    fun focusActiveSectionContent(): Boolean {
+        if (state.currentSectionIndex !in 0 until leftAdapter.itemCount) return false
+        if (rightAdapter.itemCount <= 0) return false
+
+        val rememberedId = state.lastFocusedRightIdForCurrentSection()
+        val targetPosition =
+            rememberedId
+                ?.let(rightAdapter::indexOfId)
+                ?.takeIf { it != RecyclerView.NO_POSITION }
+                ?: 0
+        val targetId = rightAdapter.idAt(targetPosition) ?: return false
+        state.pendingRestoreRightId = targetId
+        return focusRightById(targetId)
     }
 
     fun isNavKey(keyCode: Int): Boolean {
@@ -572,57 +600,47 @@ class SettingsRenderer(
     private fun focusRightById(id: SettingId): Boolean {
         val pos = rightAdapter.indexOfId(id)
         if (pos == RecyclerView.NO_POSITION) return false
-        val holder = binding.recyclerRight.findViewHolderForAdapterPosition(pos)
-        if (holder?.itemView?.requestFocus() == true) return true
-        return focusRightAt(pos)
+        return focusRightAt(pos, id)
     }
 
-    private fun focusRightAt(position: Int): Boolean {
+    private fun focusRightAt(position: Int, expectedId: SettingId): Boolean {
         if (position < 0 || position >= rightAdapter.itemCount) return false
-        val layoutManager = binding.recyclerRight.layoutManager as? LinearLayoutManager
         return focusRecyclerItemAt(
             recyclerView = binding.recyclerRight,
             position = position,
-            shouldScroll = { isPositionOutsideVisibleRange(layoutManager, position) },
-            scroll = { layoutManager?.scrollToPositionWithOffset(position, 0) },
+            onFocused = {
+                if (rightAdapter.idAt(position) == expectedId) {
+                    state.rememberFocusedRightId(expectedId)
+                    state.pendingRestoreRightId = null
+                }
+            },
         )
     }
 
     private fun focusLeftAt(position: Int): Boolean {
         if (position < 0 || position >= leftAdapter.itemCount) return false
-        val layoutManager = binding.recyclerLeft.layoutManager as? LinearLayoutManager
         return focusRecyclerItemAt(
             recyclerView = binding.recyclerLeft,
             position = position,
-            shouldScroll = { isPositionOutsideVisibleRange(layoutManager, position) },
-            scroll = { binding.recyclerLeft.scrollToPosition(position) },
+            onFocused = {},
         )
     }
 
     private fun focusRecyclerItemAt(
         recyclerView: RecyclerView,
         position: Int,
-        shouldScroll: () -> Boolean,
-        scroll: () -> Unit,
+        onFocused: () -> Unit,
     ): Boolean {
         val token = ++state.focusRequestToken
-        val holder = recyclerView.findViewHolderForAdapterPosition(position)
-        if (holder?.itemView?.requestFocus() == true) return true
-        if (shouldScroll()) {
-            scroll()
-        }
-        recyclerView.doOnPreDraw {
-            if (token != state.focusRequestToken) return@doOnPreDraw
-            recyclerView.findViewHolderForAdapterPosition(position)?.itemView?.requestFocus()
-        }
-        return true
-    }
-
-    private fun isPositionOutsideVisibleRange(layoutManager: LinearLayoutManager?, position: Int): Boolean {
-        if (layoutManager == null) return true
-        val first = layoutManager.findFirstVisibleItemPosition()
-        val last = layoutManager.findLastVisibleItemPosition()
-        if (first == RecyclerView.NO_POSITION || last == RecyclerView.NO_POSITION) return true
-        return position < first || position > last
+        return recyclerView.requestFocusAdapterPositionReliable(
+            position = position,
+            smoothScroll = false,
+            isAlive = {
+                token == state.focusRequestToken &&
+                    !activity.isFinishing &&
+                    !activity.isDestroyed
+            },
+            onFocused = onFocused,
+        )
     }
 }
