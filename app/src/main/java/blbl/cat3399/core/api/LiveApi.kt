@@ -2,6 +2,7 @@ package blbl.cat3399.core.api
 
 import blbl.cat3399.core.model.LiveAreaParent
 import blbl.cat3399.core.model.LiveRoomCard
+import blbl.cat3399.core.model.LiveSuperChat
 import blbl.cat3399.core.net.BiliClient
 import blbl.cat3399.core.net.WebCookieMaintainer
 import kotlinx.coroutines.Dispatchers
@@ -455,6 +456,39 @@ internal object LiveApi {
             }.distinctBy { "${it.host}:${it.wssPort}:${it.wsPort}" }
         return BiliApi.LiveDanmuInfo(token = token, hosts = hosts)
     }
+
+    suspend fun liveSuperChats(roomId: Long): List<LiveSuperChat> {
+        if (roomId <= 0L) return emptyList()
+        val url =
+            BiliClient.withQuery(
+                "https://api.live.bilibili.com/av/v1/SuperChat/getMessageList",
+                mapOf("room_id" to roomId.toString()),
+            )
+        val json =
+            BiliClient.getJson(
+                url,
+                headers =
+                    mapOf(
+                        "Referer" to "https://live.bilibili.com/$roomId",
+                        "Origin" to "https://live.bilibili.com",
+                    ),
+            )
+        val code = json.optInt("code", 0)
+        if (code != 0) {
+            val msg = json.optString("message", json.optString("msg", ""))
+            throw BiliApiException(apiCode = code, apiMessage = msg)
+        }
+        val list = json.optJSONObject("data")?.optJSONArray("list") ?: return emptyList()
+        return withContext(Dispatchers.Default) { parseLiveSuperChats(list) }
+    }
+
+    internal fun parseLiveSuperChats(source: JSONArray): List<LiveSuperChat> =
+        buildList {
+            for (index in 0 until source.length()) {
+                val item = source.optJSONObject(index) ?: continue
+                LiveSuperChatJsonParser.parse(item)?.let(::add)
+            }
+        }
 
     private fun parseLiveAreas(arr: JSONArray): List<LiveAreaParent> {
         val out = ArrayList<LiveAreaParent>(arr.length())

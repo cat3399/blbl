@@ -12,6 +12,7 @@ import blbl.cat3399.core.model.Following
 import blbl.cat3399.core.model.HistoryEntry
 import blbl.cat3399.core.model.LiveAreaParent
 import blbl.cat3399.core.model.LiveRoomCard
+import blbl.cat3399.core.model.LiveSuperChat
 import blbl.cat3399.core.model.VideoCard
 import blbl.cat3399.core.model.VideoTag
 import blbl.cat3399.core.prefs.AppPrefs
@@ -404,6 +405,9 @@ object BiliApi {
         LiveApi.livePlayUrl(roomId = roomId, qn = qn, highBitrateEnabled = highBitrateEnabled)
 
     suspend fun liveDanmuInfo(roomId: Long): LiveDanmuInfo = LiveApi.liveDanmuInfo(roomId = roomId)
+
+    suspend fun liveSuperChats(roomId: Long): List<LiveSuperChat> =
+        LiveApi.liveSuperChats(roomId = roomId)
 
     suspend fun historyCursor(
         max: Long = 0,

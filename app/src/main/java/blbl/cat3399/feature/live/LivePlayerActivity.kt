@@ -9,7 +9,6 @@ import android.os.Bundle
 import android.os.SystemClock
 import android.util.TypedValue
 import android.view.KeyEvent
-import android.view.LayoutInflater
 import android.graphics.SurfaceTexture
 import android.view.Surface
 import android.view.SurfaceHolder
@@ -17,7 +16,6 @@ import android.view.SurfaceView
 import android.view.TextureView
 import android.view.View
 import android.view.ViewConfiguration
-import android.view.ViewGroup
 import android.view.ViewGroup.MarginLayoutParams
 import android.widget.FrameLayout
 import androidx.core.content.ContextCompat
@@ -34,11 +32,13 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime
 import androidx.media3.ui.AspectRatioFrameLayout
+import blbl.cat3399.BuildConfig
 import blbl.cat3399.R
 import blbl.cat3399.core.api.BiliApi
 import blbl.cat3399.core.api.BiliApiException
 import blbl.cat3399.core.log.AppLog
 import blbl.cat3399.core.model.Danmaku
+import blbl.cat3399.core.model.LiveSuperChat
 import blbl.cat3399.core.net.BiliClient
 import blbl.cat3399.core.prefs.AppPrefs
 import blbl.cat3399.core.prefs.PlayerCustomShortcutAction
@@ -50,11 +50,9 @@ import blbl.cat3399.core.ui.DoubleBackToExitHandler
 import blbl.cat3399.core.ui.FocusReturn
 import blbl.cat3399.core.ui.Immersive
 import blbl.cat3399.core.ui.popup.AppPopup
-import blbl.cat3399.core.ui.popup.PopupAction
-import blbl.cat3399.core.ui.popup.PopupActionRole
 import blbl.cat3399.core.ui.popup.PopupHost
 import blbl.cat3399.databinding.ActivityPlayerBinding
-import blbl.cat3399.databinding.DialogLiveChatBinding
+import blbl.cat3399.databinding.ViewLiveSuperChatOverlayBinding
 import blbl.cat3399.feature.player.AudioBalanceLevel
 import blbl.cat3399.feature.player.PlayerBufferingOverlayController
 import blbl.cat3399.feature.player.PlayerCustomShortcutBindings
@@ -106,6 +104,7 @@ class LivePlayerActivity : BaseActivity() {
 
     private lateinit var binding: ActivityPlayerBinding
     private lateinit var upQuickCard: PlayerUpQuickCardController
+    private lateinit var superChatOverlay: LiveSuperChatOverlayController
 
     private var player: BlblPlayerEngine? = null
     private var ijkRenderView: View? = null
@@ -113,6 +112,7 @@ class LivePlayerActivity : BaseActivity() {
     private val settingsPanelReturnFocus = FocusReturn()
     private var autoHideJob: Job? = null
     private var seekHintJob: Job? = null
+    private var superChatLoadJob: Job? = null
     private var touchController: PlayerTouchController? = null
     private val shortcutPrevDanmakuOpacityByKey = HashMap<Int, Float>()
     private val shortcutPrevDanmakuTextSizeByKey = HashMap<Int, Float>()
@@ -194,12 +194,10 @@ class LivePlayerActivity : BaseActivity() {
     private var lastLiveStatus: Int = 0
     private var transientPlaybackResumeRequested: Boolean? = null
 
-    private val chatItems = ArrayDeque<LiveChatAdapter.Item>()
-    private val chatMax = 200
-
     private var messageClient: LiveMessageClient? = null
     private var liveDanmakuBaseUptimeMs: Long = 0L
     private var liveDanmakuLastAppendMs: Int = Int.MIN_VALUE
+    private var temporarySuperChatPreviewStarted = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -257,6 +255,13 @@ class LivePlayerActivity : BaseActivity() {
         if (sessionOverrideJson != null) {
             session = session.restoreFromEngineSwitchJsonString(sessionOverrideJson)
         }
+        superChatOverlay =
+            LiveSuperChatOverlayController(
+                binding = ViewLiveSuperChatOverlayBinding.bind(binding.liveSuperChatStub.inflate()),
+                scope = lifecycleScope,
+            ).also {
+                it.setEnabled(session.danmaku.enabled)
+            }
 
         // Live: no seek bar.
         binding.seekProgress.visibility = View.GONE
@@ -273,7 +278,7 @@ class LivePlayerActivity : BaseActivity() {
         binding.btnFav.visibility = View.GONE
         binding.btnListPanel.visibility = View.GONE
         binding.btnClosePlayer.visibility = View.GONE
-        binding.btnComments.visibility = View.VISIBLE
+        binding.btnComments.visibility = View.GONE
 
         setupUpQuickCard()
         binding.btnBack.setOnClickListener { finish() }
@@ -439,11 +444,8 @@ class LivePlayerActivity : BaseActivity() {
         binding.btnDanmaku.setOnClickListener {
             session = session.copy(danmaku = session.danmaku.copy(enabled = !session.danmaku.enabled))
             binding.danmakuView.invalidate()
+            superChatOverlay.setEnabled(session.danmaku.enabled)
             updateDanmakuButton()
-            setControlsVisible(true)
-        }
-        binding.btnComments.setOnClickListener {
-            showChatDialog()
             setControlsVisible(true)
         }
 
@@ -507,7 +509,6 @@ class LivePlayerActivity : BaseActivity() {
         listOf(
             binding.btnPlayPause,
             binding.btnDanmaku,
-            binding.btnComments,
             binding.btnAdvanced,
         ).forEach { it.nextFocusUpId = R.id.btn_up_quick_profile }
         upQuickCard.setupActions()
@@ -543,6 +544,8 @@ class LivePlayerActivity : BaseActivity() {
         transientPlaybackResumeRequested = null
         messageClient?.close()
         messageClient = null
+        superChatLoadJob?.cancel()
+        if (::superChatOverlay.isInitialized) superChatOverlay.release()
         releaseTouchGestures()
         seekHintJob?.cancel()
         debugJob?.cancel()
@@ -852,7 +855,6 @@ class LivePlayerActivity : BaseActivity() {
     private fun isLiveCustomShortcutActionSupported(action: PlayerCustomShortcutAction): Boolean =
         when (action) {
             PlayerCustomShortcutAction.ShowOsd,
-            PlayerCustomShortcutAction.OpenComments,
             PlayerCustomShortcutAction.OpenSettings,
             PlayerCustomShortcutAction.TogglePlayPause,
             PlayerCustomShortcutAction.ToggleDanmaku,
@@ -872,12 +874,6 @@ class LivePlayerActivity : BaseActivity() {
                 noteUserInteraction()
                 setControlsVisible(true)
                 focusFirstControl()
-                return true
-            }
-
-            PlayerCustomShortcutAction.OpenComments -> {
-                noteUserInteraction()
-                showChatDialog()
                 return true
             }
 
@@ -906,6 +902,7 @@ class LivePlayerActivity : BaseActivity() {
                 noteUserInteraction()
                 session = session.copy(danmaku = session.danmaku.copy(enabled = !session.danmaku.enabled))
                 this.binding.danmakuView.invalidate()
+                superChatOverlay.setEnabled(session.danmaku.enabled)
                 updateDanmakuButton()
                 val state = if (session.danmaku.enabled) "开" else "关"
                 showShortcutHint("弹幕：$state")
@@ -1625,7 +1622,11 @@ class LivePlayerActivity : BaseActivity() {
             engine.playWhenReady = true
             reportLiveRoomEntry(realRoomId)
 
-            if (initial) connectDanmaku()
+            if (initial) {
+                connectDanmaku()
+                startTemporarySuperChatPreview()
+                loadInitialSuperChats(realRoomId)
+            }
         } catch (t: Throwable) {
             if (t is CancellationException) throw t
             resetBufferingOverlayState()
@@ -1667,8 +1668,14 @@ class LivePlayerActivity : BaseActivity() {
                 onSuperChat = { ev ->
                     runOnUiThread(
                         Runnable {
-                            val title = "SC ¥${ev.price} · ${ev.user.ifBlank { "匿名" }}"
-                            pushChatItem(LiveChatAdapter.Item(title = title, body = ev.message))
+                            superChatOverlay.submit(ev)
+                        },
+                    )
+                },
+                onSuperChatDelete = { ids ->
+                    runOnUiThread(
+                        Runnable {
+                            superChatOverlay.delete(ids)
                         },
                     )
                 },
@@ -1676,7 +1683,6 @@ class LivePlayerActivity : BaseActivity() {
                     runOnUiThread(
                         Runnable {
                             AppLog.d("LiveWs", msg)
-                            pushChatItem(LiveChatAdapter.Item(title = "系统", body = msg))
                         },
                     )
                 },
@@ -1719,12 +1725,113 @@ class LivePlayerActivity : BaseActivity() {
                 attr = 0,
             )
         binding.danmakuView.appendDanmakus(listOf(d), maxItems = 2000, alreadySorted = true)
-        pushChatItem(LiveChatAdapter.Item(title = "弹幕", body = ev.text))
     }
 
-    private fun pushChatItem(item: LiveChatAdapter.Item) {
-        chatItems.addLast(item)
-        while (chatItems.size > chatMax) chatItems.removeFirst()
+    private fun loadInitialSuperChats(roomId: Long) {
+        superChatLoadJob?.cancel()
+        superChatLoadJob =
+            lifecycleScope.launch {
+                try {
+                    val items =
+                        BiliApi.liveSuperChats(roomId)
+                            .sortedBy { it.startTimeSeconds ?: Long.MAX_VALUE }
+                    items.forEach(superChatOverlay::submit)
+                    AppLog.i("LiveSuperChat", "initial room=$roomId count=${items.size}")
+                } catch (t: Throwable) {
+                    if (t is CancellationException) throw t
+                    AppLog.w("LiveSuperChat", "initial fetch failed room=$roomId", t)
+                }
+            }
+    }
+
+    private fun startTemporarySuperChatPreview() {
+        if (!BuildConfig.DEBUG || !TEMPORARY_SUPER_CHAT_PREVIEW_ENABLED) return
+        if (temporarySuperChatPreviewStarted) return
+        temporarySuperChatPreviewStarted = true
+
+        val nowSeconds = System.currentTimeMillis() / 1_000L
+        temporarySuperChatPreviewItems(nowSeconds).forEach(superChatOverlay::submit)
+        AppLog.i(
+            "LiveSuperChat",
+            "temporary preview queued count=5 danmakuEnabled=${session.danmaku.enabled}",
+        )
+    }
+
+    private fun temporarySuperChatPreviewItems(nowSeconds: Long): List<LiveSuperChat> {
+        fun preview(
+            id: Long,
+            user: String,
+            price: Long,
+            message: String,
+            headerColor: String,
+            bodyColor: String,
+            priceColor: String,
+            messageColor: String = "#FFFFFF",
+        ) = LiveSuperChat(
+            id = id,
+            uid = 0L,
+            userName = user,
+            userFaceUrl = roomFace,
+            userNameColor = "#4A4A4A",
+            price = price,
+            message = message,
+            backgroundImageUrl = null,
+            backgroundColor = headerColor,
+            backgroundBottomColor = bodyColor,
+            backgroundPriceColor = priceColor,
+            messageFontColor = messageColor,
+            startTimeSeconds = nowSeconds,
+            endTimeSeconds = nowSeconds + TEMPORARY_SUPER_CHAT_EXPIRY_SECONDS,
+            durationSeconds = TEMPORARY_SUPER_CHAT_DURATION_SECONDS,
+        )
+
+        return listOf(
+            preview(
+                id = -1L,
+                user = "SC 预览 · 1/5",
+                price = 30L,
+                message = "第一条：短文本与基础蓝色样式。",
+                headerColor = "#EDF5FF",
+                bodyColor = "#2A60B2",
+                priceColor = "#7497CD",
+            ),
+            preview(
+                id = -2L,
+                user = "SC 预览 · 2/5",
+                price = 50L,
+                message = "第二条：稍长一些的醒目留言，用来观察两行正文的间距和换行效果。",
+                headerColor = "#E1F7FF",
+                bodyColor = "#287D9B",
+                priceColor = "#5B9CB5",
+            ),
+            preview(
+                id = -3L,
+                user = "SC 预览 · 3/5",
+                price = 100L,
+                message = "第三条：测试暖黄色价格档位，以及浅色头部中的昵称、金额对比度。",
+                headerColor = "#FFF4D6",
+                bodyColor = "#C88A1A",
+                priceColor = "#B97B12",
+            ),
+            preview(
+                id = -4L,
+                user = "SC 预览 · 4/5",
+                price = 500L,
+                message = "第四条：这是更长的橙色 SC。它会继续走正式队列，验证卡片切换、正文最多四行以及底部 OSD 出现时的避让位置。",
+                headerColor = "#FFE8D5",
+                bodyColor = "#D75A24",
+                priceColor = "#C65324",
+            ),
+            preview(
+                id = -5L,
+                user = "SC 预览 · 5/5",
+                price = 1_000L,
+                message = "第五条：高金额红色样式，预览结束后会自动淡出。",
+                headerColor = "#FFE1E6",
+                bodyColor = "#A9233D",
+                priceColor = "#C54C63",
+            ),
+        )
     }
 
     private fun showQualityDialog() {
@@ -1789,39 +1896,6 @@ class LivePlayerActivity : BaseActivity() {
             lifecycleScope.launch { loadAndPlay(initial = false) }
         }
     }
-
-    private fun showChatDialog() {
-        AppPopup.custom(
-            context = this,
-            title = "弹幕 / SC",
-            cancelable = true,
-            actions = listOf(PopupAction(role = PopupActionRole.POSITIVE, text = "关闭")),
-            preferredActionRole = PopupActionRole.POSITIVE,
-            content = { dialogContext ->
-                val dialogBinding = DialogLiveChatBinding.inflate(LayoutInflater.from(dialogContext))
-                val adapter = LiveChatAdapter()
-                dialogBinding.recycler.adapter = adapter
-                dialogBinding.recycler.layoutManager = androidx.recyclerview.widget.LinearLayoutManager(dialogContext)
-                adapter.submit(chatItems.toList().asReversed())
-
-                val dm = dialogContext.resources.displayMetrics
-                val maxHeightPx =
-                    (dm.heightPixels * 0.60f)
-                        .toInt()
-                        .coerceAtLeast(dp(dialogContext, 220f))
-                        .coerceAtMost(dp(dialogContext, 520f))
-                dialogBinding.recycler.layoutParams =
-                    dialogBinding.recycler.layoutParams
-                        ?: ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-                dialogBinding.recycler.layoutParams.height = maxHeightPx
-
-                dialogBinding.root
-            },
-        )
-    }
-
-    private fun dp(context: android.content.Context, value: Float): Int =
-        TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, value, context.resources.displayMetrics).toInt()
 
     private fun updatePlayPauseIcon(isPlaying: Boolean) {
         val icon = if (isPlaying) blbl.cat3399.R.drawable.ic_player_pause else blbl.cat3399.R.drawable.ic_player_play
@@ -2248,6 +2322,10 @@ class LivePlayerActivity : BaseActivity() {
 
         private const val AUTO_HIDE_MS = 4_000L
         private const val SEEK_HINT_HIDE_DELAY_MS = 900L
+        // Temporary visual review hook. Remove after the SuperChat design is approved.
+        private const val TEMPORARY_SUPER_CHAT_PREVIEW_ENABLED = false
+        private const val TEMPORARY_SUPER_CHAT_DURATION_SECONDS = 5L
+        private const val TEMPORARY_SUPER_CHAT_EXPIRY_SECONDS = 5 * 60L
         private const val BACK_DOUBLE_PRESS_WINDOW_MS = 2_500L
         private const val AUTO_FAILOVER_WINDOW_MS = 12_000L
         private const val AUTO_FAILOVER_MIN_INTERVAL_MS = 1_200L

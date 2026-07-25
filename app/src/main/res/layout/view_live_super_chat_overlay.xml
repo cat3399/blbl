@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:alpha="0"
+    android:clickable="false"
+    android:clipToOutline="true"
+    android:focusable="false"
+    android:importantForAccessibility="no"
+    android:visibility="gone"
+    app:cardBackgroundColor="@android:color/transparent"
+    app:cardCornerRadius="@dimen/live_super_chat_corner_radius"
+    app:cardElevation="@dimen/live_super_chat_elevation"
+    app:strokeColor="#FF2A60B2"
+    app:strokeWidth="1dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <FrameLayout
+            android:id="@+id/live_super_chat_header"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="#FFEDF5FF">
+
+            <ImageView
+                android:id="@+id/iv_live_super_chat_background"
+                android:layout_width="@dimen/live_super_chat_background_width"
+                android:layout_height="match_parent"
+                android:layout_gravity="end"
+                android:alpha="0.55"
+                android:contentDescription="@null"
+                android:importantForAccessibility="no"
+                android:scaleType="centerCrop"
+                android:visibility="gone" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:padding="@dimen/live_super_chat_header_padding">
+
+                <com.google.android.material.imageview.ShapeableImageView
+                    android:id="@+id/iv_live_super_chat_avatar"
+                    android:layout_width="@dimen/live_super_chat_avatar_size"
+                    android:layout_height="@dimen/live_super_chat_avatar_size"
+                    android:contentDescription="@null"
+                    android:importantForAccessibility="no"
+                    android:scaleType="centerCrop"
+                    android:src="@android:drawable/sym_def_app_icon"
+                    app:shapeAppearanceOverlay="@style/ShapeAppearanceOverlay_Blbl_Circular"
+                    app:strokeColor="#80FFFFFF"
+                    app:strokeWidth="1dp" />
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="@dimen/live_super_chat_header_gap"
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:id="@+id/tv_live_super_chat_user"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:ellipsize="end"
+                        android:maxLines="1"
+                        android:textColor="#FF666666"
+                        android:textSize="@dimen/live_super_chat_user_text_size"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/tv_live_super_chat_price"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/live_super_chat_price_margin_top"
+                        android:textColor="#FF7497CD"
+                        android:textSize="@dimen/live_super_chat_price_text_size"
+                        android:textStyle="bold" />
+                </LinearLayout>
+
+                <TextView
+                    android:id="@+id/tv_live_super_chat_countdown"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="@dimen/live_super_chat_countdown_margin_start"
+                    android:gravity="center"
+                    android:includeFontPadding="false"
+                    android:minWidth="@dimen/live_super_chat_countdown_min_width"
+                    android:paddingHorizontal="@dimen/live_super_chat_countdown_padding_h"
+                    android:paddingVertical="@dimen/live_super_chat_countdown_padding_v"
+                    android:textColor="#CC202020"
+                    android:textSize="@dimen/live_super_chat_countdown_text_size"
+                    android:textStyle="bold" />
+            </LinearLayout>
+        </FrameLayout>
+
+        <TextView
+            android:id="@+id/tv_live_super_chat_message"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="#FF2A60B2"
+            android:ellipsize="end"
+            android:maxLines="4"
+            android:padding="@dimen/live_super_chat_message_padding"
+            android:textColor="#FFFFFFFF"
+            android:textSize="@dimen/live_super_chat_message_text_size" />
+    </LinearLayout>
+</com.google.android.material.card.MaterialCardView>

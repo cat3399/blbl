@@ -1,7 +1,9 @@
 package blbl.cat3399.feature.live
 
 import blbl.cat3399.core.api.BiliApi
+import blbl.cat3399.core.api.LiveSuperChatJsonParser
 import blbl.cat3399.core.log.AppLog
+import blbl.cat3399.core.model.LiveSuperChat
 import blbl.cat3399.core.net.BiliClient
 import okhttp3.Request
 import okhttp3.Response
@@ -22,7 +24,8 @@ import java.util.zip.Inflater
 class LiveMessageClient(
     private val roomId: Long,
     private val onDanmaku: (LiveDanmakuEvent) -> Unit,
-    private val onSuperChat: (LiveSuperChatEvent) -> Unit,
+    private val onSuperChat: (LiveSuperChat) -> Unit,
+    private val onSuperChatDelete: (Set<Long>) -> Unit,
     private val onStatus: (String) -> Unit,
 ) {
     data class LiveDanmakuEvent(
@@ -31,12 +34,6 @@ class LiveMessageClient(
         val eventTimeMs: Long,
         val sendTimeMs: Long?,
         val rndTimeMs: Long?,
-    )
-
-    data class LiveSuperChatEvent(
-        val user: String,
-        val message: String,
-        val price: Long,
     )
 
     private val scheduler = Executors.newSingleThreadScheduledExecutor { r ->
@@ -314,12 +311,26 @@ class LiveMessageClient(
             )
             return
         }
-        if (cmd == "SUPER_CHAT_MESSAGE") {
-            val data = obj.optJSONObject("data") ?: return
-            val user = data.optJSONObject("user_info")?.optString("uname", "").orEmpty()
-            val msg = data.optString("message", "")
-            val price = data.optLong("price", 0L)
-            if (msg.isNotBlank()) onSuperChat(LiveSuperChatEvent(user = user, message = msg, price = price))
+        when (cmd.substringBefore(':')) {
+            "SUPER_CHAT_MESSAGE",
+            "SUPER_CHAT_MESSAGE_JPN" -> {
+                val data = obj.optJSONObject("data") ?: run {
+                    AppLog.w("LiveSuperChat", "missing data room=$roomId cmd=$cmd")
+                    return
+                }
+                val item = LiveSuperChatJsonParser.parse(data)
+                if (item == null) {
+                    AppLog.w("LiveSuperChat", "invalid payload room=$roomId cmd=$cmd")
+                    return
+                }
+                onSuperChat(item)
+            }
+
+            "SUPER_CHAT_MESSAGE_DELETE" -> {
+                val data = obj.optJSONObject("data") ?: return
+                val ids = LiveSuperChatJsonParser.parseDeleteIds(data)
+                if (ids.isNotEmpty()) onSuperChatDelete(ids)
+            }
         }
     }
 
