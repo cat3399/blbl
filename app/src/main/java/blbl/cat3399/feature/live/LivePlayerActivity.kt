@@ -110,6 +110,7 @@ class LivePlayerActivity : BaseActivity() {
     private var ijkRenderView: View? = null
     private var ijkTextureSurface: Surface? = null
     private val settingsPanelReturnFocus = FocusReturn()
+    private val osdFocusReturn = FocusReturn()
     private var autoHideJob: Job? = null
     private var seekHintJob: Job? = null
     private var superChatLoadJob: Job? = null
@@ -746,7 +747,7 @@ class LivePlayerActivity : BaseActivity() {
             -> {
                 if (binding.settingsPanel.visibility == View.VISIBLE) return true
                 setControlsVisible(true)
-                focusFirstControl()
+                focusLastOsdControlOrFirst()
                 return true
             }
 
@@ -765,7 +766,7 @@ class LivePlayerActivity : BaseActivity() {
                 if (binding.settingsPanel.visibility == View.VISIBLE) return super.dispatchKeyEvent(event)
                 setControlsVisible(true)
                 if (!hasControlsFocus()) {
-                    focusFirstControl()
+                    focusLastOsdControlOrFirst()
                     return true
                 }
             }
@@ -776,12 +777,12 @@ class LivePlayerActivity : BaseActivity() {
             -> {
                 if (binding.settingsPanel.visibility != View.VISIBLE && !hasControlsFocus()) {
                     setControlsVisible(true)
-                    focusFirstControl()
+                    focusLastOsdControlOrFirst()
                     return true
                 }
                 if (!controlsVisible && binding.settingsPanel.visibility != View.VISIBLE) {
                     setControlsVisible(true)
-                    focusFirstControl()
+                    focusLastOsdControlOrFirst()
                     return true
                 }
             }
@@ -801,11 +802,11 @@ class LivePlayerActivity : BaseActivity() {
                 if (!controlsVisible) {
                     setControlsVisible(true)
                     // Align with UP/DOWN/CENTER behavior: show OSD and move focus to controls in one press.
-                    focusFirstControl()
+                    focusLastOsdControlOrFirst()
                     return true
                 }
                 if (!hasControlsFocus()) {
-                    focusFirstControl()
+                    focusLastOsdControlOrFirst()
                     return true
                 }
             }
@@ -873,7 +874,7 @@ class LivePlayerActivity : BaseActivity() {
             PlayerCustomShortcutAction.ShowOsd -> {
                 noteUserInteraction()
                 setControlsVisible(true)
-                focusFirstControl()
+                focusLastOsdControlOrFirst()
                 return true
             }
 
@@ -1197,8 +1198,10 @@ class LivePlayerActivity : BaseActivity() {
 
     private fun setControlsVisible(visible: Boolean) {
         val hadControlsFocus = hasControlsFocus()
-        controlsVisible = visible && !isTouchLocked()
-        val show = controlsVisible || binding.settingsPanel.visibility == View.VISIBLE
+        val nextControlsVisible = visible && !isTouchLocked()
+        val show = nextControlsVisible || binding.settingsPanel.visibility == View.VISIBLE
+        if (!show && controlsVisible) rememberOsdFocusBeforeHide()
+        controlsVisible = nextControlsVisible
         binding.topBar.visibility = if (show) View.VISIBLE else View.GONE
         binding.bottomBar.visibility = if (show) View.VISIBLE else View.GONE
         upQuickCard.updateUi()
@@ -1221,6 +1224,21 @@ class LivePlayerActivity : BaseActivity() {
                 if (binding.settingsPanel.visibility == View.VISIBLE) return@launch
                 if (controlsVisible) setControlsVisible(false)
             }
+    }
+
+    private fun rememberOsdFocusBeforeHide() {
+        val focused = currentFocus ?: return
+        val focusIsInOsd =
+            binding.topBar.hasFocus() ||
+                binding.cardUpQuick.hasFocus() ||
+                binding.bottomBar.hasFocus()
+        if (focusIsInOsd) osdFocusReturn.capture(focused)
+    }
+
+    private fun focusLastOsdControlOrFirst() {
+        binding.root.post {
+            if (!osdFocusReturn.restoreAndClear(postOnFail = false)) focusFirstControl()
+        }
     }
 
     private fun focusFirstControl(): Boolean {

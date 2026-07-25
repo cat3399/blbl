@@ -30,7 +30,7 @@ internal object IjkPlayerPlugin {
     private const val ZIP_FILE_NAME = "libijkplayer.zip"
     private const val SO_FILE_NAME = "libijkplayer.so"
     private const val INSTALL_STAMP_FILE_NAME = "install_stamp"
-    private const val REQUIRED_INSTALL_STAMP = 3
+    private const val REQUIRED_INSTALL_STAMP = 4
     private const val MIN_SO_BYTES = 1_000_000L
 
     private val supportedAbis: Set<String> =

@@ -64,6 +64,9 @@ internal fun PlayerActivity.setControlsVisible(visible: Boolean) {
             hasOverlayPanel = isOverlayPanelVisible(),
             touchLocked = isTouchLocked(),
         )
+    if (!show && osdMode == PlayerActivity.OsdMode.Full) {
+        rememberOsdFocusBeforeHide()
+    }
     seekOsdHideJob?.cancel()
     seekOsdHideJob = null
     seekOsdToken = 0L
@@ -345,6 +348,21 @@ internal fun PlayerActivity.hasControlsFocusOutsideSeekBar(): Boolean {
         (binding.bottomBar.hasFocus() && !binding.seekProgress.isFocused)
 }
 
+private fun PlayerActivity.rememberOsdFocusBeforeHide() {
+    val focused = currentFocus ?: return
+    val focusIsInOsd =
+        binding.topBar.hasFocus() ||
+            binding.cardUpQuick.hasFocus() ||
+            binding.bottomBar.hasFocus()
+    if (focusIsInOsd) osdFocusReturn.capture(focused)
+}
+
+internal fun PlayerActivity.restoreLastOsdFocusOr(fallback: () -> Unit) {
+    binding.root.post {
+        if (!osdFocusReturn.restoreAndClear(postOnFail = false)) fallback()
+    }
+}
+
 internal fun PlayerActivity.focusFirstControl() {
     binding.btnPlayPause.post { binding.btnPlayPause.requestFocus() }
 }
@@ -377,6 +395,7 @@ internal fun PlayerActivity.focusDownKeyOsdTargetControl() {
         }
 
     binding.controlsRow.post {
+        if (osdFocusReturn.restoreAndClear(postOnFail = false)) return@post
         if (requestFocusControlNow(target)) return@post
         if (requestFocusControlNow(binding.btnPlayPause)) return@post
         focusFirstControl()

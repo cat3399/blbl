@@ -72,6 +72,7 @@ import blbl.cat3399.core.ui.ActivityStackLimiter
 import blbl.cat3399.core.ui.AppToast
 import blbl.cat3399.core.ui.BaseActivity
 import blbl.cat3399.core.ui.DoubleBackToExitHandler
+import blbl.cat3399.core.ui.FocusReturn
 import blbl.cat3399.core.ui.FocusTreeUtils
 import blbl.cat3399.core.ui.Immersive
 import blbl.cat3399.core.ui.popup.PopupHost
@@ -189,6 +190,7 @@ class PlayerActivity : BaseActivity() {
     internal var socialStateFetchToken: Int = 0
     internal var likeButtonHoldController: HoldToTriggerController? = null
     internal var touchController: PlayerTouchController? = null
+    internal val osdFocusReturn = FocusReturn()
 
     private val doubleBackToExit by lazy {
         DoubleBackToExitHandler(context = this, windowMs = BACK_DOUBLE_PRESS_WINDOW_MS) {
@@ -1584,8 +1586,13 @@ class PlayerActivity : BaseActivity() {
             KeyEvent.KEYCODE_INFO,
             KeyEvent.KEYCODE_GUIDE,
             -> {
+                val wasHidden = osdMode == OsdMode.Hidden
                 setControlsVisible(true)
-                focusFirstControl()
+                if (wasHidden) {
+                    restoreLastOsdFocusOr { focusFirstControl() }
+                } else {
+                    focusFirstControl()
+                }
                 return true
             }
 
@@ -1635,14 +1642,19 @@ class PlayerActivity : BaseActivity() {
 
             KeyEvent.KEYCODE_DPAD_UP -> {
                 if (isSidePanelVisible()) return super.dispatchKeyEvent(event)
+                val wasHidden = osdMode == OsdMode.Hidden
                 // TV-style shortcut: when OSD is hidden, UP directly opens the playlist (video list)
                 // instead of first bringing up the OSD.
-                if (osdMode == OsdMode.Hidden) {
+                if (wasHidden) {
                     if (showListPanelFromShortcut()) return true
                 }
                 setControlsVisible(true)
                 if (!binding.seekProgress.isFocused) {
-                    focusSeekBar()
+                    if (wasHidden) {
+                        restoreLastOsdFocusOr { focusSeekBar() }
+                    } else {
+                        focusSeekBar()
+                    }
                     return true
                 }
             }
@@ -1676,18 +1688,18 @@ class PlayerActivity : BaseActivity() {
                     if (osdMode == OsdMode.Hidden) {
                         binding.btnPlayPause.performClick()
                         if (osdMode != OsdMode.Hidden) {
-                            focusFirstControl()
+                            restoreLastOsdFocusOr { focusFirstControl() }
                         }
                         return true
                     }
                     setControlsVisible(true)
-                    focusFirstControl()
+                    restoreLastOsdFocusOr { focusFirstControl() }
                     return true
                 }
                 if (osdMode == OsdMode.Hidden && !isSidePanelVisible()) {
                     binding.btnPlayPause.performClick()
                     if (osdMode != OsdMode.Hidden) {
-                        focusFirstControl()
+                        restoreLastOsdFocusOr { focusFirstControl() }
                     }
                     return true
                 }
