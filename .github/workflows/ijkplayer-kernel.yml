@@ -1,0 +1,237 @@
+name: Publish IjkPlayer Kernel
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ijkplayer-kernel-production
+  cancel-in-progress: false
+
+jobs:
+  publish-kernel:
+    name: Validate and publish kernel
+    runs-on: ubuntu-latest
+    env:
+      AAR_PATH: app/libs/ijkplayer-cmake-release.aar
+      KEY_ROOT: blbl/ijkplayer
+      PUBLIC_BASE_URL: https://cat3399.top/blbl/ijkplayer
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID || vars.R2_ACCOUNT_ID }}
+      R2_BUCKET: ${{ secrets.R2_BUCKET || vars.R2_BUCKET }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate publish configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
+            echo "Kernel publishing is only allowed from the main branch; got ${GITHUB_REF}." >&2
+            exit 1
+          fi
+
+          missing=()
+          for name in R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY R2_ACCOUNT_ID R2_BUCKET; do
+            if [[ -z "${!name:-}" ]]; then
+              missing+=("$name")
+            fi
+          done
+          if ((${#missing[@]} > 0)); then
+            printf 'Missing required repository secrets/variables: %s\n' "${missing[*]}" >&2
+            exit 1
+          fi
+
+          if [[ ! -s "$AAR_PATH" ]]; then
+            echo "AAR not found or empty: ${AAR_PATH}" >&2
+            exit 1
+          fi
+
+      - name: Install packaging tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            awscli binutils curl unzip zip
+
+      - name: Validate and package kernels
+        id: package
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+
+          work_dir="$(mktemp -d "${RUNNER_TEMP}/ijkplayer-kernel.XXXXXX")"
+          unpack_dir="${work_dir}/aar"
+          dist_dir="${work_dir}/dist"
+          mkdir -p "$unpack_dir" "$dist_dir"
+          unzip -q "$AAR_PATH" -d "$unpack_dir"
+
+          expected_abis=(arm64-v8a armeabi-v7a x86 x86_64)
+          so_files=("$unpack_dir"/jni/*/libijkplayer.so)
+          actual_abis=()
+          for so in "${so_files[@]}"; do
+            actual_abis+=("$(basename "$(dirname "$so")")")
+          done
+          mapfile -t actual_abis < <(printf '%s\n' "${actual_abis[@]}" | sort)
+
+          if [[ "${actual_abis[*]}" != "${expected_abis[*]}" ]]; then
+            echo "Unexpected ABI set in ${AAR_PATH}." >&2
+            echo "Expected: ${expected_abis[*]}" >&2
+            echo "Actual:   ${actual_abis[*]:-(none)}" >&2
+            exit 1
+          fi
+
+          for abi in "${expected_abis[@]}"; do
+            so="${unpack_dir}/jni/${abi}/libijkplayer.so"
+            bytes="$(stat -c '%s' "$so")"
+            if ((bytes < 1000000)); then
+              echo "${abi}: libijkplayer.so is too small (${bytes} bytes)." >&2
+              exit 1
+            fi
+
+            elf_class="$(readelf -h "$so" | awk -F: '/Class:/{gsub(/^[[:space:]]+|[[:space:]]+$/, "", $2); print $2}')"
+            machine="$(readelf -h "$so" | awk -F: '/Machine:/{gsub(/^[[:space:]]+|[[:space:]]+$/, "", $2); print $2}')"
+            case "$abi" in
+              arm64-v8a)
+                expected_class="ELF64"
+                expected_machine="AArch64"
+                ;;
+              armeabi-v7a)
+                expected_class="ELF32"
+                expected_machine="ARM"
+                ;;
+              x86_64)
+                expected_class="ELF64"
+                expected_machine="Advanced Micro Devices X86-64"
+                ;;
+              x86)
+                expected_class="ELF32"
+                expected_machine="Intel 80386"
+                ;;
+              *)
+                echo "Unsupported ABI: ${abi}" >&2
+                exit 1
+                ;;
+            esac
+            if [[ "$elf_class" != "$expected_class" || "$machine" != "$expected_machine" ]]; then
+              echo "${abi}: unexpected ELF header (${elf_class}, ${machine})." >&2
+              exit 1
+            fi
+
+            strings "$so" | grep -F -- "--enable-demuxer=dash" >/dev/null
+            strings "$so" | grep -F -- "--enable-libxml2" >/dev/null
+
+            package_dir="${work_dir}/package/${abi}"
+            output_dir="${dist_dir}/${abi}"
+            mkdir -p "$package_dir" "$output_dir"
+            cp "$so" "${package_dir}/libijkplayer.so"
+            TZ=UTC touch -t 198001010000 "${package_dir}/libijkplayer.so"
+            (
+              cd "$package_dir"
+              zip -q -X -9 "${output_dir}/libijkplayer.zip" libijkplayer.so
+            )
+
+            zip_path="${output_dir}/libijkplayer.zip"
+            mapfile -t entries < <(zipinfo -1 "$zip_path")
+            if ((${#entries[@]} != 1)) || [[ "${entries[0]}" != "libijkplayer.so" ]]; then
+              echo "${abi}: ZIP must contain only libijkplayer.so at its root." >&2
+              printf 'Entries: %s\n' "${entries[*]:-(none)}" >&2
+              exit 1
+            fi
+
+            source_hash="$(sha256sum "$so" | awk '{print $1}')"
+            archived_hash="$(unzip -p "$zip_path" libijkplayer.so | sha256sum | awk '{print $1}')"
+            if [[ "$source_hash" != "$archived_hash" ]]; then
+              echo "${abi}: ZIP content hash does not match source SO." >&2
+              exit 1
+            fi
+          done
+
+          (
+            cd "$dist_dir"
+            sha256sum \
+              arm64-v8a/libijkplayer.zip \
+              armeabi-v7a/libijkplayer.zip \
+              x86/libijkplayer.zip \
+              x86_64/libijkplayer.zip \
+              > SHA256SUMS
+            sha256sum "$GITHUB_WORKSPACE/$AAR_PATH" > AAR_SHA256
+          )
+
+          echo "KERNEL_DIST=${dist_dir}" >> "$GITHUB_ENV"
+          echo "dist_dir=${dist_dir}" >> "$GITHUB_OUTPUT"
+
+      - name: Preserve packaged kernels
+        uses: actions/upload-artifact@v4
+        with:
+          name: ijkplayer-kernel-${{ github.sha }}
+          path: ${{ steps.package.outputs.dist_dir }}
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload kernels
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          export AWS_ACCESS_KEY_ID="$R2_ACCESS_KEY_ID"
+          export AWS_SECRET_ACCESS_KEY="$R2_SECRET_ACCESS_KEY"
+          export AWS_REGION="auto"
+          export AWS_EC2_METADATA_DISABLED="true"
+          endpoint="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+
+          for abi in arm64-v8a armeabi-v7a x86 x86_64; do
+            aws s3 cp \
+              "${KERNEL_DIST}/${abi}/libijkplayer.zip" \
+              "s3://${R2_BUCKET}/${KEY_ROOT}/${abi}/libijkplayer.zip" \
+              --endpoint-url "$endpoint" \
+              --content-type "application/zip" \
+              --cache-control "no-cache, max-age=0" \
+              --only-show-errors
+          done
+
+      - name: Verify public downloads
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          verify_dir="$(mktemp -d "${RUNNER_TEMP}/ijkplayer-public.XXXXXX")"
+          {
+            echo "## IjkPlayer kernel published"
+            echo
+            echo "| ABI | ZIP SHA-256 | Download |"
+            echo "| --- | --- | --- |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          for abi in arm64-v8a armeabi-v7a x86 x86_64; do
+            local_zip="${KERNEL_DIST}/${abi}/libijkplayer.zip"
+            public_zip="${verify_dir}/${abi}.zip"
+            url="${PUBLIC_BASE_URL}/${abi}/libijkplayer.zip"
+            curl --fail --silent --show-error --location \
+              --retry 3 --retry-all-errors \
+              --output "$public_zip" \
+              "${url}?cb=${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${GITHUB_SHA}"
+
+            expected_hash="$(sha256sum "$local_zip" | awk '{print $1}')"
+            actual_hash="$(sha256sum "$public_zip" | awk '{print $1}')"
+            if [[ "$actual_hash" != "$expected_hash" ]]; then
+              echo "${abi}: public download hash mismatch." >&2
+              echo "Expected: ${expected_hash}" >&2
+              echo "Actual:   ${actual_hash}" >&2
+              exit 1
+            fi
+
+            mapfile -t entries < <(zipinfo -1 "$public_zip")
+            if ((${#entries[@]} != 1)) || [[ "${entries[0]}" != "libijkplayer.so" ]]; then
+              echo "${abi}: public ZIP contents are invalid." >&2
+              exit 1
+            fi
+
+            echo "| ${abi} | \`${actual_hash}\` | [download](${url}) |" >> "$GITHUB_STEP_SUMMARY"
+          done
