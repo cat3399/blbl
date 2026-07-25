@@ -125,6 +125,8 @@
     <string name="player_comment_load_failed">加载失败</string>
     <string name="player_comment_no_aid">未获取到 aid，暂不支持评论</string>
     <string name="player_comment_expand">展开</string>
+    <string name="player_comment_level_accessibility">用户等级 %1$d</string>
+    <string name="player_comment_level_senior_accessibility">硬核会员，用户等级 %1$d</string>
     <string name="player_touch_lock">锁定触摸</string>
     <string name="player_touch_unlock">解锁触摸</string>
     <string name="player_touch_locked">触摸已锁定</string>

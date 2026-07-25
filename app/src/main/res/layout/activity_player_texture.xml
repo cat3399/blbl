@@ -44,6 +44,17 @@
         app:layout_constraintTop_toTopOf="@id/player_view" />
 
     <ViewStub
+        android:id="@+id/live_super_chat_stub"
+        android:layout_width="@dimen/live_super_chat_width"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="@dimen/live_super_chat_margin_start"
+        android:layout_marginTop="@dimen/live_super_chat_margin_top"
+        android:inflatedId="@+id/live_super_chat_overlay"
+        android:layout="@layout/view_live_super_chat_overlay"
+        app:layout_constraintStart_toStartOf="@id/player_view"
+        app:layout_constraintTop_toBottomOf="@id/barrier_live_super_chat_top" />
+
+    <ViewStub
         android:id="@+id/player_touch_overlay_stub"
         android:layout_width="0dp"
         android:layout_height="0dp"
@@ -699,6 +710,14 @@
         app:layout_constraintEnd_toEndOf="@id/player_view"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@id/top_bar" />
+
+    <androidx.constraintlayout.widget.Barrier
+        android:id="@+id/barrier_live_super_chat_top"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        app:barrierAllowsGoneWidgets="true"
+        app:barrierDirection="bottom"
+        app:constraint_referenced_ids="top_bar,card_up_quick,tv_debug" />
 
     <TextView
         android:id="@+id/tv_seek_hint"
@@ -1383,9 +1402,9 @@
         android:id="@+id/comments_panel"
         android:layout_width="@dimen/player_comments_panel_width"
         android:layout_height="0dp"
-        android:layout_margin="@dimen/player_side_panel_margin"
+        android:layout_marginEnd="@dimen/player_comments_panel_margin_end"
         android:layout_marginTop="@dimen/player_side_panel_margin_top"
-        android:layout_marginBottom="@dimen/player_side_panel_margin_bottom"
+        android:layout_marginBottom="@dimen/player_comments_panel_margin_bottom"
         android:clipChildren="false"
         android:clipToPadding="false"
         android:visibility="gone"
@@ -1401,7 +1420,7 @@
             android:layout_height="match_parent"
             android:clipChildren="false"
             android:clipToPadding="false"
-            android:padding="@dimen/player_side_panel_padding">
+            android:padding="@dimen/player_comments_panel_padding">
 
             <include layout="@layout/include_video_comments_panel_content" />
 

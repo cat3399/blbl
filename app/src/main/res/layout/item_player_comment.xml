@@ -6,7 +6,7 @@
     android:layout_marginBottom="@dimen/player_comment_item_margin_bottom"
     android:clickable="true"
     android:focusable="true"
-    android:stateListAnimator="@animator/blbl_focus_scale"
+    android:stateListAnimator="@animator/blbl_comment_card_focus_scale"
     app:cardBackgroundColor="@android:color/black"
     app:cardCornerRadius="@dimen/player_comment_item_corner_radius"
     app:strokeColor="?attr/blblFocusStrokeColor"
@@ -53,9 +53,22 @@
             app:layout_constrainedWidth="true"
             app:layout_constraintHorizontal_bias="0"
             app:layout_constraintHorizontal_chainStyle="packed"
-            app:layout_constraintEnd_toStartOf="@id/tv_up_badge"
+            app:layout_constraintEnd_toStartOf="@id/view_user_level"
             app:layout_constraintStart_toEndOf="@id/iv_avatar"
             app:layout_constraintTop_toTopOf="@id/iv_avatar" />
+
+        <blbl.cat3399.feature.video.comment.VideoCommentLevelView
+            android:id="@+id/view_user_level"
+            android:layout_width="wrap_content"
+            android:layout_height="@dimen/player_comment_level_height"
+            android:layout_marginStart="@dimen/player_comment_level_margin_start"
+            android:focusable="false"
+            android:importantForAccessibility="yes"
+            android:visibility="gone"
+            app:layout_constraintBottom_toBottomOf="@id/tv_user"
+            app:layout_constraintEnd_toStartOf="@id/tv_up_badge"
+            app:layout_constraintStart_toEndOf="@id/tv_user"
+            app:layout_constraintTop_toTopOf="@id/tv_user" />
 
         <TextView
             android:id="@+id/tv_up_badge"
@@ -74,7 +87,7 @@
             android:visibility="gone"
             app:layout_constraintBaseline_toBaselineOf="@id/tv_user"
             app:layout_constraintEnd_toStartOf="@id/row_header_meta"
-            app:layout_constraintStart_toEndOf="@id/tv_user" />
+            app:layout_constraintStart_toEndOf="@id/view_user_level" />
 
         <LinearLayout
             android:id="@+id/row_header_meta"

@@ -38,6 +38,11 @@ internal fun parseVideoCommentReplyItem(
             ?: member.optLong("mid", 0L)
     val uname = member.optString("uname", "").trim()
     val avatar = member.optString("avatar", "").trim().takeIf { it.isNotBlank() }
+    val userLevel =
+        parseVideoCommentLevel(
+            member.optJSONObject("level_info")?.opt("current_level"),
+        )
+    val isSeniorMember = parseVideoCommentSeniorMember(member.opt("is_senior_member"))
     val content = obj.optJSONObject("content") ?: JSONObject()
     val message = content.optString("message", "").trim()
     val emotes = parseVideoCommentEmoteMap(content.optJSONObject("emote"))
@@ -65,6 +70,8 @@ internal fun parseVideoCommentReplyItem(
         mid = mid,
         userName = uname,
         avatarUrl = avatar,
+        userLevel = userLevel,
+        isSeniorMember = isSeniorMember,
         message = message,
         emotes = emotes,
         pictures = pictures,
@@ -115,6 +122,8 @@ internal data class VideoCommentItem(
     val mid: Long,
     val userName: String,
     val avatarUrl: String?,
+    val userLevel: Int? = null,
+    val isSeniorMember: Boolean = false,
     val message: String,
     val emotes: Map<String, String> = emptyMap(),
     val pictures: List<VideoCommentPicture> = emptyList(),

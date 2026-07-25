@@ -863,8 +863,8 @@ class VideoDetailActivity : BaseActivity() {
                     val commentViews = IncludeVideoCommentsPanelContentBinding.bind(b.commentsPopupContent)
                     val imageViews = IncludeVideoCommentImageViewerContentBinding.bind(b.commentImageViewer)
                     // The popup card has a tighter width than the player side panel. Reserve
-                    // extra horizontal focus-safe space for the shared 1.04x comment-card scale.
-                    val focusSafeH = resources.getDimensionPixelSize(R.dimen.player_comments_recycler_padding_h)
+                    // extra horizontal focus-safe space for the shared 1.02x comment-card scale.
+                    val focusSafeH = b.root.resources.getDimensionPixelSize(R.dimen.player_comments_recycler_padding_h)
                     listOf(commentViews.recyclerComments, commentViews.recyclerCommentThread).forEach { recycler ->
                         recycler.setPadding(
                             focusSafeH * 2,

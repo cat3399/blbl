@@ -132,6 +132,10 @@ internal class VideoCommentsAdapter(
             binding.tvContextTag.visibility = if (item.contextTag.isNullOrBlank()) View.GONE else View.VISIBLE
 
             binding.tvUser.text = item.userName.ifBlank { "-" }
+            binding.viewUserLevel.bind(
+                level = item.userLevel,
+                isSeniorMember = item.isSeniorMember,
+            )
             binding.tvUpBadge.visibility = if (item.isUp) View.VISIBLE else View.GONE
             binding.tvTime.text = Format.pubDateText(item.ctimeSec)
             val hasLikes = item.likeCount > 0L
