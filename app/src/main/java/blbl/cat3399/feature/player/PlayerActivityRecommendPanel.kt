@@ -27,8 +27,8 @@ private const val BOTTOM_PANEL_LOAD_MORE_REMAINING_THRESHOLD = 2
 internal fun PlayerActivity.isBottomCardPanelVisible(): Boolean = binding.recommendPanel.visibility == View.VISIBLE
 
 internal fun PlayerActivity.initBottomCardPanel() {
-    binding.recommendScrim.setOnClickListener { hideBottomCardPanel(restoreFocus = true) }
-    binding.recommendPanel.setOnClickListener { hideBottomCardPanel(restoreFocus = true) }
+    binding.recommendScrim.setOnClickListener { hideBottomCardPanel() }
+    binding.recommendPanel.setOnClickListener { hideBottomCardPanel() }
 
     binding.tabPageList.setOnClickListener { selectBottomPanelKind(PlayerVideoListKind.PAGE, requestFocus = true) }
     binding.tabPartsList.setOnClickListener { selectBottomPanelKind(PlayerVideoListKind.PARTS, requestFocus = true) }
@@ -57,7 +57,7 @@ internal fun PlayerActivity.initBottomCardPanel() {
             if (event.action != KeyEvent.ACTION_DOWN) return@setOnKeyListener false
             when (keyCode) {
                 KeyEvent.KEYCODE_DPAD_UP -> {
-                    hideBottomCardPanel(restoreFocus = true)
+                    hideBottomCardPanel()
                     true
                 }
                 KeyEvent.KEYCODE_DPAD_DOWN -> {
@@ -202,7 +202,6 @@ private fun PlayerActivity.currentBottomPanelPlayingIndex(): Int {
 internal fun PlayerActivity.showListPanelFromButton() {
     showListPanel(
         kind = preferredListPanelKindForPlaybackMode(),
-        restoreFocusView = binding.btnListPanel,
         preferContentFocus = false,
     )
 }
@@ -217,7 +216,6 @@ internal fun PlayerActivity.showListPanelFromShortcut(
     if (!hasAnyContext) return false
     showListPanel(
         kind = preferredListPanelKindForShortcutTarget(target),
-        restoreFocusView = binding.btnListPanel,
         preferContentFocus = true,
     )
     return true
@@ -225,16 +223,14 @@ internal fun PlayerActivity.showListPanelFromShortcut(
 
 internal fun PlayerActivity.showListPanel(
     kind: PlayerVideoListKind,
-    restoreFocusView: View,
     preferContentFocus: Boolean = false,
     openedFromMenuKey: Boolean = false,
 ) {
     onOverlayPanelShown(openedFromMenuKey = openedFromMenuKey)
-    setControlsVisible(true)
     bottomCardPanelPreferContentFocus = preferContentFocus
-    bottomCardPanelRestoreFocus = java.lang.ref.WeakReference(restoreFocusView)
     binding.recommendScrim.visibility = View.VISIBLE
     binding.recommendPanel.visibility = View.VISIBLE
+    setControlsVisible(false)
     selectBottomPanelKind(kind = kind, requestFocus = true)
 }
 
@@ -284,10 +280,7 @@ private fun PlayerActivity.preferredListPanelKindForShortcutTarget(target: Playe
     }
 }
 
-internal fun PlayerActivity.hideBottomCardPanel(
-    restoreFocus: Boolean,
-    dismissTarget: PlayerActivity.PanelDismissTarget? = PlayerActivity.PanelDismissTarget.ResumeOsd,
-) {
+internal fun PlayerActivity.hideBottomCardPanel(finalizeOverlaySession: Boolean = true) {
     if (!isBottomCardPanelVisible() && binding.recommendScrim.visibility != View.VISIBLE) return
     binding.recommendScrim.visibility = View.GONE
     binding.recommendPanel.visibility = View.GONE
@@ -295,18 +288,7 @@ internal fun PlayerActivity.hideBottomCardPanel(
     (binding.recyclerRecommend.adapter as? VideoCardAdapter)?.submit(emptyList())
     binding.tvListPanelEmpty.visibility = View.GONE
     binding.recyclerRecommend.visibility = View.VISIBLE
-    dismissTarget?.let { onLastOverlayPanelDismissed(it) }
-    if (!restoreFocus || dismissTarget == PlayerActivity.PanelDismissTarget.Fullscreen) return
-
-    val target = bottomCardPanelRestoreFocus?.get()
-    binding.root.post {
-        when {
-            target != null && target.requestOsdFocusIfUsable() -> Unit
-            binding.btnListPanel.requestOsdFocusIfUsable() -> Unit
-            binding.btnPlayPause.requestOsdFocusIfUsable() -> Unit
-            else -> focusFirstControl()
-        }
-    }
+    if (finalizeOverlaySession) onLastOverlayPanelDismissed()
 }
 
 internal fun PlayerActivity.notifyPageListPanelChanged() {
@@ -531,7 +513,7 @@ private fun PlayerActivity.focusBottomPanelDefaultItem() {
 private fun PlayerActivity.playBottomPanelRecommendCard(card: VideoCard) {
     val bvid = card.bvid.trim()
     if (bvid.isBlank()) return
-    hideBottomCardPanel(restoreFocus = false)
+    hideBottomCardPanel()
     startPlayback(
         bvid = bvid,
         cidExtra = card.cid?.takeIf { it > 0 },
@@ -540,26 +522,20 @@ private fun PlayerActivity.playBottomPanelRecommendCard(card: VideoCard) {
         initialTitle = card.title.takeIf { it.isNotBlank() },
         startedFromList = PlayerVideoListKind.RECOMMEND,
     )
-    setControlsVisible(true)
-    requestFocusAfterListPanelAction()
 }
 
 private fun PlayerActivity.playBottomPanelPageIndex(index: Int) {
     val list = pageListItems
     if (list.isEmpty() || index !in list.indices) return
-    hideBottomCardPanel(restoreFocus = false)
+    hideBottomCardPanel()
     playPageListIndex(index)
-    setControlsVisible(true)
-    requestFocusAfterListPanelAction()
 }
 
 private fun PlayerActivity.playBottomPanelPartsIndex(index: Int) {
     val list = partsListItems
     if (list.isEmpty() || index !in list.indices) return
-    hideBottomCardPanel(restoreFocus = false)
+    hideBottomCardPanel()
     playPartsListIndex(index)
-    setControlsVisible(true)
-    requestFocusAfterListPanelAction()
 }
 
 internal fun PlayerActivity.ensureBottomCardPanelFocus() {
@@ -583,16 +559,6 @@ private fun View.requestOsdFocusIfUsable(): Boolean {
     if (!isEnabled) return false
     if (!isFocusable) return false
     return requestFocus()
-}
-
-private fun PlayerActivity.requestFocusAfterListPanelAction() {
-    binding.root.post {
-        when {
-            binding.btnListPanel.requestOsdFocusIfUsable() -> Unit
-            binding.btnPlayPause.requestOsdFocusIfUsable() -> Unit
-            else -> focusFirstControl()
-        }
-    }
 }
 
 private fun PlayerActivity.focusBottomPanelPosition(position: Int) {

@@ -72,7 +72,6 @@ import blbl.cat3399.core.ui.ActivityStackLimiter
 import blbl.cat3399.core.ui.AppToast
 import blbl.cat3399.core.ui.BaseActivity
 import blbl.cat3399.core.ui.DoubleBackToExitHandler
-import blbl.cat3399.core.ui.FocusReturn
 import blbl.cat3399.core.ui.FocusTreeUtils
 import blbl.cat3399.core.ui.Immersive
 import blbl.cat3399.core.ui.popup.PopupHost
@@ -131,7 +130,6 @@ class PlayerActivity : BaseActivity() {
     internal var pendingIntentResumeCandidate: ResumeCandidate? = null
     internal var pendingIntentResumeCid: Long? = null
     internal var pendingIntentResumeEpId: Long? = null
-    internal val sidePanelFocusReturn = FocusReturn()
     internal var videoCommentsController: VideoCommentsPanelController? = null
     internal var videoCommentImageViewerController: VideoCommentImageViewerController? = null
     internal var debugJob: kotlinx.coroutines.Job? = null
@@ -216,11 +214,6 @@ class PlayerActivity : BaseActivity() {
         SeekTransient,
     }
 
-    internal enum class PanelDismissTarget {
-        ResumeOsd,
-        Fullscreen,
-    }
-
     internal var osdMode: OsdMode = OsdMode.Hidden
     internal var menuRevealedPanelSessionActive: Boolean = false
 
@@ -265,7 +258,6 @@ class PlayerActivity : BaseActivity() {
     internal var settingsPanelMenu: PlayerSettingsMenu = PlayerSettingsMenu.ROOT
     internal var bottomCardPanelKind: PlayerVideoListKind = PlayerVideoListKind.PAGE
     internal var bottomCardPanelPreferContentFocus: Boolean = false
-    internal var bottomCardPanelRestoreFocus: WeakReference<View>? = null
 
     internal data class RelatedVideosCache(
         val bvid: String,
@@ -1461,7 +1453,7 @@ class PlayerActivity : BaseActivity() {
                 // Close the recommend panel first; never exit the player while it's visible.
                 if (event.action == KeyEvent.ACTION_DOWN) {
                     finishOnBackKeyUp = false
-                    hideBottomCardPanel(restoreFocus = true)
+                    hideBottomCardPanel()
                 }
                 return true
             }
@@ -1562,13 +1554,9 @@ class PlayerActivity : BaseActivity() {
             -> {
                 if (menuRevealedPanelSessionActive && isOverlayPanelVisible()) {
                     when {
-                        isCommentsPanelVisible() -> hideCommentsPanel(dismissTarget = PanelDismissTarget.Fullscreen)
-                        isSettingsPanelVisible() -> hideSettingsPanel(dismissTarget = PanelDismissTarget.Fullscreen)
-                        isBottomCardPanelVisible() ->
-                            hideBottomCardPanel(
-                                restoreFocus = false,
-                                dismissTarget = PanelDismissTarget.Fullscreen,
-                            )
+                        isCommentsPanelVisible() -> hideCommentsPanel()
+                        isSettingsPanelVisible() -> hideSettingsPanel()
+                        isBottomCardPanelVisible() -> hideBottomCardPanel()
                         else -> {
                             menuRevealedPanelSessionActive = false
                             setControlsVisible(false)
@@ -1628,7 +1616,7 @@ class PlayerActivity : BaseActivity() {
                         "back:down action=side_panel",
                         "settings=${if (isSettingsPanelVisible()) 1 else 0} comments=${if (isCommentsPanelVisible()) 1 else 0} thread=${if (isCommentThreadVisible()) 1 else 0}",
                     )
-                    return onSidePanelBackPressed(dismissTarget = PanelDismissTarget.ResumeOsd)
+                    return onSidePanelBackPressed()
                 }
                 if (osdMode != OsdMode.Hidden) {
                     exitTraceLog("back:down action=hide_osd", "osd=$osdMode")

@@ -91,9 +91,9 @@ internal fun PlayerActivity.openSponsorSubmitPanel() {
         return
     }
 
-    hideBottomCardPanel(restoreFocus = false, dismissTarget = null)
-    if (isSettingsPanelVisible()) hideSettingsPanel(dismissTarget = PlayerActivity.PanelDismissTarget.Fullscreen)
-    if (isCommentsPanelVisible()) hideCommentsPanel(dismissTarget = PlayerActivity.PanelDismissTarget.Fullscreen)
+    hideBottomCardPanel(finalizeOverlaySession = false)
+    if (isSettingsPanelVisible()) hideSettingsPanel()
+    if (isCommentsPanelVisible()) hideCommentsPanel()
     closeCommentImageViewer(restoreFocus = false)
 
     val wasPlaying = engine.isPlaying || engine.playWhenReady

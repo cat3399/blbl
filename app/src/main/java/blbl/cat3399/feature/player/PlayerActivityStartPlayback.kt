@@ -278,7 +278,7 @@ internal fun PlayerActivity.resetPlaybackStateForNewMedia(
     binding.settingsPanel.visibility = View.GONE
     binding.commentsPanel.visibility = View.GONE
     binding.playerInfoPanel.visibility = View.GONE
-    hideBottomCardPanel(restoreFocus = false, dismissTarget = null)
+    hideBottomCardPanel(finalizeOverlaySession = false)
     hideSponsorSubmitPanel(restorePlayback = false)
     menuRevealedPanelSessionActive = false
     val commentViews = binding.videoCommentsPanelContent()

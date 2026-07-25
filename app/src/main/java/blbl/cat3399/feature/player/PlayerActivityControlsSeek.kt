@@ -19,6 +19,12 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
+internal fun shouldShowPlayerOsd(
+    requestedVisible: Boolean,
+    hasOverlayPanel: Boolean,
+    touchLocked: Boolean,
+): Boolean = requestedVisible && !hasOverlayPanel && !touchLocked
+
 internal fun PlayerActivity.seekRelative(deltaMs: Long) {
     seekRelative(deltaMs, danmakuImmediate = true)
 }
@@ -52,7 +58,12 @@ internal fun PlayerActivity.toggleControls() {
 }
 
 internal fun PlayerActivity.setControlsVisible(visible: Boolean) {
-    val show = (visible || isSidePanelVisible() || isSponsorSubmitPanelVisible()) && !isTouchLocked()
+    val show =
+        shouldShowPlayerOsd(
+            requestedVisible = visible,
+            hasOverlayPanel = isOverlayPanelVisible(),
+            touchLocked = isTouchLocked(),
+        )
     seekOsdHideJob?.cancel()
     seekOsdHideJob = null
     seekOsdToken = 0L
@@ -72,7 +83,7 @@ internal fun PlayerActivity.setControlsVisible(visible: Boolean) {
     syncPlayerInfoPanelVisibility()
     updatePersistentBottomProgressBarVisibility()
     onTouchOverlayStateChanged()
-    if (visible) noteUserInteraction() else autoHideJob?.cancel()
+    if (show) noteUserInteraction() else autoHideJob?.cancel()
 }
 
 internal fun PlayerActivity.isTopBarContentVisible(): Boolean = osdMode != PlayerActivity.OsdMode.Hidden
@@ -97,7 +108,7 @@ internal fun PlayerActivity.updateTopBarUi() {
 }
 
 internal fun PlayerActivity.showSeekOsd() {
-    if (isSidePanelVisible() || isSponsorSubmitPanelVisible()) return
+    if (isOverlayPanelVisible()) return
     if (osdMode == PlayerActivity.OsdMode.Full) {
         // Full OSD already has the progress bar; keep it alive.
         noteUserInteraction()
@@ -119,7 +130,7 @@ internal fun PlayerActivity.showSeekOsd() {
 }
 
 internal fun PlayerActivity.showSeekOsd(posMs: Long, durationMs: Long, bufferedPosMs: Long) {
-    if (isSidePanelVisible() || isSponsorSubmitPanelVisible()) return
+    if (isOverlayPanelVisible()) return
     val duration = durationMs.coerceAtLeast(0L)
     val pos = posMs.coerceAtLeast(0L)
     val bufPos = bufferedPosMs.coerceAtLeast(0L)
@@ -246,7 +257,7 @@ internal fun PlayerActivity.showVideoShotPreviewForSeek(
 
 internal fun PlayerActivity.updatePersistentBottomProgressBarVisibility() {
     val enabled = session.persistentBottomProgressEnabled
-    val showControls = osdMode != PlayerActivity.OsdMode.Hidden || isSidePanelVisible() || isSponsorSubmitPanelVisible()
+    val showControls = osdMode != PlayerActivity.OsdMode.Hidden || isOverlayPanelVisible()
     val persistentV = if (enabled && !showControls && !transientSeekOsdVisible) View.VISIBLE else View.GONE
     if (binding.progressPersistentBottom.visibility != persistentV) binding.progressPersistentBottom.visibility = persistentV
 
@@ -259,8 +270,7 @@ internal fun PlayerActivity.restartAutoHideTimer() {
     val exo = player ?: return
     if (isTouchLocked()) return
     if (osdMode != PlayerActivity.OsdMode.Full) return
-    if (isSidePanelVisible()) return
-    if (isSponsorSubmitPanelVisible()) return
+    if (isOverlayPanelVisible()) return
     if (scrubbing) return
     if (!exo.isPlaying) return
     val token = lastInteractionAtMs
