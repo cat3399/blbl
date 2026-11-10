@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:gravity="center"
+    android:padding="24dp"
+    android:background="@color/player_overlay_bg"
+    android:visibility="gone">
+
+    <TextView
+        android:id="@+id/recovery_title"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:maxWidth="600dp"
+        android:maxLines="2"
+        android:ellipsize="end"
+        android:gravity="center"
+        android:textColor="@color/blbl_text_on_media"
+        android:textSize="22sp" />
+
+    <TextView
+        android:id="@+id/recovery_status"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:textColor="@color/blbl_text_on_media"
+        android:textSize="20sp" />
+
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:orientation="horizontal">
+
+        <Button
+            android:id="@+id/recovery_action"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:minWidth="100dp"
+            android:background="?attr/blblFocusBgRound"
+            android:textColor="@color/blbl_text_on_media"
+            android:textSize="18sp"
+            android:nextFocusRight="@id/recovery_back"
+            android:nextFocusDown="@id/btn_play_pause"
+            android:text="播放" />
+
+        <Button
+            android:id="@+id/recovery_back"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="16dp"
+            android:minWidth="100dp"
+            android:background="?attr/blblFocusBgRound"
+            android:textColor="@color/blbl_text_on_media"
+            android:textSize="18sp"
+            android:nextFocusLeft="@id/recovery_action"
+            android:nextFocusDown="@id/btn_play_pause"
+            android:text="返回" />
+    </LinearLayout>
+</LinearLayout>

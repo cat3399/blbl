@@ -82,6 +82,7 @@ class LiveGridFragment : Fragment(), LivePageFocusTarget, RefreshKeyHandler {
                         Intent(requireContext(), LivePlayerActivity::class.java)
                             .putExtra(LivePlayerActivity.EXTRA_ROOM_ID, room.roomId)
                             .putExtra(LivePlayerActivity.EXTRA_TITLE, room.title)
+                            .putExtra(LivePlayerActivity.EXTRA_COVER, room.coverUrl)
                             .putExtra(LivePlayerActivity.EXTRA_UNAME, room.uname),
                     )
                 }

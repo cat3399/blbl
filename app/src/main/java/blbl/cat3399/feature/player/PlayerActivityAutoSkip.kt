@@ -50,6 +50,7 @@ internal fun PlayerActivity.autoSkipCategoryLabel(category: String?): String {
 
 internal fun PlayerActivity.updateProgressUi() {
     val exo = player ?: return
+    playbackRecovery?.updateProgress(exo.currentPosition, session.toEngineSwitchJsonString())
     val duration = exo.duration.takeIf { it > 0 } ?: currentViewDurationMs ?: 0L
     val pos = exo.currentPosition.coerceAtLeast(0L)
     val uiPos = resolvePlayerUiPositionMs(pos, holdScrubPreviewPosMs, keySeekPreviewPosMs)

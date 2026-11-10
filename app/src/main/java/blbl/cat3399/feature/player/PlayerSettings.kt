@@ -15,6 +15,7 @@ import blbl.cat3399.core.log.AppLog
 import blbl.cat3399.core.net.BiliClient
 import blbl.cat3399.core.prefs.AppPrefs
 import blbl.cat3399.core.prefs.PlayerPlaybackModes
+import blbl.cat3399.core.prefs.VideoFillMode
 import blbl.cat3399.core.ui.AppToast
 import blbl.cat3399.core.ui.popup.AppPopup
 import blbl.cat3399.feature.player.danmaku.DanmakuFontWeight
@@ -37,6 +38,7 @@ internal object PlayerSettingKeys {
     const val PLAYBACK_SPEED = "playback_speed"
     const val AUDIO_BALANCE = "audio_balance"
     const val PLAYBACK_MODE = "playback_mode"
+    const val VIDEO_FILL_MODE = "video_fill_mode"
     const val SUBTITLE_MENU = "subtitle_menu"
     const val SUBTITLE_ENABLED = "subtitle_enabled"
     const val SUBTITLE_LANG = "subtitle_lang"
@@ -336,6 +338,7 @@ internal fun PlayerActivity.handleSettingsItemClick(item: PlayerSettingsAdapter.
         PlayerSettingKeys.PLAYBACK_SPEED -> showSpeedDialog()
         PlayerSettingKeys.AUDIO_BALANCE -> showAudioBalanceDialog()
         PlayerSettingKeys.PLAYBACK_MODE -> showPlaybackModeDialog()
+        PlayerSettingKeys.VIDEO_FILL_MODE -> showVideoFillModeDialog()
         PlayerSettingKeys.SUBTITLE_MENU -> showSubtitleSettingsMenu()
         PlayerSettingKeys.SUBTITLE_ENABLED -> {
             val exo = (player as? ExoPlayerEngine)?.exoPlayer
@@ -519,6 +522,7 @@ private fun PlayerActivity.buildRootSettingsItems(
         settingItem(PlayerSettingKeys.CODEC, "视频编码", session.preferCodec),
         settingItem(PlayerSettingKeys.PLAYBACK_SPEED, "播放速度", String.format(Locale.US, "%.2fx", session.playbackSpeed)),
         settingItem(PlayerSettingKeys.PLAYBACK_MODE, "播放模式", playbackModeSubtitle()),
+        settingItem(PlayerSettingKeys.VIDEO_FILL_MODE, "画面填充", session.videoFillMode.label),
         subtitleSupported.takeIf { it }?.let { settingItem(PlayerSettingKeys.SUBTITLE_MENU, "字幕设置", ">") },
         settingItem(PlayerSettingKeys.DANMAKU_MENU, "弹幕设置", ">"),
         settingItem(PlayerSettingKeys.AUDIO_BALANCE, "音频平衡", session.audioBalanceLevel.label),
@@ -588,8 +592,8 @@ private fun PlayerActivity.playerEngineSubtitle(): String {
 private fun PlayerActivity.restartForEngineSwitch(picked: PlayerEngineKind) {
     val engine = player ?: return
 
-    val resumePosMs = engine.currentPosition.coerceAtLeast(0L)
-    val resumePlayWhenReady = engine.playWhenReady
+    val resumePosMs = if (playbackRecovery?.waiting == true) playbackRecovery!!.record?.positionMs ?: 0L else engine.currentPosition.coerceAtLeast(0L)
+    val resumePlayWhenReady = playbackRecovery?.desiredPlaying ?: engine.playWhenReady
     val sessionJson = session.copy(engineKind = picked).toEngineSwitchJsonString()
 
     val restart =
@@ -605,6 +609,8 @@ private fun PlayerActivity.restartForEngineSwitch(picked: PlayerEngineKind) {
             putExtra(PlayerActivity.EXTRA_ENGINE_SWITCH_RESUME_POSITION_MS, resumePosMs)
             putExtra(PlayerActivity.EXTRA_ENGINE_SWITCH_RESUME_PLAY_WHEN_READY, resumePlayWhenReady)
             putExtra(PlayerActivity.EXTRA_ENGINE_SWITCH_SESSION_JSON, sessionJson)
+            putExtra(PlayerActivity.EXTRA_TITLE, playbackRecovery?.record?.title)
+            putExtra(PlayerActivity.EXTRA_COVER, playbackRecovery?.record?.coverUrl)
         }
 
     startActivity(restart)
@@ -774,6 +780,25 @@ internal fun PlayerActivity.showSpeedDialog() {
             afterApplied = { player?.setPlaybackSpeed(it) },
         )
     }
+}
+
+internal fun PlayerActivity.showVideoFillModeDialog() {
+    val options = VideoFillMode.ordered
+    showSettingsChoiceDialog(
+        title = "画面填充",
+        options = options,
+        checkedIndex = options.indexOf(session.videoFillMode),
+        label = VideoFillMode::label,
+    ) { picked -> applyVideoFillModeSetting(picked) }
+}
+
+internal fun PlayerActivity.applyVideoFillModeSetting(mode: VideoFillMode) {
+    applySessionSettingValue(
+        value = mode,
+        updateSession = { copy(videoFillMode = it) },
+        syncToGlobal = { playerVideoFillMode = it.prefValue },
+        afterApplied = { applyVideoFillMode(binding.playerView, binding.ijkAspect, it) },
+    )
 }
 
 internal fun PlayerActivity.showAudioBalanceDialog() {

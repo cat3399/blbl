@@ -31,7 +31,6 @@ import androidx.media3.exoplayer.DecoderReuseEvaluation
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime
-import androidx.media3.ui.AspectRatioFrameLayout
 import blbl.cat3399.BuildConfig
 import blbl.cat3399.R
 import blbl.cat3399.core.api.BiliApi
@@ -41,6 +40,7 @@ import blbl.cat3399.core.model.Danmaku
 import blbl.cat3399.core.model.LiveSuperChat
 import blbl.cat3399.core.net.BiliClient
 import blbl.cat3399.core.prefs.AppPrefs
+import blbl.cat3399.core.prefs.VideoFillMode
 import blbl.cat3399.core.prefs.PlayerCustomShortcutAction
 import blbl.cat3399.core.prefs.PlayerCustomShortcutTrigger
 import blbl.cat3399.core.prefs.PlayerCustomShortcutsStore
@@ -68,6 +68,7 @@ import blbl.cat3399.feature.player.PlayerTouchGestureHost
 import blbl.cat3399.feature.player.PlayerUpQuickCardController
 import blbl.cat3399.feature.player.PlayerUiMode
 import blbl.cat3399.feature.player.areaText
+import blbl.cat3399.feature.player.applyVideoFillMode
 import blbl.cat3399.feature.player.danmaku.DanmakuSessionSettings
 import blbl.cat3399.feature.player.danmaku.DanmakuFontWeight
 import blbl.cat3399.feature.player.danmaku.DanmakuLaneDensity
@@ -80,6 +81,10 @@ import blbl.cat3399.feature.player.engine.LiveHlsDebugInfo
 import blbl.cat3399.feature.player.engine.PlayerEngineKind
 import blbl.cat3399.feature.player.engine.PlaybackSource
 import blbl.cat3399.feature.player.requirePlayerTouchOverlayBinding
+import blbl.cat3399.feature.player.RECOVERY_SAVED_RECORD
+import blbl.cat3399.feature.player.recovery.PlaybackRecoveryRecord
+import blbl.cat3399.feature.player.recovery.PlaybackRecoveryStore
+import blbl.cat3399.feature.player.recovery.PlayerRecoveryController
 import kotlinx.coroutines.CancellationException
 import org.json.JSONObject
 import kotlinx.coroutines.Job
@@ -96,13 +101,14 @@ private object LivePlayerSettingKeys {
     const val HIGH_BITRATE = "high_bitrate"
     const val AUDIO_BALANCE = "audio_balance"
     const val PLAYER_ENGINE = "player_engine"
+    const val VIDEO_FILL_MODE = "video_fill_mode"
     const val DEBUG_INFO = "debug_info"
 }
 
 class LivePlayerActivity : BaseActivity() {
     override fun shouldRecreateOnUiScaleChange(): Boolean = true
 
-    private lateinit var binding: ActivityPlayerBinding
+    internal lateinit var binding: ActivityPlayerBinding
     private lateinit var upQuickCard: PlayerUpQuickCardController
     private lateinit var superChatOverlay: LiveSuperChatOverlayController
 
@@ -187,13 +193,17 @@ class LivePlayerActivity : BaseActivity() {
     private var roomUname: String = ""
     private var roomFace: String? = null
 
-    private var session: LiveSession = LiveSession()
+    internal var session: LiveSession = LiveSession()
     private val debug = PlayerDebugMetrics()
     @Volatile private var liveHlsDebugInfo: LiveHlsDebugInfo? = null
 
     private var lastPlay: BiliApi.LivePlayUrl? = null
     private var lastLiveStatus: Int = 0
     private var transientPlaybackResumeRequested: Boolean? = null
+    private var playbackRecovery: PlayerRecoveryController? = null
+    private var recoveryResumePending = false
+    private var streamLoadJob: Job? = null
+    private var streamLoadGeneration = 0L
 
     private var messageClient: LiveMessageClient? = null
     private var liveDanmakuBaseUptimeMs: Long = 0L
@@ -225,7 +235,10 @@ class LivePlayerActivity : BaseActivity() {
         resetBufferingOverlayState()
 
         roomId = intent.getLongExtra(EXTRA_ROOM_ID, 0L)
-        roomTitle = intent.getStringExtra(EXTRA_TITLE).orEmpty()
+        val savedRecord = PlaybackRecoveryRecord.fromJson(savedInstanceState?.getString(RECOVERY_SAVED_RECORD))
+            ?.takeIf { it.live && it.roomId == roomId }
+        val restored = savedRecord ?: PlaybackRecoveryStore(this).load("live:$roomId")
+        roomTitle = restored?.title ?: intent.getStringExtra(EXTRA_TITLE).orEmpty()
         roomUname = intent.getStringExtra(EXTRA_UNAME).orEmpty()
         if (roomId <= 0L) {
             AppToast.show(this, "缺少 room_id")
@@ -234,11 +247,13 @@ class LivePlayerActivity : BaseActivity() {
         }
 
         val sessionOverrideJson =
-            intent.getStringExtra(EXTRA_ENGINE_SWITCH_SESSION_JSON)
+            savedRecord?.settingsJson ?: intent.getStringExtra(EXTRA_ENGINE_SWITCH_SESSION_JSON)
                 ?.trim()
                 ?.takeIf { it.isNotBlank() }
+                ?: restored?.settingsJson
         session =
             LiveSession(
+                videoFillMode = VideoFillMode.fromPrefValue(prefs.playerVideoFillMode),
                 engineKind = PlayerEngineKind.fromPrefValue(prefs.playerEngineKind),
                 highBitrateEnabled = prefs.liveHighBitrateEnabled,
                 danmaku = DanmakuSessionSettings(
@@ -371,6 +386,7 @@ class LivePlayerActivity : BaseActivity() {
         engine.addListener(
             object : BlblPlayerEngine.Listener {
                 override fun onPlayerError(error: Throwable) {
+                    if (recoveryResumePending || playbackRecovery?.foreground == false) return
                     if (shouldSuppressPlayerError(error)) {
                         resetBufferingOverlayState()
                         return
@@ -384,6 +400,10 @@ class LivePlayerActivity : BaseActivity() {
                         return
                     }
                     resetBufferingOverlayState()
+                    if (playbackRecovery?.waiting == true) {
+                        playbackRecovery?.fail()
+                        return
+                    }
                     if (playbackException != null) {
                         AppToast.show(this@LivePlayerActivity, "播放失败：${playbackException.errorCodeName}")
                         return
@@ -394,6 +414,14 @@ class LivePlayerActivity : BaseActivity() {
                 override fun onIsPlayingChanged(isPlaying: Boolean) {
                     updatePlayPauseIcon(isPlaying)
                     noteUserInteraction()
+                }
+
+                override fun onPlayWhenReadyChanged(playWhenReady: Boolean) {
+                    playbackRecovery?.onPlayIntentChanged(playWhenReady, fromPlayer = true)
+                }
+
+                override fun onRenderedFirstFrame() {
+                    playbackRecovery?.onFirstFrame()
                 }
 
                 override fun onPlaybackStateChanged(playbackState: Int) {
@@ -423,8 +451,7 @@ class LivePlayerActivity : BaseActivity() {
         )
 
         binding.btnPlayPause.setOnClickListener {
-            val p = player ?: return@setOnClickListener
-            if (p.isPlaying) p.pause() else p.play()
+            togglePlaybackIntent()
             setControlsVisible(true)
         }
         binding.btnAdvanced.setOnClickListener {
@@ -471,7 +498,27 @@ class LivePlayerActivity : BaseActivity() {
         setControlsVisible(false)
         updateDanmakuButton()
 
-        lifecycleScope.launch { loadAndPlay(initial = true) }
+        playbackRecovery = PlayerRecoveryController(
+            context = this,
+            binding = binding,
+            scope = lifecycleScope,
+            surfaceView = { if (player?.kind == PlayerEngineKind.IjkPlayer) ijkRenderView else binding.playerView.videoSurfaceView },
+            showControls = { setControlsVisible(true) },
+            onRecovered = { restartAutoHideTimer() },
+            onRetry = { requestStreamReload(initial = true, recovering = true) },
+            onExit = { finish() },
+        )
+        playbackRecovery?.begin((restored ?: PlaybackRecoveryRecord(
+            entryKey = "live:$roomId",
+            live = true,
+            roomId = roomId,
+            title = roomTitle,
+            coverUrl = intent.getStringExtra(EXTRA_COVER).orEmpty(),
+        )).copy(
+            playWhenReady = savedRecord?.playWhenReady ?: intent.getBooleanExtra(EXTRA_RESUME_PLAY_WHEN_READY, restored?.playWhenReady ?: true),
+            settingsJson = session.toEngineSwitchJsonString(),
+        ))
+        requestStreamReload(initial = true)
     }
 
     private fun prepareTransientPlaybackExit() {
@@ -496,7 +543,35 @@ class LivePlayerActivity : BaseActivity() {
         PlayerOsdSizing.applyTheme(this)
         PlayerUiMode.applyLive(this, binding)
         initTouchGestures()
-        consumeTransientPlaybackResumeIfNeeded()
+        playbackRecovery?.resume()
+        if (recoveryResumePending) {
+            recoveryResumePending = false
+            transientPlaybackResumeRequested = null
+            requestStreamReload(initial = true, recovering = true)
+        } else {
+            consumeTransientPlaybackResumeIfNeeded()
+        }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        playbackRecovery?.checkpoint(0, session.toEngineSwitchJsonString())
+            ?.let { outState.putString(RECOVERY_SAVED_RECORD, it.toJson()) }
+        super.onSaveInstanceState(outState)
+    }
+
+    override fun onPause() {
+        if (!isFinishing && !exitRequested) {
+            playbackRecovery?.let { recovery ->
+                recovery.pause(0, transientPlaybackResumeRequested ?: recovery.desiredPlaying, session.toEngineSwitchJsonString())
+            }
+            recoveryResumePending = true
+            streamLoadGeneration++
+            streamLoadJob?.cancel()
+            autoFailoverJob?.cancel()
+            autoFailoverInFlight = false
+        }
+        player?.pause()
+        super.onPause()
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
@@ -540,6 +615,8 @@ class LivePlayerActivity : BaseActivity() {
     }
 
     override fun onDestroy() {
+        playbackRecovery?.release(exit = isFinishing)
+        streamLoadJob?.cancel()
         val t0 = SystemClock.elapsedRealtime()
         AppLog.i("LivePlayer", "activity:onDestroy:start")
         transientPlaybackResumeRequested = null
@@ -570,6 +647,9 @@ class LivePlayerActivity : BaseActivity() {
     }
 
     override fun finish() {
+        playbackRecovery?.release(exit = true)
+        streamLoadGeneration++
+        streamLoadJob?.cancel()
         exitRequested = true
         transientPlaybackResumeRequested = null
         autoFailoverJob?.cancel()
@@ -583,6 +663,7 @@ class LivePlayerActivity : BaseActivity() {
     }
 
     private fun applyRenderForEngine(engine: BlblPlayerEngine, prefs: AppPrefs) {
+        applyVideoFillMode(binding.playerView, binding.ijkAspect, session.videoFillMode)
         // Reset any previous IJK render state.
         binding.ijkAspect.visibility = View.GONE
         binding.ijkContainer.removeAllViews()
@@ -600,7 +681,6 @@ class LivePlayerActivity : BaseActivity() {
         // IJK mode: render via our own Surface/Texture.
         binding.playerView.player = null
         binding.ijkAspect.visibility = View.VISIBLE
-        binding.ijkAspect.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT)
         binding.ijkAspect.setAspectRatio(0f)
 
         val renderView: View =
@@ -685,6 +765,10 @@ class LivePlayerActivity : BaseActivity() {
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         val keyCode = event.keyCode
+        if (::binding.isInitialized && binding.playbackRecovery.root.hasFocus() &&
+            keyCode in setOf(KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_DPAD_UP,
+                KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER)
+        ) return super.dispatchKeyEvent(event)
 
         // LivePlayerActivity uses global exit shortcuts (BACK/ESC/B).
         // When a modal popup is showing, bypass these shortcuts and let the popup consume keys first.
@@ -820,7 +904,7 @@ class LivePlayerActivity : BaseActivity() {
                 onTouchOverlayStateChanged()
                 return true
             }
-            if (controlsVisible) {
+            if (controlsVisible && playbackRecovery?.keepControlsVisible != true) {
                 setControlsVisible(false)
                 return true
             }
@@ -892,9 +976,7 @@ class LivePlayerActivity : BaseActivity() {
 
             PlayerCustomShortcutAction.TogglePlayPause -> {
                 noteUserInteraction()
-                val engine = player ?: return true
-                val willPlay = !engine.isPlaying
-                if (willPlay) engine.play() else engine.pause()
+                val willPlay = togglePlaybackIntent()
                 showSeekHint(if (willPlay) "播放" else "暂停")
                 return true
             }
@@ -1027,6 +1109,7 @@ class LivePlayerActivity : BaseActivity() {
                     LivePlayerSettingKeys.HIGH_BITRATE -> toggleLiveHighBitrate()
                     LivePlayerSettingKeys.AUDIO_BALANCE -> showAudioBalanceDialog()
                     LivePlayerSettingKeys.PLAYER_ENGINE -> showPlayerEngineDialog()
+                    LivePlayerSettingKeys.VIDEO_FILL_MODE -> showVideoFillModeDialog()
                     LivePlayerSettingKeys.DEBUG_INFO -> {
                         session = session.copy(debugEnabled = !session.debugEnabled)
                         updateDebugOverlay()
@@ -1075,6 +1158,29 @@ class LivePlayerActivity : BaseActivity() {
         updateDebugOverlay()
     }
 
+    private fun showVideoFillModeDialog() {
+        val options = VideoFillMode.ordered
+        AppPopup.singleChoice(
+            context = this,
+            title = "画面填充",
+            items = options.map { it.label },
+            checkedIndex = options.indexOf(session.videoFillMode),
+        ) { which, _ ->
+            val picked = options.getOrNull(which) ?: return@singleChoice
+            applyVideoFillModeSetting(picked)
+        }
+    }
+
+    internal fun applyVideoFillModeSetting(mode: VideoFillMode) {
+        session = session.copy(videoFillMode = mode)
+        val prefs = BiliClient.prefs
+        if (prefs.playerSettingsApplyToGlobal) {
+            prefs.playerVideoFillMode = mode.prefValue
+        }
+        applyVideoFillMode(binding.playerView, binding.ijkAspect, mode)
+        refreshSettings()
+    }
+
     private fun showAudioBalanceDialog() {
         val prefs = BiliClient.prefs
         val options = AudioBalanceLevel.ordered
@@ -1120,6 +1226,7 @@ class LivePlayerActivity : BaseActivity() {
         val list =
             listOf(
                 PlayerSettingsAdapter.SettingItem(key = LivePlayerSettingKeys.QUALITY, title = "清晰度", subtitle = qLabel),
+                PlayerSettingsAdapter.SettingItem(key = LivePlayerSettingKeys.VIDEO_FILL_MODE, title = "画面填充", subtitle = session.videoFillMode.label),
                 PlayerSettingsAdapter.SettingItem(key = LivePlayerSettingKeys.LINE, title = "线路选择", subtitle = lineLabel),
                 PlayerSettingsAdapter.SettingItem(
                     key = LivePlayerSettingKeys.HIGH_BITRATE,
@@ -1139,7 +1246,7 @@ class LivePlayerActivity : BaseActivity() {
         resetPlaybackRecoveryState()
         refreshSettings()
         AppToast.show(this, "提高直播码率：${if (enabled) "开" else "关"}")
-        lifecycleScope.launch { loadAndPlay(initial = false) }
+        requestStreamReload(initial = false)
     }
 
     private fun resetPlaybackRecoveryState() {
@@ -1173,6 +1280,8 @@ class LivePlayerActivity : BaseActivity() {
                         putExtra(EXTRA_ROOM_ID, roomId)
                         putExtra(EXTRA_TITLE, roomTitle)
                         putExtra(EXTRA_UNAME, roomUname)
+                        putExtra(EXTRA_COVER, playbackRecovery?.record?.coverUrl)
+                        putExtra(EXTRA_RESUME_PLAY_WHEN_READY, playbackRecovery?.desiredPlaying ?: true)
                         putExtra(EXTRA_ENGINE_SWITCH_SESSION_JSON, sessionJson)
                     }
                 startActivity(restart)
@@ -1198,7 +1307,7 @@ class LivePlayerActivity : BaseActivity() {
 
     private fun setControlsVisible(visible: Boolean) {
         val hadControlsFocus = hasControlsFocus()
-        val nextControlsVisible = visible && !isTouchLocked()
+        val nextControlsVisible = playbackRecovery?.keepControlsVisible == true || (visible && !isTouchLocked())
         val show = nextControlsVisible || binding.settingsPanel.visibility == View.VISIBLE
         if (!show && controlsVisible) rememberOsdFocusBeforeHide()
         controlsVisible = nextControlsVisible
@@ -1213,6 +1322,7 @@ class LivePlayerActivity : BaseActivity() {
 
     private fun restartAutoHideTimer() {
         autoHideJob?.cancel()
+        if (playbackRecovery?.keepControlsVisible == true) return
         if (isTouchLocked()) return
         if (!controlsVisible) return
         if (binding.settingsPanel.visibility == View.VISIBLE) return
@@ -1334,9 +1444,7 @@ class LivePlayerActivity : BaseActivity() {
             }
 
             override fun togglePlayPauseFromTouch() {
-                val engine = player ?: return
-                val willPlay = !engine.isPlaying
-                if (willPlay) engine.play() else engine.pause()
+                val willPlay = togglePlaybackIntent()
                 showSeekHint(if (willPlay) "播放" else "暂停", hold = false)
             }
 
@@ -1448,7 +1556,7 @@ class LivePlayerActivity : BaseActivity() {
         if (recoverCount <= 1) {
             runCatching { exo.seekToDefaultPosition() }
             exo.prepare()
-            exo.playWhenReady = true
+            exo.playWhenReady = playbackRecovery?.desiredPlaying ?: true
             return true
         }
 
@@ -1461,7 +1569,7 @@ class LivePlayerActivity : BaseActivity() {
         runCatching { exo.stop() }
         runCatching { engine.setSource(PlaybackSource.Live(url = url)) }
         exo.prepare()
-        exo.playWhenReady = true
+        exo.playWhenReady = playbackRecovery?.desiredPlaying ?: true
         return true
     }
 
@@ -1591,15 +1699,43 @@ class LivePlayerActivity : BaseActivity() {
         return true
     }
 
+    private fun togglePlaybackIntent(): Boolean {
+        val engine = player ?: return false
+        val willPlay = !(playbackRecovery?.desiredPlaying ?: engine.playWhenReady)
+        playbackRecovery?.onPlayIntentChanged(willPlay)
+        if (willPlay && playbackRecovery?.waiting == true) {
+            requestStreamReload(initial = true, recovering = true)
+        } else if (willPlay) engine.play() else engine.pause()
+        return willPlay
+    }
+
+    private fun requestStreamReload(initial: Boolean, recovering: Boolean = false) {
+        if (exitRequested || recoveryResumePending) return
+        streamLoadJob?.cancel()
+        if (recovering) {
+            playbackRecovery?.let { recovery ->
+                recovery.record?.let { recovery.begin(it.copy(settingsJson = session.toEngineSwitchJsonString())) }
+            }
+        }
+        streamLoadJob = lifecycleScope.launch { loadAndPlay(initial) }
+    }
+
     private suspend fun loadAndPlay(initial: Boolean) {
         val engine = player ?: return
+        val generation = ++streamLoadGeneration
+        fun isCurrent() = generation == streamLoadGeneration && !recoveryResumePending && !exitRequested
         try {
             val info = BiliApi.liveRoomInfo(roomId)
+            if (!isCurrent()) return
             realRoomId = info.roomId
             lastLiveStatus = info.liveStatus
             updateLiveUpQuickCardOwner(info)
 
             val title = info.title.ifBlank { roomTitle }
+            roomTitle = title
+            playbackRecovery?.let { recovery ->
+                recovery.record?.let { recovery.updateContent(it.copy(title = title, coverUrl = info.coverUrl ?: it.coverUrl)) }
+            }
             binding.tvTitle.text =
                 buildString {
                     append(title.ifBlank { "直播间 $realRoomId" })
@@ -1608,6 +1744,7 @@ class LivePlayerActivity : BaseActivity() {
 
             val qn = session.targetQn.takeIf { it > 0 } ?: 150
             val play = BiliApi.livePlayUrl(realRoomId, qn, highBitrateEnabled = session.highBitrateEnabled)
+            if (!isCurrent()) return
             lastPlay = play
             if (play.lines.isNotEmpty()) {
                 // If saved lineOrder becomes out of range (API may return fewer lines), fall back to line 1.
@@ -1635,9 +1772,11 @@ class LivePlayerActivity : BaseActivity() {
             debug.reset()
             debug.cdnHost = runCatching { Uri.parse(pickedLine.url).host?.lowercase(Locale.US) }.getOrNull()
             liveHlsDebugInfo = null
+            val shouldPlay = playbackRecovery?.desiredPlaying ?: true
+            playbackRecovery?.sourcePreparing()
             engine.setSource(PlaybackSource.Live(url = pickedLine.url))
+            engine.playWhenReady = shouldPlay
             engine.prepare()
-            engine.playWhenReady = true
             reportLiveRoomEntry(realRoomId)
 
             if (initial) {
@@ -1647,8 +1786,13 @@ class LivePlayerActivity : BaseActivity() {
             }
         } catch (t: Throwable) {
             if (t is CancellationException) throw t
+            if (!isCurrent()) return
             resetBufferingOverlayState()
             AppLog.e("LivePlayer", "loadAndPlay failed", t)
+            if (playbackRecovery?.waiting == true) {
+                playbackRecovery?.fail()
+                return
+            }
             val e = t as? BiliApiException
             val msg = e?.let { "B 站返回：${it.apiCode} / ${it.apiMessage}" } ?: (t.message ?: "未知错误")
             AppToast.showLong(this, msg)
@@ -1879,7 +2023,7 @@ class LivePlayerActivity : BaseActivity() {
             session = session.copy(targetQn = picked, lineOrder = 1, originFailCount = 0)
             resetPlaybackRecoveryState()
             refreshSettings()
-            lifecycleScope.launch { loadAndPlay(initial = false) }
+            requestStreamReload(initial = false)
         }
     }
 
@@ -1911,7 +2055,7 @@ class LivePlayerActivity : BaseActivity() {
                 }
             resetPlaybackRecoveryState()
             refreshSettings()
-            lifecycleScope.launch { loadAndPlay(initial = false) }
+            requestStreamReload(initial = false)
         }
     }
 
@@ -2232,10 +2376,11 @@ class LivePlayerActivity : BaseActivity() {
         }
     }
 
-    private fun LiveSession.toEngineSwitchJsonString(): String {
+    internal fun LiveSession.toEngineSwitchJsonString(): String {
         return JSONObject().apply {
             put("v", 1)
             put("engineKind", engineKind.prefValue)
+            put("videoFillMode", videoFillMode.prefValue)
             put("targetQn", targetQn)
             put("lineOrder", lineOrder)
             put("originFailCount", originFailCount)
@@ -2252,7 +2397,7 @@ class LivePlayerActivity : BaseActivity() {
         }.toString()
     }
 
-    private fun LiveSession.restoreFromEngineSwitchJsonString(raw: String): LiveSession {
+    internal fun LiveSession.restoreFromEngineSwitchJsonString(raw: String): LiveSession {
         val obj = runCatching { JSONObject(raw) }.getOrNull() ?: return this
 
         fun optFloat(key: String, fallback: Float): Float {
@@ -2291,6 +2436,7 @@ class LivePlayerActivity : BaseActivity() {
 
         return copy(
             engineKind = restoredEngineKind,
+            videoFillMode = VideoFillMode.fromPrefValue(obj.optString("videoFillMode", videoFillMode.prefValue)),
             targetQn = restoredTargetQn,
             lineOrder = restoredLineOrder,
             originFailCount = restoredOriginFailCount,
@@ -2310,7 +2456,8 @@ class LivePlayerActivity : BaseActivity() {
         )
     }
 
-    private data class LiveSession(
+    internal data class LiveSession(
+        val videoFillMode: VideoFillMode = VideoFillMode.fromPrefValue(BiliClient.prefs.playerVideoFillMode),
         val engineKind: PlayerEngineKind = PlayerEngineKind.fromPrefValue(BiliClient.prefs.playerEngineKind),
         val targetQn: Int = LIVE_QN_ORIGINAL,
         val lineOrder: Int = 1,
@@ -2334,6 +2481,8 @@ class LivePlayerActivity : BaseActivity() {
         const val EXTRA_ROOM_ID = "room_id"
         const val EXTRA_TITLE = "title"
         const val EXTRA_UNAME = "uname"
+        const val EXTRA_COVER = "cover"
+        private const val EXTRA_RESUME_PLAY_WHEN_READY = "resume_play_when_ready"
 
         private const val EXTRA_ENGINE_SWITCH_SESSION_JSON = "engine_switch_session_json"
         private const val LIVE_QN_ORIGINAL = 10_000

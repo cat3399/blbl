@@ -46,7 +46,6 @@ import androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.source.MergingMediaSource
-import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.CaptionStyleCompat
 import blbl.cat3399.BlblApp
 import blbl.cat3399.R
@@ -68,6 +67,8 @@ import blbl.cat3399.core.model.DanmakuShield
 import blbl.cat3399.core.model.VideoCard
 import blbl.cat3399.core.net.BiliClient
 import blbl.cat3399.core.prefs.AppPrefs
+import blbl.cat3399.core.prefs.VideoFillMode
+import blbl.cat3399.feature.player.recovery.PlayerRecoveryController
 import blbl.cat3399.core.ui.ActivityStackLimiter
 import blbl.cat3399.core.ui.AppToast
 import blbl.cat3399.core.ui.BaseActivity
@@ -124,6 +125,9 @@ class PlayerActivity : BaseActivity() {
     internal val upFollowActionInFlight: Boolean get() = if (::upQuickCard.isInitialized) upQuickCard.followActionInFlight else false
 
     internal var player: BlblPlayerEngine? = null
+    internal var playbackRecovery: PlayerRecoveryController? = null
+    internal var recoveryEntryKey: String = ""
+    private var recoveryResumePending = false
     private var ijkRenderView: View? = null
     private var ijkTextureSurface: Surface? = null
     internal var pendingStartPositionMs: Long? = null
@@ -351,6 +355,7 @@ class PlayerActivity : BaseActivity() {
     }
 
     private fun shouldSuppressPlayerError(error: Throwable): Boolean {
+        if (recoveryResumePending || playbackRecovery?.foreground == false) return true
         if (!isPlayerTeardownInProgress()) return false
         val playbackException = error as? PlaybackException
         val errorLabel = playbackException?.errorCodeName ?: (error.message ?: error::class.java.simpleName)
@@ -673,6 +678,7 @@ class PlayerActivity : BaseActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        restorePlaybackRecovery(savedInstanceState)
         PlayerOsdSizing.applyTheme(this)
         ActivityStackLimiter.register(group = ACTIVITY_STACK_GROUP, activity = this, maxDepth = ACTIVITY_STACK_MAX_DEPTH)
         val prefs = BiliClient.prefs
@@ -794,6 +800,7 @@ class PlayerActivity : BaseActivity() {
                 ?.takeIf { it.isNotBlank() }
 
         session = PlayerSessionSettings(
+            videoFillMode = VideoFillMode.fromPrefValue(prefs.playerVideoFillMode),
             playbackSpeed = prefs.playerSpeed,
             preferCodec = prefs.playerPreferredCodec,
             seamlessQualitySwitchEnabled = prefs.playerSeamlessQualitySwitchEnabled,
@@ -944,10 +951,12 @@ class PlayerActivity : BaseActivity() {
                                 return
                             }
                         }
-                        AppToast.show(this@PlayerActivity, "播放失败：${playbackException.errorCodeName}")
+                        if (playbackRecovery?.waiting == true) playbackRecovery?.fail()
+                        else AppToast.show(this@PlayerActivity, "播放失败：${playbackException.errorCodeName}")
                         return
                     }
-                    AppToast.showLong(this@PlayerActivity, "播放失败：${error.message ?: "未知错误"}")
+                    if (playbackRecovery?.waiting == true) playbackRecovery?.fail()
+                    else AppToast.showLong(this@PlayerActivity, "播放失败：${error.message ?: "未知错误"}")
                 }
 
                 override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -961,6 +970,10 @@ class PlayerActivity : BaseActivity() {
                         // Avoid flushing on every pause (and also avoid duplicate flushes when `onStop()` calls `pause()`).
                         stopReportProgressLoop(flush = false, reason = "pause")
                     }
+                }
+
+                override fun onPlayWhenReadyChanged(playWhenReady: Boolean) {
+                    playbackRecovery?.onPlayIntentChanged(playWhenReady, fromPlayer = true)
                 }
 
                 override fun onPlaybackStateChanged(playbackState: Int) {
@@ -1023,6 +1036,7 @@ class PlayerActivity : BaseActivity() {
                 }
 
                 override fun onRenderedFirstFrame() {
+                    playbackRecovery?.onFirstFrame()
                     if (engine.kind != PlayerEngineKind.IjkPlayer) return
                     if (traceFirstFrameLogged) return
                     traceFirstFrameLogged = true
@@ -1126,13 +1140,14 @@ class PlayerActivity : BaseActivity() {
                 finish()
             }
         playbackUncaughtHandler = uncaughtHandler
+        initPlaybackRecovery()
         startPlayback(
             bvid = bvid,
             cidExtra = cidExtra,
             epIdExtra = epIdExtra,
             aidExtra = aidExtra,
             seasonIdExtra = seasonIdExtra,
-            initialTitle = pageListItems.getOrNull(pageListIndex)?.title,
+            initialTitle = intent.getStringExtra(EXTRA_TITLE) ?: pageListItems.getOrNull(pageListIndex)?.title,
             startedFromList = PlayerVideoListKind.PAGE,
         )
     }
@@ -1420,11 +1435,25 @@ class PlayerActivity : BaseActivity() {
         binding.btnBack.isFocusableInTouchMode = false
         updatePersistentBottomProgressBarVisibility()
         (binding.recyclerSettings.adapter as? PlayerSettingsAdapter)?.let { refreshSettings(it) }
-        consumeTransientPlaybackResumeIfNeeded()
+        playbackRecovery?.resume()
+        if (recoveryResumePending) {
+            recoveryResumePending = false
+            transientPlaybackResumeRequested = null
+            resumeAfterDecoderRelease = false
+            (player as? ExoPlayerEngine)?.let { binding.playerView.player = it.exoPlayer }
+            retryPlaybackRecovery()
+        } else {
+            consumeTransientPlaybackResumeIfNeeded()
+        }
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         val keyCode = event.keyCode
+        if (::binding.isInitialized && binding.playbackRecovery.root.hasFocus() &&
+            keyCode in listOf(KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT, KeyEvent.KEYCODE_DPAD_UP,
+                KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER)) {
+            return super.dispatchKeyEvent(event)
+        }
 
         if (dispatchCommentImageViewerKey(event)) return true
 
@@ -1625,7 +1654,7 @@ class PlayerActivity : BaseActivity() {
                     )
                     return onSidePanelBackPressed()
                 }
-                if (osdMode != OsdMode.Hidden) {
+                if (osdMode != OsdMode.Hidden && playbackRecovery?.keepControlsVisible != true) {
                     exitTraceLog("back:down action=hide_osd", "osd=$osdMode")
                     setControlsVisible(false)
                     return true
@@ -1829,6 +1858,7 @@ class PlayerActivity : BaseActivity() {
 
     override fun onStart() {
         super.onStart()
+        if (recoveryResumePending) return
         val engine = player ?: return
         val exo = (engine as? ExoPlayerEngine)?.exoPlayer
         if (!resumeAfterDecoderRelease) return
@@ -1862,7 +1892,23 @@ class PlayerActivity : BaseActivity() {
         }
     }
 
+    internal fun recoveryResumePendingForLoad(): Boolean = recoveryResumePending
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        playbackRecovery?.checkpoint(player?.currentPosition ?: 0L, session.toEngineSwitchJsonString())
+            ?.let { outState.putString(RECOVERY_SAVED_RECORD, it.toJson()) }
+        super.onSaveInstanceState(outState)
+    }
+
     override fun onPause() {
+        if (!isFinishing && !exitCleanupRequested && playbackRecovery != null) {
+            val recovery = playbackRecovery!!
+            val playing = transientPlaybackResumeRequested ?: recovery.desiredPlaying
+            recovery.pause(player?.currentPosition ?: 0L, playing, session.toEngineSwitchJsonString())
+            recoveryResumePending = true
+            loadJob?.cancel()
+            cancelPlayUrlAutoRefresh(reason = "background")
+        }
         exitTracePauseAtMs = SystemClock.elapsedRealtime()
         if (exitCleanupRequested || isFinishing || exitTraceStartAtMs > 0L) {
             exitTraceStart("onPause")
@@ -1882,6 +1928,7 @@ class PlayerActivity : BaseActivity() {
     }
 
     override fun finish() {
+        playbackRecovery?.release(exit = true)
         exitTraceStart("finish()")
         exitTraceLog(
             "finish:call",
@@ -1902,6 +1949,7 @@ class PlayerActivity : BaseActivity() {
     }
 
     override fun onDestroy() {
+        playbackRecovery?.release(exit = isFinishing)
         val t0 = SystemClock.elapsedRealtime()
         exitTraceDestroyAtMs = t0
         if (exitCleanupRequested || isFinishing || exitTraceStartAtMs > 0L) {
@@ -2041,8 +2089,11 @@ class PlayerActivity : BaseActivity() {
             restartCurrentPlaybackFromBeginning(engine = engine, showControls = showControls, showHint = showHint)
             return
         }
-        val willPlay = !engine.isPlaying
-        if (willPlay) {
+        val willPlay = if (playbackRecovery?.waiting == true) !playbackRecovery!!.desiredPlaying else !engine.isPlaying
+        playbackRecovery?.onPlayIntentChanged(willPlay)
+        if (willPlay && playbackRecovery?.waiting == true) {
+            retryPlaybackRecovery()
+        } else if (willPlay) {
             engine.play()
         } else {
             engine.pause()
@@ -3102,8 +3153,10 @@ class PlayerActivity : BaseActivity() {
         val engine = player ?: return
         val cid = currentCid
         val bvid = currentBvid
+        val playbackToken = autoResumeToken
+        fun isCurrent() = playbackToken == autoResumeToken && !recoveryResumePending && !exitCleanupRequested && !isFinishing
         if (cid <= 0 || bvid.isBlank()) return
-        val pos = engine.currentPosition
+        val pos = if (playbackRecovery?.waiting == true) playbackRecovery!!.record?.positionMs ?: 0L else engine.currentPosition
         val reloadStartedAtMs = SystemClock.elapsedRealtime()
         AppLog.i(
             "QualitySwitch",
@@ -3128,6 +3181,7 @@ class PlayerActivity : BaseActivity() {
                         fnval = fnval,
                         constraints = playbackConstraints,
                     )
+                if (!isCurrent()) return@launch
                 val positionBeforeCommit = engine.currentPosition
                 AppLog.i(
                     "QualitySwitch",
@@ -3201,10 +3255,13 @@ class PlayerActivity : BaseActivity() {
                     "reload commit reason=$reason seekTarget=${if (keepPosition) pos else -1L} positionBeforePrepare=${engine.currentPosition} " +
                         "seamlessSource=${engine.isSeamlessQualitySource}",
                 )
+                playbackRecovery?.sourcePreparing()
+                engine.playWhenReady = if (playbackRecovery?.waiting == true) playbackRecovery!!.desiredPlaying else autoPlay
                 engine.prepare()
                 (engine as? ExoPlayerEngine)?.exoPlayer?.let { applySubtitleEnabled(it) }
-                engine.playWhenReady = autoPlay
             } catch (t: Throwable) {
+                if (t is CancellationException) throw t
+                if (!isCurrent()) return@launch
                 AppLog.e("Player", "reloadStream failed", t)
                 if (!handlePlayUrlErrorIfNeeded(t)) {
                     AppToast.show(this@PlayerActivity, "切换失败：${t.message}")
@@ -3709,6 +3766,8 @@ class PlayerActivity : BaseActivity() {
         private const val HIGH_SPEC_FALLBACK_MAX_ATTEMPTS = 3
         private const val EXIT_TRACE_PREFIX = "EXIT_TRACE"
         const val EXTRA_BVID = "bvid"
+        const val EXTRA_TITLE = "title"
+        const val EXTRA_COVER = "cover"
         const val EXTRA_CID = "cid"
         const val EXTRA_EP_ID = "ep_id"
         const val EXTRA_AID = "aid"
@@ -3767,6 +3826,7 @@ class PlayerActivity : BaseActivity() {
     }
 
     private fun applyRenderForEngine(engine: BlblPlayerEngine, prefs: AppPrefs) {
+        applyVideoFillMode(binding.playerView, binding.ijkAspect, session.videoFillMode)
         // Reset any previous IJK render state.
         binding.ijkAspect.visibility = View.GONE
         binding.ijkContainer.removeAllViews()
@@ -3784,7 +3844,6 @@ class PlayerActivity : BaseActivity() {
         // IJK mode: render via our own Surface/Texture.
         binding.playerView.player = null
         binding.ijkAspect.visibility = View.VISIBLE
-        binding.ijkAspect.setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT)
         binding.ijkAspect.setAspectRatio(0f)
 
         val renderView: View =

@@ -206,6 +206,8 @@ internal object LiveApi {
             liveStatus = data.optInt("live_status", 0),
             areaName = data.optString("area_name", "").trim().takeIf { it.isNotBlank() },
             parentAreaName = data.optString("parent_area_name", "").trim().takeIf { it.isNotBlank() },
+            coverUrl = sequenceOf("user_cover", "cover", "keyframe")
+                .map { data.optString(it, "").trim() }.firstOrNull { it.isNotBlank() },
         )
     }
 

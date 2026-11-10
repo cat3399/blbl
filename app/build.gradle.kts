@@ -22,6 +22,7 @@ android {
         targetSdk = 36
         versionCode = (project.findProperty("versionCode") as String?)?.toInt() ?: 1
         versionName = project.findProperty("versionName") as String? ?: "0.1.0"
+        testInstrumentationRunner = "blbl.cat3399.feature.player.recovery.PlaybackRecoveryDeviceTest"
 
         vectorDrawables {
             useSupportLibrary = true
@@ -40,6 +41,9 @@ android {
     buildTypes {
         debug {
             isMinifyEnabled = false
+            applicationIdSuffix = project.findProperty("applicationIdSuffix") as String? ?: ".test"
+            versionNameSuffix = "-debug"
+            resValue("string", "app_name", "Blbl 测试版")
         }
         release {
             isMinifyEnabled = true
@@ -64,6 +68,10 @@ android {
 
     kotlinOptions {
         jvmTarget = "17"
+    }
+
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
     }
 
     packaging {
@@ -138,6 +146,10 @@ dependencies {
     implementation("com.google.zxing:core:3.5.3")
 
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.robolectric:robolectric:4.14.1") {
+        // These tests measure View layouts with legacy graphics; no native renderer is needed.
+        exclude(group = "org.robolectric", module = "nativeruntime-dist-compat")
+    }
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")
 }
 

@@ -2,6 +2,7 @@ package blbl.cat3399.feature.player
 
 import blbl.cat3399.core.api.video.VideoMediaRequestProfile
 import blbl.cat3399.core.prefs.AppPrefs
+import blbl.cat3399.core.prefs.VideoFillMode
 import blbl.cat3399.feature.player.danmaku.DanmakuSessionSettings
 import blbl.cat3399.feature.player.danmaku.DanmakuFontWeight
 import blbl.cat3399.feature.player.danmaku.DanmakuLaneDensity
@@ -157,6 +158,7 @@ internal data class PlayerSessionSettings(
     val danmaku: DanmakuSessionSettings,
     val debugEnabled: Boolean,
     val engineKind: PlayerEngineKind,
+    val videoFillMode: VideoFillMode = VideoFillMode.Fit,
 )
 
 internal fun PlayerSessionSettings.toEngineSwitchJsonString(): String {
@@ -189,6 +191,7 @@ internal fun PlayerSessionSettings.toEngineSwitchJsonString(): String {
             put("danmakuShowHighLikeIcon", danmaku.showHighLikeIcon)
             put("debugEnabled", debugEnabled)
             put("engineKind", engineKind.prefValue)
+            put("videoFillMode", videoFillMode.prefValue)
         }
     return obj.toString()
 }
@@ -283,5 +286,6 @@ internal fun PlayerSessionSettings.restoreFromEngineSwitchJsonString(raw: String
             ),
         debugEnabled = dbg,
         engineKind = restoredEngineKind,
+        videoFillMode = VideoFillMode.fromPrefValue(obj.optString("videoFillMode", videoFillMode.prefValue)),
     )
 }

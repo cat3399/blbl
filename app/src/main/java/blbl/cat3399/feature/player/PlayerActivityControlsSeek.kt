@@ -60,9 +60,9 @@ internal fun PlayerActivity.toggleControls() {
 internal fun PlayerActivity.setControlsVisible(visible: Boolean) {
     val show =
         shouldShowPlayerOsd(
-            requestedVisible = visible,
+            requestedVisible = visible || playbackRecovery?.keepControlsVisible == true,
             hasOverlayPanel = isOverlayPanelVisible(),
-            touchLocked = isTouchLocked(),
+            touchLocked = isTouchLocked() && playbackRecovery?.keepControlsVisible != true,
         )
     if (!show && osdMode == PlayerActivity.OsdMode.Full) {
         rememberOsdFocusBeforeHide()
@@ -270,6 +270,7 @@ internal fun PlayerActivity.updatePersistentBottomProgressBarVisibility() {
 
 internal fun PlayerActivity.restartAutoHideTimer() {
     autoHideJob?.cancel()
+    if (playbackRecovery?.keepControlsVisible == true) return
     val exo = player ?: return
     if (isTouchLocked()) return
     if (osdMode != PlayerActivity.OsdMode.Full) return

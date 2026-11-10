@@ -78,6 +78,10 @@ private fun PlayerActivity.startPlaybackFailureMessage(throwable: Throwable): St
 }
 
 private fun PlayerActivity.finishAfterStartPlaybackFailure(throwable: Throwable) {
+    if (playbackRecovery?.waiting == true) {
+        playbackRecovery?.fail()
+        return
+    }
     if (!handlePlayUrlErrorIfNeeded(throwable)) {
         AppToast.showLong(this, startPlaybackFailureMessage(throwable))
     }
@@ -381,6 +385,7 @@ internal fun PlayerActivity.startPlayback(
     binding.llViewMeta.visibility = View.VISIBLE
     binding.tvPubdate.text = ""
     binding.tvPubdate.visibility = View.GONE
+    beginPlaybackRecovery(cidExtra, initialTitle, pendingSeekMs, pendingPlayWhenReady)
     resetPlaybackStateForNewMedia(
         engine = engine,
         preservePartsList = startFromList == PlayerVideoListKind.PARTS,
@@ -398,8 +403,10 @@ internal fun PlayerActivity.startPlayback(
         playbackUncaughtHandler
             ?: CoroutineExceptionHandler { _, throwable ->
                 AppLog.e("Player", "uncaught", throwable)
-                AppToast.showLong(this@startPlayback, "播放失败：${throwable.message}")
-                finish()
+                if (playbackRecovery?.waiting == true) playbackRecovery?.fail() else {
+                    AppToast.showLong(this@startPlayback, "播放失败：${throwable.message}")
+                    finish()
+                }
             }
 
     loadJob =
@@ -461,6 +468,7 @@ internal fun PlayerActivity.startPlayback(
                 val aid = detail.aid?.takeIf { it > 0 }
                 currentAid = currentAid ?: aid ?: safeAid
                 currentCid = cid
+                updatePlaybackRecoveryMetadata(detail.coverUrl)
                 currentViewDurationMs = resolveCurrentVodDurationMsFromDetail(detail = detail, cid = cid)
                 refreshActionButtonStatesFromServer(bvid = resolvedBvid, aid = currentAid)
                 if (isCommentsPanelVisible() && !isCommentThreadVisible()) ensureCommentsLoaded()
@@ -542,6 +550,9 @@ internal fun PlayerActivity.startPlayback(
                         null
                     }
                 val initialPositionMs = pendingSeekMs?.coerceAtLeast(0L) ?: initialResume?.positionMs
+                playbackRecovery?.let { recovery ->
+                    recovery.record?.let { recovery.updateContent(it.copy(positionMs = initialPositionMs ?: 0L)) }
+                }
                 trace?.log(
                     "player:initialPosition",
                     "position=${initialPositionMs ?: -1L}ms source=${initialResume?.source ?: if (pendingSeekMs != null) "engine_switch" else "none"}",
@@ -564,6 +575,8 @@ internal fun PlayerActivity.startPlayback(
                 (engine as? ExoPlayerEngine)?.exoPlayer?.let { applySubtitleEnabled(it) }
 
                 trace?.log("player:setSource:start", "kind=${engine.kind.prefValue}")
+                if (recoveryResumePendingForLoad()) return@launch
+                playbackRecovery?.sourcePreparing()
                 if (engine.kind == PlayerEngineKind.IjkPlayer && playable !is Playable.Dash) {
                     startupJobs.forEach { it.cancel() }
                     AppToast.showLong(this@startPlayback, "IjkPlayer 内核仅支持 DASH（音视频分离）流，请切回 ExoPlayer")
@@ -625,9 +638,9 @@ internal fun PlayerActivity.startPlayback(
                 trace?.log("player:setSource:done")
                 schedulePlayUrlAutoRefresh(playable, reason = "start_playback")
                 trace?.log("player:prepare")
-                engine.prepare()
                 trace?.log("player:playWhenReady")
-                engine.playWhenReady = pendingPlayWhenReady ?: true
+                engine.playWhenReady = playbackRecovery?.desiredPlaying ?: pendingPlayWhenReady ?: true
+                engine.prepare()
                 updateSubtitleButton()
                 initialResume?.let { resume ->
                     scheduleInitialAutoResumeHint(

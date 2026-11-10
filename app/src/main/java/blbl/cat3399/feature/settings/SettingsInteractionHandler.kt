@@ -36,6 +36,7 @@ import blbl.cat3399.core.prefs.PlayerCustomShortcut
 import blbl.cat3399.core.prefs.PlayerCustomShortcutAction
 import blbl.cat3399.core.prefs.PlayerCustomShortcutTrigger
 import blbl.cat3399.core.prefs.PlayerPlaybackModes
+import blbl.cat3399.core.prefs.VideoFillMode
 import blbl.cat3399.core.prefs.PlayerCustomShortcutsStore
 import blbl.cat3399.core.ui.AppToast
 import blbl.cat3399.core.ui.Immersive
@@ -1347,6 +1348,19 @@ class SettingsInteractionHandler(
                 ) { selected ->
                     val selectedIndex = options.indexOf(selected).takeIf { it >= 0 } ?: 0
                     prefs.playerPlaybackMode = modeCodes.getOrElse(selectedIndex) { AppPrefs.PLAYER_PLAYBACK_MODE_NONE }
+                    renderer.refreshSection(entry.id)
+                }
+            }
+
+            SettingId.PlayerVideoFillMode -> {
+                val options = VideoFillMode.ordered
+                showChoiceDialog(
+                    title = "默认画面填充",
+                    items = options.map { it.label },
+                    current = VideoFillMode.fromPrefValue(prefs.playerVideoFillMode).label,
+                ) { selected ->
+                    val picked = options.firstOrNull { it.label == selected } ?: return@showChoiceDialog
+                    prefs.playerVideoFillMode = picked.prefValue
                     renderer.refreshSection(entry.id)
                 }
             }

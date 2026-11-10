@@ -59,6 +59,7 @@ enum class SettingId(
     PlayerAutoSkipServerBaseUrl("player_auto_skip_server_base_url"),
     PlayerOpenDetailBeforePlay("player_open_detail_before_play"),
     PlayerPlaybackMode("player_playback_mode"),
+    PlayerVideoFillMode("player_video_fill_mode"),
     PlayerSettingsApplyToGlobal("player_settings_apply_to_global"),
     PlayerUpQuickCardEnabled("player_up_quick_card_enabled"),
     PlayerStyle("player_style"),

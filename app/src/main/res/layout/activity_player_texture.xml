@@ -18,21 +18,43 @@
         app:surface_type="texture_view"
         app:use_controller="false" />
 
-    <androidx.media3.ui.AspectRatioFrameLayout
-        android:id="@+id/ijk_aspect"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:visibility="gone"
+    <FrameLayout
+        android:id="@+id/ijk_viewport"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:clipChildren="true"
+        android:clipToPadding="true"
         app:layout_constraintBottom_toBottomOf="@id/player_view"
         app:layout_constraintEnd_toEndOf="@id/player_view"
         app:layout_constraintStart_toStartOf="@id/player_view"
         app:layout_constraintTop_toTopOf="@id/player_view">
 
-        <FrameLayout
-            android:id="@+id/ijk_container"
+        <androidx.media3.ui.AspectRatioFrameLayout
+            android:id="@+id/ijk_aspect"
             android:layout_width="match_parent"
-            android:layout_height="match_parent" />
-    </androidx.media3.ui.AspectRatioFrameLayout>
+            android:layout_height="match_parent"
+            android:layout_gravity="center"
+            android:visibility="gone">
+
+            <FrameLayout
+                android:id="@+id/ijk_container"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent" />
+        </androidx.media3.ui.AspectRatioFrameLayout>
+    </FrameLayout>
+
+    <ImageView
+        android:id="@+id/recovery_image"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:background="#000000"
+        android:scaleType="fitCenter"
+        android:contentDescription="@null"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="@id/player_view"
+        app:layout_constraintEnd_toEndOf="@id/player_view"
+        app:layout_constraintStart_toStartOf="@id/player_view"
+        app:layout_constraintTop_toTopOf="@id/player_view" />
 
     <blbl.cat3399.feature.player.danmaku.DanmakuView
         android:id="@+id/danmaku_view"
@@ -1426,6 +1448,16 @@
 
         </androidx.constraintlayout.widget.ConstraintLayout>
     </com.google.android.material.card.MaterialCardView>
+
+    <include
+        android:id="@+id/playback_recovery"
+        layout="@layout/view_player_recovery"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        app:layout_constraintBottom_toBottomOf="@id/player_view"
+        app:layout_constraintEnd_toEndOf="@id/player_view"
+        app:layout_constraintStart_toStartOf="@id/player_view"
+        app:layout_constraintTop_toTopOf="@id/player_view" />
 
     <FrameLayout
         android:id="@+id/comment_image_viewer"

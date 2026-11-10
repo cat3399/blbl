@@ -237,6 +237,7 @@ object BiliApi {
         val liveStatus: Int,
         val areaName: String?,
         val parentAreaName: String?,
+        val coverUrl: String? = null,
     )
 
     data class LivePlayUrl(

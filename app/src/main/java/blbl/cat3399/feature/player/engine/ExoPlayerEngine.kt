@@ -223,6 +223,10 @@ internal class ExoPlayerEngine(
                     listeners.forEach { it.onIsPlayingChanged(isPlaying) }
                 }
 
+                override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                    listeners.forEach { it.onPlayWhenReadyChanged(playWhenReady) }
+                }
+
                 override fun onPlaybackStateChanged(playbackState: Int) {
                     listeners.forEach { it.onPlaybackStateChanged(playbackState) }
                 }

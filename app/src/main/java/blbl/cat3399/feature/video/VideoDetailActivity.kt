@@ -536,6 +536,8 @@ class VideoDetailActivity : BaseActivity() {
             Intent(this, PlayerActivity::class.java)
                 .putExtra(PlayerActivity.EXTRA_BVID, safeBvid)
                 .putExtra(PlayerActivity.EXTRA_CID, cid ?: -1L)
+                .putExtra(PlayerActivity.EXTRA_TITLE, title)
+                .putExtra(PlayerActivity.EXTRA_COVER, coverUrl)
                 .apply { aid?.let { putExtra(PlayerActivity.EXTRA_AID, it) } }
                 .apply { playlistToken?.let { putExtra(PlayerActivity.EXTRA_PLAYLIST_TOKEN, it) } }
                 .apply { playlistIndex?.let { putExtra(PlayerActivity.EXTRA_PLAYLIST_INDEX, it) } },
@@ -560,6 +562,8 @@ class VideoDetailActivity : BaseActivity() {
             Intent(this, PlayerActivity::class.java)
                 .putExtra(PlayerActivity.EXTRA_BVID, safeBvid)
                 .putExtra(PlayerActivity.EXTRA_CID, picked.cid ?: -1L)
+                .putExtra(PlayerActivity.EXTRA_TITLE, picked.title)
+                .putExtra(PlayerActivity.EXTRA_COVER, currentPartsUiCards.getOrNull(index)?.coverUrl ?: coverUrl)
                 .apply { picked.aid?.let { putExtra(PlayerActivity.EXTRA_AID, it) } }
                 .putExtra(PlayerActivity.EXTRA_PLAYLIST_TOKEN, token)
                 .putExtra(PlayerActivity.EXTRA_PLAYLIST_INDEX, index),
@@ -585,6 +589,8 @@ class VideoDetailActivity : BaseActivity() {
             Intent(this, PlayerActivity::class.java)
                 .putExtra(PlayerActivity.EXTRA_BVID, safeBvid)
                 .putExtra(PlayerActivity.EXTRA_CID, picked.cid ?: -1L)
+                .putExtra(PlayerActivity.EXTRA_TITLE, picked.title)
+                .putExtra(PlayerActivity.EXTRA_COVER, currentUgcSeasonUiCards.getOrNull(index)?.coverUrl)
                 .apply { picked.aid?.let { putExtra(PlayerActivity.EXTRA_AID, it) } }
                 .putExtra(PlayerActivity.EXTRA_PLAYLIST_TOKEN, token)
                 .putExtra(PlayerActivity.EXTRA_PLAYLIST_INDEX, index),
