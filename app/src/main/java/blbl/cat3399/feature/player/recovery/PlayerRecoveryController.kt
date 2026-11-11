@@ -13,6 +13,9 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
+private const val FRAME_TIMEOUT_MS = 15_000L
+private const val LOADING_HINT_DELAY_MS = 500L
+
 internal class PlayerRecoveryController(
     context: Context,
     private val binding: ActivityPlayerBinding,
@@ -22,8 +25,6 @@ internal class PlayerRecoveryController(
     private val onRecovered: () -> Unit,
     private val onRetry: () -> Unit,
     private val onExit: () -> Unit,
-    private val timeoutMs: Long = 15_000L,
-    private val loadingHintDelayMs: Long = 500L,
     private val covers: RecoveryCoverSource = PlaybackCoverCache(context),
 ) {
     private val store = PlaybackRecoveryStore(context)
@@ -222,10 +223,10 @@ internal class PlayerRecoveryController(
     private fun scheduleWaitingUi() {
         cancelWaitingUi()
         if (!foreground || state !is PlaybackPresentationState.AwaitingFrame || !desiredPlaying) return
-        timeoutJob = scope.launch { delay(timeoutMs); fail() }
+        timeoutJob = scope.launch { delay(FRAME_TIMEOUT_MS); fail() }
         if (!loadingHintVisible) {
             loadingHintJob = scope.launch {
-                delay(loadingHintDelayMs)
+                delay(LOADING_HINT_DELAY_MS)
                 loadingHintVisible = true
                 render()
             }

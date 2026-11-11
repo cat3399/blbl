@@ -577,7 +577,7 @@ internal fun PlayerActivity.startPlayback(
                 (engine as? ExoPlayerEngine)?.exoPlayer?.let { applySubtitleEnabled(it) }
 
                 trace?.log("player:setSource:start", "kind=${engine.kind.prefValue}")
-                if (recoveryResumePendingForLoad()) return@launch
+                if (recoveryResumePending) return@launch
                 val shouldPlay = playbackRecovery?.desiredPlaying ?: pendingPlayWhenReady ?: true
                 playbackRecovery?.sourcePreparing()
                 if (engine.kind == PlayerEngineKind.IjkPlayer && playable !is Playable.Dash) {

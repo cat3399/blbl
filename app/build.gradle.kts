@@ -22,7 +22,6 @@ android {
         targetSdk = 36
         versionCode = (project.findProperty("versionCode") as String?)?.toInt() ?: 1
         versionName = project.findProperty("versionName") as String? ?: "0.1.0"
-        testInstrumentationRunner = "blbl.cat3399.feature.player.recovery.PlaybackRecoveryDeviceTest"
 
         vectorDrawables {
             useSupportLibrary = true
@@ -41,9 +40,6 @@ android {
     buildTypes {
         debug {
             isMinifyEnabled = false
-            applicationIdSuffix = project.findProperty("applicationIdSuffix") as String? ?: ".test"
-            versionNameSuffix = "-debug"
-            resValue("string", "app_name", "Blbl 测试版")
         }
         release {
             isMinifyEnabled = true

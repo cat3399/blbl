@@ -131,7 +131,8 @@ class PlayerActivity : BaseActivity() {
     internal var recoveryEntryKey: String = ""
     internal var restoredPlaybackRecord: PlaybackRecoveryRecord? = null
     internal var initialPlaybackStartReason = PlaybackStartReason.Initial
-    private var recoveryResumePending = false
+    internal var recoveryResumePending = false
+        private set
     private var ijkRenderView: View? = null
     private var ijkTextureSurface: Surface? = null
     internal var pendingStartPositionMs: Long? = null
@@ -338,11 +339,6 @@ class PlayerActivity : BaseActivity() {
     private var exitTraceNavTargetFirstPreDrawLogged: Boolean = false
     private var transientPlaybackResumeRequested: Boolean? = null
     private var decoderReleaseRequestedOnStop: Boolean = false
-    private var resumeAfterDecoderRelease: Boolean = false
-    private var resumeAfterDecoderReleasePositionMs: Long = 0L
-    private var resumeAfterDecoderReleasePlayWhenReady: Boolean = true
-    private var resumeExpiredUrlReloadArmed: Boolean = false
-    private var resumeExpiredUrlReloadAttempted: Boolean = false
     private var playUrlAutoRefreshJob: kotlinx.coroutines.Job? = null
     private var playUrlAutoRefreshToken: Int = 0
     private var playUrlAutoRefreshLastReloadAtElapsedMs: Long = 0L
@@ -356,7 +352,7 @@ class PlayerActivity : BaseActivity() {
     internal var currentVideoContentHeight: Int? = null
 
     private fun isPlayerTeardownInProgress(): Boolean {
-        return exitCleanupRequested || isFinishing || isDestroyed || decoderReleaseRequestedOnStop || resumeAfterDecoderRelease
+        return exitCleanupRequested || isFinishing || isDestroyed || decoderReleaseRequestedOnStop
     }
 
     private fun shouldSuppressPlayerError(error: Throwable): Boolean {
@@ -368,8 +364,7 @@ class PlayerActivity : BaseActivity() {
         AppLog.i(
             "Player",
             "ignorePlayerError teardown=1 finishing=${if (isFinishing) 1 else 0} destroyed=${if (isDestroyed) 1 else 0} " +
-                "exitCleanup=${if (exitCleanupRequested) 1 else 0} releaseOnStop=${if (decoderReleaseRequestedOnStop) 1 else 0} " +
-                "resumeAfterRelease=${if (resumeAfterDecoderRelease) 1 else 0} type=$errorLabel",
+                "exitCleanup=${if (exitCleanupRequested) 1 else 0} releaseOnStop=${if (decoderReleaseRequestedOnStop) 1 else 0} type=$errorLabel",
         )
         return true
     }
@@ -558,19 +553,12 @@ class PlayerActivity : BaseActivity() {
         if (engine !is ExoPlayerEngine) return
         if (exitCleanupRequested || isFinishing || isDestroyed) return
         val pos = engine.currentPosition.coerceAtLeast(0L)
-        val shouldPlayAfterReturn =
-            transientPlaybackResumeRequested
-                ?: (engine.isPlaying || engine.playWhenReady)
         transientPlaybackResumeRequested = null
         trace?.log("exo:releaseOnStop:do", "pos=${pos}ms")
 
         // Stop progress reporting before stopping the player (stop() resets currentPosition).
         stopReportProgressLoop(flush = false, reason = "transient_nav")
         enqueueExitProgressReport(reason = "transient_nav")
-
-        resumeAfterDecoderRelease = true
-        resumeAfterDecoderReleasePositionMs = pos
-        resumeAfterDecoderReleasePlayWhenReady = shouldPlayAfterReturn
 
         // Detach the surface early so codecs can be released immediately.
         if (::binding.isInitialized) {
@@ -928,7 +916,6 @@ class PlayerActivity : BaseActivity() {
                         }
                         val httpCode = findHttpResponseCode(playbackException)
                         trace?.log("player:error", "type=${playbackException.errorCodeName} http=${httpCode ?: -1}")
-                        if (maybeReloadExpiredUrlAfterResume(playbackException, httpCode)) return
                         val picked = lastPickedDash
                         if (
                             picked != null &&
@@ -1004,10 +991,6 @@ class PlayerActivity : BaseActivity() {
                         resetBufferingOverlayState()
                     }
                     debug.lastPlaybackState = playbackState
-                    if (playbackState == Player.STATE_READY && resumeExpiredUrlReloadArmed) {
-                        resumeExpiredUrlReloadArmed = false
-                        trace?.log("player:resumeReload:disarm", "state=READY")
-                    }
                     if (playbackState == Player.STATE_ENDED) {
                         stopReportProgressLoop(flush = true, reason = "ended")
                         handlePlaybackEnded(engine)
@@ -1448,7 +1431,6 @@ class PlayerActivity : BaseActivity() {
         if (recoveryResumePending) {
             recoveryResumePending = false
             transientPlaybackResumeRequested = null
-            resumeAfterDecoderRelease = false
             (player as? ExoPlayerEngine)?.let { binding.playerView.player = it.exoPlayer }
             if (needsReload) retryPlaybackRecovery()
         } else {
@@ -1874,31 +1856,6 @@ class PlayerActivity : BaseActivity() {
         }
     }
 
-    override fun onStart() {
-        super.onStart()
-        if (recoveryResumePending) return
-        val engine = player ?: return
-        val exo = (engine as? ExoPlayerEngine)?.exoPlayer
-        if (!resumeAfterDecoderRelease) return
-        if (exitCleanupRequested || isFinishing || isDestroyed) return
-
-        val pos = resumeAfterDecoderReleasePositionMs.coerceAtLeast(0L)
-        val playWhenReadyAfterReturn = resumeAfterDecoderReleasePlayWhenReady
-        resumeAfterDecoderRelease = false
-        resumeAfterDecoderReleasePositionMs = 0L
-        resumeAfterDecoderReleasePlayWhenReady = true
-        trace?.log("exo:releaseOnStop:resume", "pos=${pos}ms")
-
-        if (exo != null && ::binding.isInitialized && binding.playerView.player == null) {
-            binding.playerView.player = exo
-        }
-        resumeExpiredUrlReloadArmed = true
-        resumeExpiredUrlReloadAttempted = false
-        engine.playWhenReady = playWhenReadyAfterReturn
-        engine.prepare()
-        if (pos > 0L) engine.seekTo(pos)
-    }
-
     private fun consumeTransientPlaybackResumeIfNeeded() {
         val shouldResume = transientPlaybackResumeRequested ?: return
         transientPlaybackResumeRequested = null
@@ -1909,8 +1866,6 @@ class PlayerActivity : BaseActivity() {
             engine.playWhenReady = true
         }
     }
-
-    internal fun recoveryResumePendingForLoad(): Boolean = recoveryResumePending
 
     override fun onSaveInstanceState(outState: Bundle) {
         playbackRecovery?.checkpoint(player?.currentPosition ?: 0L, session.toEngineSwitchJsonString())
@@ -2650,25 +2605,6 @@ class PlayerActivity : BaseActivity() {
                     name.contains("PARSING")
             }
         }
-    }
-
-    private fun maybeReloadExpiredUrlAfterResume(error: PlaybackException, httpCode: Int?): Boolean {
-        if (!resumeExpiredUrlReloadArmed) return false
-        if (resumeExpiredUrlReloadAttempted) return false
-        if (!isLikelyExpiredUrlError(error, httpCode)) return false
-        resumeExpiredUrlReloadAttempted = true
-        resumeExpiredUrlReloadArmed = false
-        trace?.log("exo:resumeReload", "http=${httpCode ?: -1} type=${error.errorCodeName}")
-        AppToast.show(this@PlayerActivity, "播放地址已过期，正在刷新…")
-        reloadStream(keepPosition = true, resetConstraints = false, autoPlay = false)
-        return true
-    }
-
-    private fun isLikelyExpiredUrlError(error: PlaybackException, httpCode: Int?): Boolean {
-        if (httpCode != null && httpCode in setOf(403, 404, 410)) return true
-        if (error.errorCode != PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS) return false
-        val msg = (error.cause?.message ?: error.message ?: "").lowercase(Locale.US)
-        return msg.contains("403") || msg.contains("404") || msg.contains("410") || msg.contains("forbidden")
     }
 
     internal fun cancelPlayUrlAutoRefresh(reason: String) {

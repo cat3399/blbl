@@ -50,8 +50,6 @@
 
 环境要求：JDK 17，Android SDK（compileSdk 36）。
 
-调试包使用包名 `blbl.cat3399.test`，桌面名称为「Blbl 测试版」，可与原版并存。后续调试包覆盖同一测试应用；原版的数据与更新路径保持独立。首次使用测试版需单独登录。
-
 ```
 ./gradlew assembleDebug
 ```
