@@ -713,37 +713,27 @@ private fun PlayerActivity.refreshSettingsPanel() {
 }
 
 internal fun PlayerActivity.showResolutionDialog() {
-    // Follow docs: qn list for resolution/framerate.
-    // Keep the full list so user can force-pick even if the server later falls back.
-    val docQns = PlaybackSettingChoices.resolutionQns
-    val available = lastAvailableQns.toSet()
+    val options = lastAvailableQns
     val currentQn = selectedResolutionQn()
-    val currentIndex = docQns.indexOfFirst { it == currentQn }.takeIf { it >= 0 } ?: 0
+    val currentIndex = options.indexOf(currentQn)
     showSettingsChoiceDialog(
         title = "分辨率",
-        options = docQns,
+        options = options,
         checkedIndex = currentIndex,
-        label = { qn ->
-            val text = qnLabel(qn)
-            if (available.contains(qn)) "${text}（可用）" else text
-        },
+        label = ::qnLabel,
     ) { qn -> applyResolutionSetting(qn) }
 }
 
 internal fun PlayerActivity.showAudioDialog() {
-    val docIds = PlaybackSettingChoices.audioTrackIds
-    val available = lastAvailableAudioIds.toSet()
+    val options = lastAvailableAudioIds
     val currentId = selectedAudioTrackId()
-    val currentIndex = docIds.indexOfFirst { it == currentId }.takeIf { it >= 0 } ?: 0
+    val currentIndex = options.indexOf(currentId)
 
     showSettingsChoiceDialog(
         title = "音轨",
-        options = docIds,
+        options = options,
         checkedIndex = currentIndex,
-        label = { id ->
-            val text = audioLabel(id)
-            if (available.contains(id)) "${text}（可用）" else text
-        },
+        label = ::audioLabel,
     ) { id -> applyAudioTrackSetting(id) }
 }
 

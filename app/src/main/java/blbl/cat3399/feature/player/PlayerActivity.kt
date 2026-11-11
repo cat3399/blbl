@@ -3151,7 +3151,7 @@ class PlayerActivity : BaseActivity() {
                 )
                 playStream.durationMs?.let { currentViewDurationMs = it }
                 showRiskControlBypassHintIfNeeded(playStream)
-                lastAvailableQns = parseDashVideoQnList(playStream)
+                lastAvailableQns = parseSelectableDashVideoQnList(playStream, constraints = playbackConstraints)
                 lastAvailableAudioIds = parseDashAudioIdList(playStream, constraints = playbackConstraints)
                 logPlayUrlTrackSummary(source = "reload", stream = playStream, constraints = playbackConstraints)
                 if (engine.kind == PlayerEngineKind.IjkPlayer && playable !is Playable.Dash) {

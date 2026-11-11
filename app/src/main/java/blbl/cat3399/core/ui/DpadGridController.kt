@@ -4,6 +4,7 @@ import android.os.Build
 import android.os.SystemClock
 import android.view.FocusFinder
 import android.view.KeyEvent
+import android.view.SoundEffectConstants
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewTreeObserver
@@ -392,6 +393,7 @@ internal class DpadGridController(
         scrollAndFocusAdapterPosition(
             candidatePos,
             smooth = true,
+            playDownSound = true,
             onFocused = {
                 // Only clear when the intended target focus jump succeeds.
                 if (pendingFocusAfterLoadMoreTargetPos == candidatePos) {
@@ -442,7 +444,7 @@ internal class DpadGridController(
         }
 
         val candidatePos = (firstVisibleAdapterPosition() ?: 0).coerceIn(0, itemCount - 1)
-        scrollAndFocusAdapterPosition(candidatePos, smooth = false)
+        scrollAndFocusAdapterPosition(candidatePos, smooth = false, playDownSound = true)
         return true
     }
 
@@ -661,7 +663,7 @@ internal class DpadGridController(
             // Consume even when an in-grid next focus exists. Letting the system handle the event
             // can occasionally pick a "better" candidate outside the RecyclerView (e.g. sidebar),
             // especially during layout/adapter updates while the user is holding DPAD_DOWN.
-            next.requestFocus()
+            requestDownFocus(next)
             return true
         }
 
@@ -707,7 +709,7 @@ internal class DpadGridController(
         val rootItem = recyclerView.findContainingItemView(itemView) ?: itemView
         val next = FocusFinder.getInstance().findNextFocus(recyclerView, rootItem, View.FOCUS_DOWN)
         if (next != null && FocusTreeUtils.isDescendantOf(next, recyclerView)) {
-            next.requestFocus()
+            requestDownFocus(next)
             return true
         }
 
@@ -878,7 +880,7 @@ internal class DpadGridController(
         val itemView = recyclerView.findContainingItemView(focused) ?: return false
         val next = FocusFinder.getInstance().findNextFocus(recyclerView, itemView, View.FOCUS_DOWN)
         if (next != null && FocusTreeUtils.isDescendantOf(next, recyclerView)) {
-            next.requestFocus()
+            requestDownFocus(next)
             return true
         }
         return false
@@ -889,10 +891,24 @@ internal class DpadGridController(
         val itemCount = adapter.itemCount
         if (position !in 0 until itemCount) return false
 
-        return scrollAndFocusAdapterPosition(position, smooth = true)
+        return scrollAndFocusAdapterPosition(position, smooth = true, playDownSound = true)
     }
 
-    private fun scrollAndFocusAdapterPosition(position: Int, smooth: Boolean, onFocused: (() -> Unit)? = null): Boolean {
+    private fun requestDownFocus(view: View): Boolean {
+        val hadFocus = view.hasFocus()
+        val focused = view.requestFocus(View.FOCUS_DOWN)
+        if (focused && !hadFocus) {
+            view.playSoundEffect(SoundEffectConstants.NAVIGATION_DOWN)
+        }
+        return focused
+    }
+
+    private fun scrollAndFocusAdapterPosition(
+        position: Int,
+        smooth: Boolean,
+        playDownSound: Boolean = false,
+        onFocused: (() -> Unit)? = null,
+    ): Boolean {
         val adapter = recyclerView.adapter
         if (adapter == null) {
             maybeAbortPendingLoadMoreFocusRetry(position)
@@ -907,18 +923,18 @@ internal class DpadGridController(
         recyclerView.findViewHolderForAdapterPosition(position)?.itemView?.let { itemView ->
             // Avoid requesting focus while the target view is completely off-screen.
             // RecyclerView will "jump" to make the focused view visible, which looks like a flash.
-            if (isPartiallyVisibleInRecycler(itemView) && itemView.requestFocus()) {
+            if (isPartiallyVisibleInRecycler(itemView) && (if (playDownSound) requestDownFocus(itemView) else itemView.requestFocus())) {
                 onFocused?.invoke()
                 return true
             }
         }
 
         if (smooth) recyclerView.smoothScrollToPosition(position) else recyclerView.scrollToPosition(position)
-        retryFocusAdapterPosition(position, attemptsLeft = focusRetryMaxAttempts, onFocused = onFocused)
+        retryFocusAdapterPosition(position, attemptsLeft = focusRetryMaxAttempts, playDownSound = playDownSound, onFocused = onFocused)
         return true
     }
 
-    private fun retryFocusAdapterPosition(position: Int, attemptsLeft: Int, onFocused: (() -> Unit)? = null) {
+    private fun retryFocusAdapterPosition(position: Int, attemptsLeft: Int, playDownSound: Boolean, onFocused: (() -> Unit)? = null) {
         if (!isAliveForFocusJump()) {
             maybeAbortPendingLoadMoreFocusRetry(position)
             return
@@ -938,7 +954,7 @@ internal class DpadGridController(
         recyclerView.findViewHolderForAdapterPosition(position)?.itemView?.let { itemView ->
             // Only request focus once the target is at least partially visible, otherwise RecyclerView
             // may perform an immediate scroll-to-visible (no smooth animation) which looks like a flash.
-            if (isPartiallyVisibleInRecycler(itemView) && itemView.requestFocus()) {
+            if (isPartiallyVisibleInRecycler(itemView) && (if (playDownSound) requestDownFocus(itemView) else itemView.requestFocus())) {
                 onFocused?.invoke()
                 return
             }
@@ -952,7 +968,7 @@ internal class DpadGridController(
             delayMillis = focusRetryDelayMillis,
             isAlive = { isAliveForFocusJump() },
         ) {
-            retryFocusAdapterPosition(position, attemptsLeft = attemptsLeft - 1, onFocused = onFocused)
+            retryFocusAdapterPosition(position, attemptsLeft = attemptsLeft - 1, playDownSound = playDownSound, onFocused = onFocused)
         }
     }
 

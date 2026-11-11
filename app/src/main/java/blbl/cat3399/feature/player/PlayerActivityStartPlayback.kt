@@ -559,7 +559,7 @@ internal fun PlayerActivity.startPlayback(
                     "player:initialPosition",
                     "position=${initialPositionMs ?: -1L}ms source=${initialResume?.source ?: if (pendingSeekMs != null) "engine_switch" else "none"}",
                 )
-                lastAvailableQns = parseDashVideoQnList(playStream)
+                lastAvailableQns = parseSelectableDashVideoQnList(playStream, constraints = playbackConstraints)
                 lastAvailableAudioIds = parseDashAudioIdList(playStream, constraints = playbackConstraints)
                 logPlayUrlTrackSummary(source = "start", stream = playStream, constraints = playbackConstraints)
                 if (subtitleSupported && session.subtitleEnabled) {
