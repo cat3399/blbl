@@ -3,11 +3,13 @@
 package blbl.cat3399.feature.player
 
 import android.os.Bundle
+import android.content.Intent
 import androidx.lifecycle.lifecycleScope
 import blbl.cat3399.feature.player.engine.PlayerEngineKind
 import blbl.cat3399.feature.player.recovery.PlaybackRecoveryRecord
 import blbl.cat3399.feature.player.recovery.PlaybackRecoveryStore
 import blbl.cat3399.feature.player.recovery.PlayerRecoveryController
+import blbl.cat3399.feature.player.recovery.PlaybackStartReason
 
 internal const val RECOVERY_SAVED_RECORD = "playback_recovery_record"
 
@@ -19,7 +21,14 @@ internal fun PlayerActivity.restorePlaybackRecovery(savedState: Bundle?) {
         intent.getLongExtra(PlayerActivity.EXTRA_EP_ID, 0),
     )
     val savedRecord = PlaybackRecoveryRecord.fromJson(savedState?.getString(RECOVERY_SAVED_RECORD))
-    val restored = savedRecord ?: PlaybackRecoveryStore(this).load(requestedKey)
+    val fromHistory = intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY != 0
+    val restored = savedRecord ?: if (fromHistory) PlaybackRecoveryStore(this).load(requestedKey) else null
+    restoredPlaybackRecord = restored
+    initialPlaybackStartReason = when {
+        restored?.hasRenderedFrame == true -> PlaybackStartReason.ForegroundRestore
+        savedRecord == null && intent.hasExtra(PlayerActivity.EXTRA_ENGINE_SWITCH_SESSION_JSON) -> PlaybackStartReason.EngineSwitch
+        else -> PlaybackStartReason.Initial
+    }
     recoveryEntryKey = restored?.entryKey ?: requestedKey
     if (restored == null || restored.live) return
     intent.putExtra(PlayerActivity.EXTRA_BVID, restored.bvid)
@@ -54,9 +63,9 @@ internal fun PlayerActivity.initPlaybackRecovery() {
     )
 }
 
-internal fun PlayerActivity.beginPlaybackRecovery(cid: Long?, title: String?, positionMs: Long?, playing: Boolean?) {
+internal fun PlayerActivity.beginPlaybackRecovery(cid: Long?, title: String?, positionMs: Long?, playing: Boolean?, reason: PlaybackStartReason) {
     val recovery = playbackRecovery ?: return
-    val old = recovery.record
+    val old = recovery.record ?: restoredPlaybackRecord
     val contentKey = PlaybackRecoveryRecord.vodKey(currentBvid, currentAid ?: 0, cid ?: 0, currentEpId ?: 0)
     val sameContent = old?.contentKey == contentKey
     val card = pageListUiCards.firstOrNull { it.bvid == currentBvid && (cid == null || it.cid == cid) }
@@ -75,7 +84,10 @@ internal fun PlayerActivity.beginPlaybackRecovery(cid: Long?, title: String?, po
         positionMs = positionMs ?: 0,
         playWhenReady = playing ?: true,
         settingsJson = session.toEngineSwitchJsonString(),
-    ))
+        hasRenderedFrame = old?.hasRenderedFrame == true && sameContent,
+    ), reason)
+    restoredPlaybackRecord = null
+    updatePlayPauseIcon(recovery.desiredPlaying)
 }
 
 internal fun PlayerActivity.updatePlaybackRecoveryMetadata(coverUrl: String?) {
@@ -102,5 +114,6 @@ internal fun PlayerActivity.retryPlaybackRecovery() {
         epIdExtra = saved.epId.takeIf { it > 0 },
         seasonIdExtra = saved.seasonId.takeIf { it > 0 },
         initialTitle = saved.title,
+        startReason = playbackRecovery!!.startReason,
     )
 }

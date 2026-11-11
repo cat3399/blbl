@@ -23,6 +23,7 @@ internal class PlayerRecoveryController(
     private val onRetry: () -> Unit,
     private val onExit: () -> Unit,
     private val timeoutMs: Long = 15_000L,
+    private val loadingHintDelayMs: Long = 500L,
     private val covers: RecoveryCoverSource = PlaybackCoverCache(context),
 ) {
     private val store = PlaybackRecoveryStore(context)
@@ -30,46 +31,54 @@ internal class PlayerRecoveryController(
     private var cover: Bitmap? = null
     private var coverJob: Job? = null
     private var timeoutJob: Job? = null
+    private var loadingHintJob: Job? = null
+    private var loadingHintVisible = false
     private var lastSavedAtMs = 0L
     private var sourceCommitted = false
     private var rendered = false
-    private var released = false
     private val originalPlayUpId = binding.btnPlayPause.nextFocusUpId
     var record: PlaybackRecoveryRecord? = null
         private set
+    var state: PlaybackPresentationState = PlaybackPresentationState.Idle
+        private set
     var foreground = false
         private set
-    var waiting = false
-        private set
-    var failed = false
-        private set
-    val keepControlsVisible: Boolean get() = waiting
+    val waiting: Boolean get() = state is PlaybackPresentationState.AwaitingFrame || failed
+    val failed: Boolean get() = state is PlaybackPresentationState.Failed
     val desiredPlaying: Boolean get() = record?.playWhenReady ?: true
+    val startReason: PlaybackStartReason
+        get() = when (val current = state) {
+            is PlaybackPresentationState.AwaitingFrame -> current.reason
+            is PlaybackPresentationState.Failed -> current.reason
+            else -> PlaybackStartReason.Initial
+        }
+    val keepControlsVisible: Boolean
+        get() = foreground && waiting && (failed || startReason == PlaybackStartReason.ForegroundRestore || !desiredPlaying)
+    val suppressBufferingOverlay: Boolean get() = state != PlaybackPresentationState.Ready
+    private val released: Boolean get() = state == PlaybackPresentationState.Released
 
     init {
-        binding.playbackRecovery.recoveryAction.setOnClickListener {
-            if (!failed) record = record?.copy(playWhenReady = true)
-            failed = false
-            sourceCommitted = false
-            render()
-            scheduleTimeout()
-            onRetry()
-        }
+        binding.playbackRecovery.recoveryAction.setOnClickListener { retry() }
         binding.playbackRecovery.recoveryBack.setOnClickListener { onExit() }
     }
 
-    fun begin(next: PlaybackRecoveryRecord) {
-        updateContent(next)
-        rendered = false
+    fun begin(next: PlaybackRecoveryRecord, reason: PlaybackStartReason = PlaybackStartReason.Initial) {
+        if (released) return
+        if (reason == PlaybackStartReason.Initial) PlaybackFrameCache.clear()
+        val resolvedReason = if (reason == PlaybackStartReason.ForegroundRestore && !next.hasRenderedFrame) {
+            PlaybackStartReason.Initial
+        } else reason
+        loadingHintVisible = false
+        state = PlaybackPresentationState.AwaitingFrame(resolvedReason)
         sourceCommitted = false
-        waiting = true
-        failed = false
+        rendered = false
+        updateContent(if (reason == PlaybackStartReason.Initial) next.copy(hasRenderedFrame = false) else next)
         render(requestFocus = true)
-        scheduleTimeout()
-        save()
+        scheduleWaitingUi()
     }
 
     fun updateContent(next: PlaybackRecoveryRecord) {
+        if (released) return
         val previous = record
         record = next
         if (previous?.contentKey != next.contentKey) {
@@ -77,79 +86,98 @@ internal class PlayerRecoveryController(
             binding.recoveryImage.setImageDrawable(null)
         }
         PlaybackFrameCache.observe(next.contentKey, this) { bitmap ->
-            // Drop the old drawable before the cache recycles its bitmap.
-            if (bitmap == null) binding.recoveryImage.setImageBitmap(cover)
-            if (waiting && !released) renderImage(bitmap ?: cover)
+            // Drop the drawable before the cache recycles its bitmap, including when hidden.
+            binding.recoveryImage.setImageDrawable(null)
+            if (foreground && waiting && startReason == PlaybackStartReason.ForegroundRestore) {
+                renderImage(bitmap ?: cover)
+            }
         }
-        if (previous?.contentKey != next.contentKey || previous.coverUrl != next.coverUrl) {
-            loadCover(next)
-        }
-        if (waiting) render()
+        if (previous?.contentKey != next.contentKey || previous.coverUrl != next.coverUrl) loadCover(next)
+        render()
         save()
     }
 
-    fun resume() {
+    /** Returns true only when foreground entry needs a new source request. */
+    fun resume(): Boolean {
+        if (released) return false
         foreground = true
-        if (waiting) {
-            render(requestFocus = true)
-            scheduleTimeout()
-        }
+        val background = state as? PlaybackPresentationState.Background
+        if (background != null) state = background.returnTo
+        render(requestFocus = true)
+        scheduleWaitingUi()
+        return background?.returnTo is PlaybackPresentationState.AwaitingFrame
     }
 
     fun pause(positionMs: Long, playWhenReady: Boolean, settingsJson: String) {
         val current = record ?: return
+        if (released || state is PlaybackPresentationState.Background) return
         record = current.copy(
             positionMs = if (rendered) positionMs.coerceAtLeast(0) else current.positionMs,
             playWhenReady = playWhenReady,
             settingsJson = settingsJson,
         )
+        val returnTo = when (val previous = state) {
+            is PlaybackPresentationState.Failed -> previous // Returning is not an implicit retry.
+            is PlaybackPresentationState.AwaitingFrame -> previous
+            PlaybackPresentationState.Ready -> PlaybackPresentationState.AwaitingFrame(PlaybackStartReason.ForegroundRestore)
+            else -> PlaybackPresentationState.AwaitingFrame(PlaybackStartReason.Initial)
+        }
         foreground = false
-        timeoutJob?.cancel()
-        // The request is asynchronous and only copies a scaled video surface, never the 4K window.
+        state = PlaybackPresentationState.Background(returnTo)
+        cancelWaitingUi()
+        // PixelCopy reads only the video surface and completes asynchronously.
         PlaybackFrameCache.capture(current.contentKey, surfaceView(), rendered)
         rendered = false
-        waiting = true
         sourceCommitted = false
-        render()
+        hidePresentation()
         save()
     }
 
     fun sourcePreparing() {
+        if (released || state is PlaybackPresentationState.Background) return
         rendered = false
         sourceCommitted = true
     }
 
     fun onFirstFrame() {
-        if (!sourceCommitted || released) return
+        if (!sourceCommitted || !foreground || released || state is PlaybackPresentationState.Background) return
         rendered = true
-        if (!foreground) return
-        waiting = false
-        failed = false
-        timeoutJob?.cancel()
-        binding.recoveryImage.visibility = View.GONE
-        binding.recoveryImage.setImageDrawable(null)
-        val hadFocus = binding.playbackRecovery.root.hasFocus()
-        binding.playbackRecovery.root.visibility = View.GONE
-        binding.btnPlayPause.nextFocusUpId = originalPlayUpId
-        if (hadFocus) binding.btnPlayPause.requestFocus()
-        onRecovered()
+        record = record?.copy(hasRenderedFrame = true)
+        val completedWait = waiting
+        state = PlaybackPresentationState.Ready
+        cancelWaitingUi()
+        hidePresentation()
+        save()
+        if (completedWait) onRecovered()
     }
 
     fun onPlayIntentChanged(playing: Boolean, fromPlayer: Boolean = false) {
-        if (!foreground || released) return
-        if (fromPlayer && !sourceCommitted) return
+        if (!foreground || released || state is PlaybackPresentationState.Background) return
+        if (fromPlayer && (!sourceCommitted || failed)) return
+        if (desiredPlaying == playing) return
         record = record?.copy(playWhenReady = playing)
-        if (waiting) {
-            render()
-            scheduleTimeout()
-        }
+        render()
+        // A duplicate engine event must not extend the timeout or start another request.
+        scheduleWaitingUi()
         save()
     }
 
+    fun retry() {
+        val failure = state as? PlaybackPresentationState.Failed ?: return
+        if (!foreground) return
+        state = PlaybackPresentationState.AwaitingFrame(failure.reason)
+        sourceCommitted = false
+        rendered = false
+        loadingHintVisible = false
+        render(requestFocus = true)
+        scheduleWaitingUi()
+        onRetry()
+    }
+
     fun fail() {
-        if (!waiting || released || !foreground) return
-        failed = true
-        timeoutJob?.cancel()
+        val pending = state as? PlaybackPresentationState.AwaitingFrame ?: return
+        state = PlaybackPresentationState.Failed(pending.reason)
+        cancelWaitingUi()
         render(requestFocus = true)
     }
 
@@ -166,17 +194,15 @@ internal class PlayerRecoveryController(
     }
 
     fun release(exit: Boolean) {
-        released = true
+        state = PlaybackPresentationState.Released
         foreground = false
-        timeoutJob?.cancel()
+        cancelWaitingUi()
         coverJob?.cancel()
-        binding.recoveryImage.setImageDrawable(null)
+        hidePresentation()
         if (exit) {
             store.clear(owner)
             PlaybackFrameCache.clear(this)
-        } else {
-            PlaybackFrameCache.detach(this)
-        }
+        } else PlaybackFrameCache.detach(this)
         cover = null
     }
 
@@ -186,36 +212,62 @@ internal class PlayerRecoveryController(
         lastSavedAtMs = SystemClock.elapsedRealtime()
     }
 
-    private fun scheduleTimeout() {
+    private fun cancelWaitingUi() {
         timeoutJob?.cancel()
-        if (!foreground || !waiting || !desiredPlaying || failed || released) return
-        timeoutJob = scope.launch {
-            delay(timeoutMs)
-            fail()
+        loadingHintJob?.cancel()
+        timeoutJob = null
+        loadingHintJob = null
+    }
+
+    private fun scheduleWaitingUi() {
+        cancelWaitingUi()
+        if (!foreground || state !is PlaybackPresentationState.AwaitingFrame || !desiredPlaying) return
+        timeoutJob = scope.launch { delay(timeoutMs); fail() }
+        if (!loadingHintVisible) {
+            loadingHintJob = scope.launch {
+                delay(loadingHintDelayMs)
+                loadingHintVisible = true
+                render()
+            }
         }
     }
 
     private fun render(requestFocus: Boolean = false) {
-        if (!waiting || released) return
+        if (!foreground || !waiting || released) {
+            hidePresentation()
+            return
+        }
         val current = record ?: return
-        renderImage(PlaybackFrameCache.get(current.contentKey) ?: cover)
+        val restoring = startReason == PlaybackStartReason.ForegroundRestore
+        val showSpinner = loadingHintVisible && desiredPlaying && !failed
         val ui = binding.playbackRecovery
-        ui.root.visibility = View.VISIBLE
-        ui.recoveryTitle.text = current.title.ifBlank { if (current.live) "直播间 ${current.roomId}" else "视频 ${current.bvid.ifBlank { "av${current.aid}" }}" }
-        ui.recoveryStatus.text = when {
-            failed -> "画面恢复失败，请重试"
-            desiredPlaying -> "正在恢复画面…"
-            else -> "已暂停"
+        renderImage(if (restoring) PlaybackFrameCache.get(current.contentKey) ?: cover else null)
+        binding.bufferingOverlay.visibility = View.GONE
+        val hadErrorFocus = ui.recoveryError.hasFocus()
+        ui.root.visibility = if (failed || showSpinner) View.VISIBLE else View.GONE
+        ui.recoveryProgress.visibility = if (showSpinner) View.VISIBLE else View.GONE
+        ui.recoveryError.visibility = if (failed) View.VISIBLE else View.GONE
+        binding.btnPlayPause.nextFocusUpId = if (failed) R.id.recovery_action else originalPlayUpId
+        if (hadErrorFocus && !failed) binding.btnPlayPause.requestFocus()
+        if (keepControlsVisible) {
+            showControls()
+            if (requestFocus) {
+                val target = if (failed) ui.recoveryAction else binding.btnPlayPause
+                target.requestFocus()
+                target.post { if (keepControlsVisible && !binding.root.hasFocus()) target.requestFocus() }
+            }
         }
-        ui.recoveryAction.visibility = if (failed || !desiredPlaying) View.VISIBLE else View.GONE
-        ui.recoveryAction.text = if (failed) "重试" else "播放"
-        binding.btnPlayPause.nextFocusUpId = if (ui.recoveryAction.visibility == View.VISIBLE) R.id.recovery_action else R.id.recovery_back
-        showControls()
-        if (requestFocus && foreground) {
-            val target = if (ui.recoveryAction.visibility == View.VISIBLE) ui.recoveryAction else binding.btnPlayPause
-            target.requestFocus()
-            target.post { if (waiting && foreground && !released && !binding.root.hasFocus()) target.requestFocus() }
-        }
+    }
+
+    private fun hidePresentation() {
+        val hadFocus = binding.playbackRecovery.root.hasFocus()
+        binding.playbackRecovery.root.visibility = View.GONE
+        binding.playbackRecovery.recoveryError.visibility = View.GONE
+        binding.playbackRecovery.recoveryProgress.visibility = View.GONE
+        binding.recoveryImage.visibility = View.GONE
+        binding.recoveryImage.setImageDrawable(null)
+        binding.btnPlayPause.nextFocusUpId = originalPlayUpId
+        if (hadFocus && foreground) binding.btnPlayPause.requestFocus()
     }
 
     private fun renderImage(bitmap: Bitmap?) {
@@ -229,7 +281,7 @@ internal class PlayerRecoveryController(
             fun apply(bitmap: Bitmap?) {
                 if (bitmap == null || released || record?.contentKey != current.contentKey) return
                 cover = bitmap
-                if (waiting) render()
+                render()
             }
             apply(covers.load(current.contentKey))
             if (current.coverUrl.isNotBlank()) {
@@ -237,7 +289,6 @@ internal class PlayerRecoveryController(
                     apply(covers.prefetch(current.contentKey, current.coverUrl))
                 } catch (t: Exception) {
                     if (t is CancellationException) throw t
-                    // Controls and a previously cached cover remain available during network failure.
                 }
             }
         }

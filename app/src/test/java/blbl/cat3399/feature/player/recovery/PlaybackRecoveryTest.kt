@@ -17,6 +17,9 @@ import blbl.cat3399.databinding.ActivityPlayerBinding
 import blbl.cat3399.feature.player.PlayerActivity
 import blbl.cat3399.feature.player.RECOVERY_SAVED_RECORD
 import blbl.cat3399.feature.player.restorePlaybackRecovery
+import blbl.cat3399.feature.player.engine.BlblPlayerEngine
+import androidx.media3.common.Player
+import java.lang.reflect.Proxy
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.runBlocking
@@ -40,7 +43,7 @@ import org.robolectric.annotation.GraphicsMode
 class PlaybackRecoveryTest {
     private val context: Context get() = RuntimeEnvironment.getApplication()
     private val video = PlaybackRecoveryRecord(entryKey = "vod:BV1:0:0", bvid = "BV1", cid = 11,
-        title = "当前视频", coverUrl = "", positionMs = 42_000)
+        title = "当前视频", coverUrl = "", positionMs = 42_000, hasRenderedFrame = true)
 
     @Before
     fun reset() {
@@ -164,7 +167,7 @@ class PlaybackRecoveryTest {
     fun coldLaunchRestoresDiskCheckpointAndExplicitEngineSwitchKeepsItsPosition() {
         PlaybackRecoveryStore(context).save("old", video.copy(playWhenReady = false))
         val activity = Robolectric.buildActivity(PlayerActivity::class.java).get()
-        activity.intent = Intent().putExtra(PlayerActivity.EXTRA_BVID, "BV1")
+        activity.intent = Intent().putExtra(PlayerActivity.EXTRA_BVID, "BV1").addFlags(Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY)
         activity.restorePlaybackRecovery(null)
         assertEquals(42_000L, activity.intent.getLongExtra(PlayerActivity.EXTRA_ENGINE_SWITCH_RESUME_POSITION_MS, -1))
         activity.intent.putExtra(PlayerActivity.EXTRA_ENGINE_SWITCH_RESUME_POSITION_MS, 55_000L)
@@ -195,11 +198,10 @@ class PlaybackRecoveryTest {
             override suspend fun load(key: String): Bitmap? = gate.await()
             override suspend fun prefetch(key: String, url: String): Bitmap? = null
         })
-        ui.controller.begin(video)
+        ui.controller.begin(video, PlaybackStartReason.ForegroundRestore)
         ui.controller.resume()
-        assertEquals(View.VISIBLE, ui.binding.playbackRecovery.root.visibility)
-        assertEquals("当前视频", ui.binding.playbackRecovery.recoveryTitle.text.toString())
-        assertEquals("正在恢复画面…", ui.binding.playbackRecovery.recoveryStatus.text.toString())
+        assertEquals(View.GONE, ui.binding.playbackRecovery.root.visibility)
+        assertEquals(View.VISIBLE, ui.binding.bottomBar.visibility)
         assertTrue(ui.shown > 0)
         assertTrue(ui.controller.keepControlsVisible)
         assertEquals(View.GONE, ui.binding.recoveryImage.visibility)
@@ -216,14 +218,15 @@ class PlaybackRecoveryTest {
         PlaybackFrameCache.detach(owner)
         val cover = Bitmap.createBitmap(320, 180, Bitmap.Config.ARGB_8888)
         val ui = fixture(backgroundScope, fixedCover(cover))
-        ui.controller.begin(video)
+        ui.controller.begin(video, PlaybackStartReason.ForegroundRestore)
         ui.controller.resume()
         runCurrent()
         assertSame(frame.bitmap, (ui.binding.recoveryImage.drawable as BitmapDrawable).bitmap)
         ui.controller.release(exit = false)
         assertFalse(frame.bitmap.isRecycled)
         val replacement = fixture(backgroundScope, fixedCover(cover))
-        replacement.controller.begin(video)
+        replacement.controller.begin(video, PlaybackStartReason.ForegroundRestore)
+        replacement.controller.resume()
         assertSame(frame.bitmap, (replacement.binding.recoveryImage.drawable as BitmapDrawable).bitmap)
         replacement.controller.release(exit = true)
         assertTrue(frame.bitmap.isRecycled)
@@ -233,7 +236,7 @@ class PlaybackRecoveryTest {
     fun coverAppearsWhenNoFrameAndRemainsUntilActualFirstFrame() = runTest {
         val cover = Bitmap.createBitmap(320, 180, Bitmap.Config.ARGB_8888)
         val ui = fixture(backgroundScope, fixedCover(cover))
-        ui.controller.begin(video)
+        ui.controller.begin(video, PlaybackStartReason.ForegroundRestore)
         ui.controller.resume()
         runCurrent()
         assertSame(cover, (ui.binding.recoveryImage.drawable as BitmapDrawable).bitmap)
@@ -267,20 +270,20 @@ class PlaybackRecoveryTest {
         assertFalse(ui.controller.desiredPlaying)
         assertFalse(ui.controller.failed)
         assertEquals(67_000L, ui.controller.record!!.positionMs)
-        assertEquals("已暂停", ui.binding.playbackRecovery.recoveryStatus.text.toString())
-        assertEquals("播放", ui.binding.playbackRecovery.recoveryAction.text.toString())
-        assertTrue(ui.binding.playbackRecovery.recoveryAction.hasFocus())
+        assertEquals(View.GONE, ui.binding.playbackRecovery.root.visibility)
+        assertTrue(ui.binding.btnPlayPause.hasFocus())
         assertEquals(0, ui.retries)
-        clickWithRemote(ui.binding.playbackRecovery.recoveryAction)
+        clickWithRemote(ui.binding.btnPlayPause)
         assertTrue(ui.controller.desiredPlaying)
-        assertEquals(1, ui.retries)
+        assertEquals(1, ui.plays)
+        assertEquals(0, ui.retries)
         ui.controller.release(exit = true)
     }
 
     @Test
     fun timeoutKeepsControlsAndRemoteCanRetryOrExit() = runTest {
         val ui = fixture(backgroundScope)
-        ui.controller.begin(video)
+        ui.controller.begin(video, PlaybackStartReason.ForegroundRestore)
         ui.controller.resume()
         runCurrent()
         advanceTimeBy(15_001)
@@ -308,7 +311,9 @@ class PlaybackRecoveryTest {
         ui.controller.onPlayIntentChanged(false, fromPlayer = true)
         advanceTimeBy(20_000)
         runCurrent()
-        assertTrue(ui.controller.waiting)
+        assertTrue(ui.controller.state is PlaybackPresentationState.Background)
+        assertFalse(ui.controller.keepControlsVisible)
+        assertEquals(View.GONE, ui.binding.playbackRecovery.root.visibility)
         assertFalse(ui.controller.failed)
         assertTrue(ui.controller.desiredPlaying)
         assertEquals(42_000L, ui.controller.record!!.positionMs)
@@ -318,12 +323,220 @@ class PlaybackRecoveryTest {
     @Test
     fun changingContentDropsOldImageImmediately() = runTest {
         val ui = fixture(backgroundScope, fixedCover(Bitmap.createBitmap(320, 180, Bitmap.Config.ARGB_8888)))
-        ui.controller.begin(video)
+        ui.controller.begin(video, PlaybackStartReason.ForegroundRestore)
+        ui.controller.resume()
         runCurrent()
         assertEquals(View.VISIBLE, ui.binding.recoveryImage.visibility)
         ui.controller.begin(video.copy(bvid = "BV2", cid = 2, title = "下一个视频"))
         assertEquals(View.GONE, ui.binding.recoveryImage.visibility)
-        assertEquals("下一个视频", ui.binding.playbackRecovery.recoveryTitle.text.toString())
+        assertEquals(View.GONE, ui.binding.playbackRecovery.root.visibility)
+        ui.controller.release(exit = true)
+    }
+
+    @Test
+    fun freshEntryOnlyShowsDelayedLoadingWithoutCoverControlsOrFocusChange() = runTest {
+        val ui = fixture(backgroundScope, fixedCover(Bitmap.createBitmap(320, 180, Bitmap.Config.ARGB_8888)))
+        ui.binding.btnAdvanced.requestFocus()
+        ui.controller.begin(video)
+        ui.controller.resume()
+        runCurrent()
+        assertEquals(View.GONE, ui.binding.playbackRecovery.root.visibility)
+        assertFalse(ui.controller.record!!.hasRenderedFrame)
+        assertFalse(ui.controller.keepControlsVisible)
+        advanceTimeBy(501)
+        runCurrent()
+        assertEquals(View.VISIBLE, ui.binding.playbackRecovery.root.visibility)
+        assertEquals(View.VISIBLE, ui.binding.playbackRecovery.recoveryProgress.visibility)
+        assertEquals(View.GONE, ui.binding.recoveryImage.visibility)
+        assertEquals(View.GONE, ui.binding.playbackRecovery.recoveryError.visibility)
+        assertTrue(ui.binding.btnAdvanced.hasFocus())
+        assertEquals(0, ui.shown)
+        ui.controller.release(exit = true)
+    }
+
+    @Test
+    fun fastFirstFrameCancelsLoadingHintAndDoesNotFlashRecovery() = runTest {
+        val ui = fixture(backgroundScope)
+        ui.controller.begin(video)
+        ui.controller.resume()
+        ui.controller.sourcePreparing()
+        ui.controller.onFirstFrame()
+        advanceTimeBy(20_000)
+        runCurrent()
+        assertEquals(PlaybackPresentationState.Ready, ui.controller.state)
+        assertEquals(View.GONE, ui.binding.playbackRecovery.root.visibility)
+        assertFalse(ui.controller.failed)
+        assertTrue(ui.controller.record!!.hasRenderedFrame)
+        ui.controller.release(exit = true)
+    }
+
+    @Test
+    fun initialLoadInterruptedBeforeFirstFrameContinuesLoadingOnReturn() = runTest {
+        val ui = fixture(backgroundScope)
+        ui.controller.begin(video)
+        ui.controller.resume()
+        ui.controller.pause(0, true, "")
+        assertEquals(View.GONE, ui.binding.playbackRecovery.root.visibility)
+        assertTrue(ui.controller.resume())
+        assertEquals(PlaybackStartReason.Initial, ui.controller.startReason)
+        advanceTimeBy(501)
+        runCurrent()
+        assertEquals(View.VISIBLE, ui.binding.playbackRecovery.recoveryProgress.visibility)
+        assertEquals(View.GONE, ui.binding.playbackRecovery.recoveryError.visibility)
+        assertFalse(ui.controller.keepControlsVisible)
+        ui.controller.release(exit = true)
+    }
+
+    @Test
+    fun newContentAfterRecoveryStartsAsInitialLoad() = runTest {
+        val ui = fixture(backgroundScope)
+        ui.controller.begin(video, PlaybackStartReason.ForegroundRestore)
+        ui.controller.resume()
+        assertTrue(ui.controller.keepControlsVisible)
+        ui.controller.begin(video.copy(bvid = "BV2", cid = 99))
+        assertEquals(PlaybackStartReason.Initial, ui.controller.startReason)
+        assertFalse(ui.controller.keepControlsVisible)
+        assertEquals(View.GONE, ui.binding.playbackRecovery.root.visibility)
+        ui.controller.release(exit = true)
+    }
+
+    @Test
+    fun normalPauseKeepsRealFrameAndDoesNotEnterRecovery() = runTest {
+        val ui = fixture(backgroundScope)
+        ui.controller.begin(video)
+        ui.controller.resume()
+        ui.controller.sourcePreparing()
+        ui.controller.onFirstFrame()
+        ui.controller.onPlayIntentChanged(false)
+        assertEquals(PlaybackPresentationState.Ready, ui.controller.state)
+        assertEquals(View.GONE, ui.binding.playbackRecovery.root.visibility)
+        assertFalse(ui.controller.desiredPlaying)
+        assertEquals(0, ui.retries)
+        ui.controller.onPlayIntentChanged(true)
+        assertEquals(PlaybackPresentationState.Ready, ui.controller.state)
+        assertEquals(0, ui.retries)
+        ui.controller.release(exit = true)
+    }
+
+    @Test
+    fun failureSurvivesBackgroundAndOnlyExplicitRetryStartsAnotherAttempt() = runTest {
+        val ui = fixture(backgroundScope)
+        ui.controller.begin(video)
+        ui.controller.resume()
+        ui.controller.fail()
+        assertEquals("播放失败", ui.binding.playbackRecovery.recoveryStatus.text.toString())
+        ui.controller.pause(0, true, "")
+        assertFalse(ui.controller.resume())
+        assertTrue(ui.controller.failed)
+        assertEquals(0, ui.retries)
+        clickWithRemote(ui.binding.playbackRecovery.recoveryAction)
+        ui.controller.retry() // A repeated click is not a second request.
+        assertEquals(1, ui.retries)
+        assertEquals(PlaybackStartReason.Initial, ui.controller.startReason)
+        assertFalse(ui.controller.failed)
+        ui.controller.release(exit = true)
+    }
+
+    @Test
+    fun engineSwitchUsesSameSpinnerAndFailureUi() = runTest {
+        val ui = fixture(backgroundScope)
+        ui.controller.begin(video, PlaybackStartReason.EngineSwitch)
+        ui.controller.resume()
+        advanceTimeBy(501)
+        runCurrent()
+        assertEquals(View.VISIBLE, ui.binding.playbackRecovery.recoveryProgress.visibility)
+        assertEquals(View.GONE, ui.binding.playbackRecovery.recoveryError.visibility)
+        assertFalse(ui.controller.keepControlsVisible)
+        ui.controller.fail()
+        assertEquals("播放失败", ui.binding.playbackRecovery.recoveryStatus.text.toString())
+        ui.controller.release(exit = true)
+    }
+
+    @Test
+    fun duplicatePlayEventsDoNotPostponeRecoveryTimeout() = runTest {
+        val ui = fixture(backgroundScope)
+        ui.controller.begin(video, PlaybackStartReason.ForegroundRestore)
+        ui.controller.resume()
+        ui.controller.sourcePreparing()
+        runCurrent()
+        advanceTimeBy(14_000)
+        ui.controller.onPlayIntentChanged(true, fromPlayer = true)
+        advanceTimeBy(1_001)
+        runCurrent()
+        assertTrue(ui.controller.failed)
+        ui.controller.release(exit = true)
+    }
+
+    @Test
+    fun explicitNewLaunchDoesNotInheritOldPausedSessionOfSameVideo() {
+        PlaybackRecoveryStore(context).save("old", video.copy(playWhenReady = false))
+        val activity = Robolectric.buildActivity(PlayerActivity::class.java).get()
+        activity.intent = Intent().putExtra(PlayerActivity.EXTRA_BVID, "BV1")
+        activity.restorePlaybackRecovery(null)
+        assertEquals(PlaybackStartReason.Initial, activity.initialPlaybackStartReason)
+        assertNull(activity.restoredPlaybackRecord)
+        assertFalse(activity.intent.hasExtra(PlayerActivity.EXTRA_ENGINE_SWITCH_RESUME_POSITION_MS))
+        assertFalse(activity.intent.hasExtra(PlayerActivity.EXTRA_ENGINE_SWITCH_RESUME_PLAY_WHEN_READY))
+    }
+
+    @Test
+    fun playPauseDuringLoadingAndBufferingOnlyChangesPlayIntent() = runTest {
+        val ui = fixture(backgroundScope)
+        val activity = Robolectric.buildActivity(PlayerActivity::class.java).get()
+        activity.binding = ui.binding
+        activity.playbackRecovery = ui.controller
+        var playing = true
+        val changes = mutableListOf<Boolean>()
+        activity.player = Proxy.newProxyInstance(BlblPlayerEngine::class.java.classLoader,
+            arrayOf(BlblPlayerEngine::class.java)) { _, method, args ->
+            when (method.name) {
+                "getPlaybackState" -> Player.STATE_BUFFERING
+                "getPlayWhenReady" -> playing
+                "isPlaying" -> false
+                "setPlayWhenReady" -> { playing = args!![0] as Boolean; changes.add(playing); null }
+                else -> error("Play/pause must not restart a source: ${method.name}")
+            }
+        } as BlblPlayerEngine
+        ui.controller.begin(video)
+        ui.controller.resume()
+        activity.togglePlayPause(showControls = false)
+        assertFalse(playing)
+        activity.togglePlayPause(showControls = false)
+        assertTrue(playing)
+        ui.controller.sourcePreparing()
+        ui.controller.onFirstFrame()
+        activity.togglePlayPause(showControls = false)
+        assertFalse(playing)
+        assertEquals(listOf(false, true, false), changes)
+        // Explicit media play/pause commands must not toggle an already selected intent.
+        activity.setPlaybackIntent(false)
+        activity.setPlaybackIntent(false)
+        assertFalse(playing)
+        activity.setPlaybackIntent(true)
+        activity.setPlaybackIntent(true)
+        assertTrue(playing)
+        assertEquals(0, ui.retries)
+        ui.controller.release(exit = true)
+    }
+
+    @Test
+    fun playAfterFailedPausedLoadStartsOneRetryWithPlayingIntent() = runTest {
+        val ui = fixture(backgroundScope)
+        val activity = Robolectric.buildActivity(PlayerActivity::class.java).get()
+        activity.binding = ui.binding
+        activity.playbackRecovery = ui.controller
+        activity.player = Proxy.newProxyInstance(BlblPlayerEngine::class.java.classLoader,
+            arrayOf(BlblPlayerEngine::class.java)) { _, method, _ ->
+            error("Retry should request a source before touching the failed engine: ${method.name}")
+        } as BlblPlayerEngine
+        ui.controller.begin(video.copy(playWhenReady = false))
+        ui.controller.resume()
+        ui.controller.fail()
+        activity.setPlaybackIntent(true)
+        assertTrue(ui.controller.desiredPlaying)
+        assertFalse(ui.controller.failed)
+        assertEquals(1, ui.retries)
+        assertEquals(View.GONE, ui.binding.playbackRecovery.recoveryError.visibility)
         ui.controller.release(exit = true)
     }
 
@@ -351,6 +564,7 @@ class PlaybackRecoveryTest {
         var shown = 0
         var recovered = 0
         var retries = 0
+        var plays = 0
         var exits = 0
     }
 
@@ -360,8 +574,12 @@ class PlaybackRecoveryTest {
         }
         val ui = Ui(ActivityPlayerBinding.inflate(LayoutInflater.from(themed)))
         ui.controller = PlayerRecoveryController(context, ui.binding, scope, surfaceView = { null },
-            showControls = { ui.shown++ }, onRecovered = { ui.recovered++ }, onRetry = { ui.retries++ },
-            onExit = { ui.exits++ }, covers = covers)
+            showControls = { ui.shown++; ui.binding.topBar.visibility = View.VISIBLE; ui.binding.bottomBar.visibility = View.VISIBLE },
+            onRecovered = { ui.recovered++ }, onRetry = { ui.retries++ }, onExit = { ui.exits++ }, covers = covers)
+        ui.binding.btnPlayPause.setOnClickListener {
+            ui.plays++
+            ui.controller.onPlayIntentChanged(!ui.controller.desiredPlaying)
+        }
         return ui
     }
 

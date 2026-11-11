@@ -85,6 +85,7 @@ import blbl.cat3399.feature.player.RECOVERY_SAVED_RECORD
 import blbl.cat3399.feature.player.recovery.PlaybackRecoveryRecord
 import blbl.cat3399.feature.player.recovery.PlaybackRecoveryStore
 import blbl.cat3399.feature.player.recovery.PlayerRecoveryController
+import blbl.cat3399.feature.player.recovery.PlaybackStartReason
 import kotlinx.coroutines.CancellationException
 import org.json.JSONObject
 import kotlinx.coroutines.Job
@@ -177,6 +178,7 @@ class LivePlayerActivity : BaseActivity() {
             bindingProvider = { if (::binding.isInitialized) binding else null },
             scope = lifecycleScope,
             playbackStateProvider = { player?.playbackState },
+            suppressedProvider = { playbackRecovery?.suppressBufferingOverlay == true },
         )
     }
 
@@ -237,7 +239,13 @@ class LivePlayerActivity : BaseActivity() {
         roomId = intent.getLongExtra(EXTRA_ROOM_ID, 0L)
         val savedRecord = PlaybackRecoveryRecord.fromJson(savedInstanceState?.getString(RECOVERY_SAVED_RECORD))
             ?.takeIf { it.live && it.roomId == roomId }
-        val restored = savedRecord ?: PlaybackRecoveryStore(this).load("live:$roomId")
+        val fromHistory = intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY != 0
+        val restored = savedRecord ?: if (fromHistory) PlaybackRecoveryStore(this).load("live:$roomId") else null
+        val startReason = when {
+            restored?.hasRenderedFrame == true -> PlaybackStartReason.ForegroundRestore
+            savedRecord == null && intent.hasExtra(EXTRA_ENGINE_SWITCH_SESSION_JSON) -> PlaybackStartReason.EngineSwitch
+            else -> PlaybackStartReason.Initial
+        }
         roomTitle = restored?.title ?: intent.getStringExtra(EXTRA_TITLE).orEmpty()
         roomUname = intent.getStringExtra(EXTRA_UNAME).orEmpty()
         if (roomId <= 0L) {
@@ -245,6 +253,7 @@ class LivePlayerActivity : BaseActivity() {
             finish()
             return
         }
+        binding.tvTitle.text = roomTitle.ifBlank { "直播间 $roomId" }
 
         val sessionOverrideJson =
             savedRecord?.settingsJson ?: intent.getStringExtra(EXTRA_ENGINE_SWITCH_SESSION_JSON)
@@ -412,12 +421,13 @@ class LivePlayerActivity : BaseActivity() {
                 }
 
                 override fun onIsPlayingChanged(isPlaying: Boolean) {
-                    updatePlayPauseIcon(isPlaying)
+                    updatePlayPauseIcon(playbackRecovery?.desiredPlaying ?: engine.playWhenReady)
                     noteUserInteraction()
                 }
 
                 override fun onPlayWhenReadyChanged(playWhenReady: Boolean) {
                     playbackRecovery?.onPlayIntentChanged(playWhenReady, fromPlayer = true)
+                    updatePlayPauseIcon(playbackRecovery?.desiredPlaying ?: playWhenReady)
                 }
 
                 override fun onRenderedFirstFrame() {
@@ -517,7 +527,8 @@ class LivePlayerActivity : BaseActivity() {
         )).copy(
             playWhenReady = savedRecord?.playWhenReady ?: intent.getBooleanExtra(EXTRA_RESUME_PLAY_WHEN_READY, restored?.playWhenReady ?: true),
             settingsJson = session.toEngineSwitchJsonString(),
-        ))
+        ), startReason)
+        updatePlayPauseIcon(playbackRecovery!!.desiredPlaying)
         requestStreamReload(initial = true)
     }
 
@@ -543,11 +554,11 @@ class LivePlayerActivity : BaseActivity() {
         PlayerOsdSizing.applyTheme(this)
         PlayerUiMode.applyLive(this, binding)
         initTouchGestures()
-        playbackRecovery?.resume()
+        val needsReload = playbackRecovery?.resume() == true
         if (recoveryResumePending) {
             recoveryResumePending = false
             transientPlaybackResumeRequested = null
-            requestStreamReload(initial = true, recovering = true)
+            if (needsReload) requestStreamReload(initial = true, recovering = true)
         } else {
             consumeTransientPlaybackResumeIfNeeded()
         }
@@ -871,11 +882,16 @@ class LivePlayerActivity : BaseActivity() {
                 }
             }
 
-            KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,
+            KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> {
+                binding.btnPlayPause.performClick()
+                return true
+            }
+
             KeyEvent.KEYCODE_MEDIA_PLAY,
             KeyEvent.KEYCODE_MEDIA_PAUSE,
             -> {
-                binding.btnPlayPause.performClick()
+                setPlaybackIntent(keyCode == KeyEvent.KEYCODE_MEDIA_PLAY)
+                setControlsVisible(true)
                 return true
             }
 
@@ -1701,12 +1717,21 @@ class LivePlayerActivity : BaseActivity() {
 
     private fun togglePlaybackIntent(): Boolean {
         val engine = player ?: return false
-        val willPlay = !(playbackRecovery?.desiredPlaying ?: engine.playWhenReady)
-        playbackRecovery?.onPlayIntentChanged(willPlay)
-        if (willPlay && playbackRecovery?.waiting == true) {
-            requestStreamReload(initial = true, recovering = true)
-        } else if (willPlay) engine.play() else engine.pause()
+        val willPlay = playbackRecovery?.failed == true || !(playbackRecovery?.desiredPlaying ?: engine.playWhenReady)
+        setPlaybackIntent(willPlay)
         return willPlay
+    }
+
+    private fun setPlaybackIntent(playing: Boolean) {
+        if (playing && playbackRecovery?.failed == true) {
+            playbackRecovery?.onPlayIntentChanged(true)
+            updatePlayPauseIcon(true)
+            playbackRecovery?.retry()
+            return
+        }
+        playbackRecovery?.onPlayIntentChanged(playing)
+        player?.playWhenReady = playing
+        updatePlayPauseIcon(playing)
     }
 
     private fun requestStreamReload(initial: Boolean, recovering: Boolean = false) {
@@ -1714,7 +1739,7 @@ class LivePlayerActivity : BaseActivity() {
         streamLoadJob?.cancel()
         if (recovering) {
             playbackRecovery?.let { recovery ->
-                recovery.record?.let { recovery.begin(it.copy(settingsJson = session.toEngineSwitchJsonString())) }
+                recovery.record?.let { recovery.begin(it.copy(settingsJson = session.toEngineSwitchJsonString()), recovery.startReason) }
             }
         }
         streamLoadJob = lifecycleScope.launch { loadAndPlay(initial) }

@@ -20,6 +20,7 @@ import blbl.cat3399.feature.player.engine.BlblPlayerEngine
 import blbl.cat3399.feature.player.engine.ExoPlayerEngine
 import blbl.cat3399.feature.player.engine.PlayerEngineKind
 import blbl.cat3399.feature.player.engine.PlaybackSource
+import blbl.cat3399.feature.player.recovery.PlaybackStartReason
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.Dispatchers
@@ -314,6 +315,7 @@ internal fun PlayerActivity.startPlayback(
     initialTitle: String?,
     startedFromList: PlayerVideoListKind? = null,
     showTitleHint: Boolean = false,
+    startReason: PlaybackStartReason = PlaybackStartReason.Initial,
 ) {
     val engine = player ?: return
     val pendingSeekMs = pendingStartPositionMs
@@ -385,7 +387,7 @@ internal fun PlayerActivity.startPlayback(
     binding.llViewMeta.visibility = View.VISIBLE
     binding.tvPubdate.text = ""
     binding.tvPubdate.visibility = View.GONE
-    beginPlaybackRecovery(cidExtra, initialTitle, pendingSeekMs, pendingPlayWhenReady)
+    beginPlaybackRecovery(cidExtra, initialTitle, pendingSeekMs, pendingPlayWhenReady, startReason)
     resetPlaybackStateForNewMedia(
         engine = engine,
         preservePartsList = startFromList == PlayerVideoListKind.PARTS,
@@ -576,6 +578,7 @@ internal fun PlayerActivity.startPlayback(
 
                 trace?.log("player:setSource:start", "kind=${engine.kind.prefValue}")
                 if (recoveryResumePendingForLoad()) return@launch
+                val shouldPlay = playbackRecovery?.desiredPlaying ?: pendingPlayWhenReady ?: true
                 playbackRecovery?.sourcePreparing()
                 if (engine.kind == PlayerEngineKind.IjkPlayer && playable !is Playable.Dash) {
                     startupJobs.forEach { it.cancel() }
@@ -639,7 +642,7 @@ internal fun PlayerActivity.startPlayback(
                 schedulePlayUrlAutoRefresh(playable, reason = "start_playback")
                 trace?.log("player:prepare")
                 trace?.log("player:playWhenReady")
-                engine.playWhenReady = playbackRecovery?.desiredPlaying ?: pendingPlayWhenReady ?: true
+                engine.playWhenReady = shouldPlay
                 engine.prepare()
                 updateSubtitleButton()
                 initialResume?.let { resume ->

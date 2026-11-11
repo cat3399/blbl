@@ -17,6 +17,7 @@ internal data class PlaybackRecoveryRecord(
     val positionMs: Long = 0,
     val playWhenReady: Boolean = true,
     val settingsJson: String = "",
+    val hasRenderedFrame: Boolean = false,
 ) {
     val contentKey: String
         get() = if (live) "live:$roomId" else vodKey(bvid, aid, cid, epId)
@@ -35,6 +36,7 @@ internal data class PlaybackRecoveryRecord(
         put("positionMs", positionMs.coerceAtLeast(0))
         put("playWhenReady", playWhenReady)
         put("settingsJson", settingsJson)
+        put("hasRenderedFrame", hasRenderedFrame)
     }.toString()
 
     companion object {
@@ -57,6 +59,7 @@ internal data class PlaybackRecoveryRecord(
                 positionMs = obj.optLong("positionMs").coerceAtLeast(0),
                 playWhenReady = obj.optBoolean("playWhenReady", true),
                 settingsJson = obj.optString("settingsJson"),
+                hasRenderedFrame = obj.optBoolean("hasRenderedFrame", obj.optLong("positionMs") > 0),
             ).takeIf { if (it.live) it.roomId > 0 else it.bvid.isNotBlank() || it.aid > 0 }
         }.getOrNull()
     }

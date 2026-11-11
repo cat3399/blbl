@@ -31,7 +31,7 @@ class PlaybackRecoveryDeviceTest : Instrumentation() {
     private val results = StringBuilder()
     private var resumeSnapshot: Snapshot? = null
     private val testPrefs get() = targetContext.getSharedPreferences("recovery_device_test", 0)
-    private data class Snapshot(val image: Boolean, val frame: Boolean, val status: String, val focus: Boolean)
+    private data class Snapshot(val image: Boolean, val frame: Boolean, val failed: Boolean, val playing: Boolean, val controls: Boolean, val focus: Boolean)
 
     override fun onCreate(arguments: Bundle?) {
         super.onCreate(arguments)
@@ -52,7 +52,8 @@ class PlaybackRecoveryDeviceTest : Instrumentation() {
                         val bitmap = (ui.recoveryImage.drawable as? BitmapDrawable)?.bitmap
                         resumeSnapshot = Snapshot(ui.recoveryImage.visibility == View.VISIBLE,
                             bitmap != null && bitmap === controller.record?.let { PlaybackFrameCache.get(it.contentKey) },
-                            ui.playbackRecovery.recoveryStatus.text.toString(), a.currentFocus != null)
+                            ui.playbackRecovery.recoveryError.visibility == View.VISIBLE, controller.desiredPlaying,
+                            ui.bottomBar.visibility == View.VISIBLE, a.currentFocus != null)
                     }
                 }
                 override fun onActivityCreated(a: Activity, state: Bundle?) = Unit
@@ -95,6 +96,12 @@ class PlaybackRecoveryDeviceTest : Instrumentation() {
             }
         }
         launch(record)
+        check(resumeSnapshot?.failed == false) { "Fresh entry incorrectly showed failure: $resumeSnapshot" }
+        main {
+            check(recovery().startReason == PlaybackStartReason.Initial)
+            check(!recovery().keepControlsVisible)
+        }
+        note("Fresh entry uses normal loading without recovery overlay")
         await("initial first frame", 45_000) { !recovery().waiting && engine().isPlaying }
         await("local cover", 30_000) { PlaybackCoverCache(targetContext).fileFor(recovery().record!!.contentKey).exists() }
         note("Initial playback ${engine().kind} live=$live")
@@ -120,7 +127,7 @@ class PlaybackRecoveryDeviceTest : Instrumentation() {
             await("return from settings", 8_000) { recovery().foreground && resumeSnapshot != null }
             val snapshot = resumeSnapshot!!
             check(snapshot.focus) { "No remote focus on return: $snapshot" }
-            check(snapshot.status == "正在恢复画面…") { snapshot.toString() }
+            check(!snapshot.failed && snapshot.playing && snapshot.controls) { snapshot.toString() }
             when (fallback) {
                 "frame" -> check(snapshot.frame) { "Missing static frame: $snapshot" }
                 "cover" -> check(snapshot.image && !snapshot.frame) { "Missing cover: $snapshot" }
@@ -138,7 +145,7 @@ class PlaybackRecoveryDeviceTest : Instrumentation() {
         resumeSnapshot = null
         key(KeyEvent.KEYCODE_WAKEUP)
         await("wake", 12_000) { recovery().foreground && resumeSnapshot != null }
-        check(resumeSnapshot!!.status == "已暂停") { resumeSnapshot.toString() }
+        check(!resumeSnapshot!!.playing && !resumeSnapshot!!.failed && resumeSnapshot!!.controls) { resumeSnapshot.toString() }
         SystemClock.sleep(3_000)
         main {
             check(!engine().playWhenReady && !engine().isPlaying) { "Paused content started on wake" }
@@ -148,8 +155,7 @@ class PlaybackRecoveryDeviceTest : Instrumentation() {
         note("Paused wake retained pause at $pausedPosition")
 
         // Resume with a real remote center press, then verify the actual decoder's first frame.
-        main { binding().playbackRecovery.recoveryAction.takeIf { it.visibility == View.VISIBLE }?.requestFocus()
-            ?: binding().btnPlayPause.requestFocus() }
+        main { binding().btnPlayPause.requestFocus() }
         key(KeyEvent.KEYCODE_DPAD_CENTER)
         await("remote play", 45_000) { !recovery().waiting && engine().isPlaying }
         key(KeyEvent.KEYCODE_SLEEP)
@@ -161,7 +167,7 @@ class PlaybackRecoveryDeviceTest : Instrumentation() {
 
         // Fault injection: stop the decoder after entering recovery and wait for the real timeout.
         main {
-            recovery().begin(recovery().record!!.copy(positionMs = engine().currentPosition, playWhenReady = true))
+            recovery().begin(recovery().record!!.copy(positionMs = engine().currentPosition, playWhenReady = true), PlaybackStartReason.ForegroundRestore)
             engine().stop()
         }
         await("recovery timeout", 18_000) { recovery().failed }
@@ -186,10 +192,10 @@ class PlaybackRecoveryDeviceTest : Instrumentation() {
     private fun afterReboot() {
         val saved = PlaybackRecoveryRecord.fromJson(testPrefs.getString("checkpoint", null))!!
         check(runBlocking { PlaybackCoverCache(targetContext).load(saved.contentKey) } != null)
-        launch(saved)
+        launch(saved, fromHistory = true)
         await("cold resume", 10_000) { resumeSnapshot != null }
         check(!resumeSnapshot!!.frame)
-        check(resumeSnapshot!!.status == "已暂停") { resumeSnapshot.toString() }
+        check(!resumeSnapshot!!.playing && !resumeSnapshot!!.failed && resumeSnapshot!!.controls) { resumeSnapshot.toString() }
         await("cover or paused frame", 15_000) { binding().recoveryImage.visibility == View.VISIBLE || !recovery().waiting }
         SystemClock.sleep(3_000)
         main {
@@ -199,7 +205,7 @@ class PlaybackRecoveryDeviceTest : Instrumentation() {
         screenshot("after-reboot")
         note("Reboot restored local cover and paused position=${saved.positionMs} live=${saved.live}")
         main {
-            recovery().begin(recovery().record!!)
+            recovery().begin(recovery().record!!, PlaybackStartReason.ForegroundRestore)
             recovery().fail()
             binding().playbackRecovery.recoveryBack.requestFocus()
         }
@@ -208,7 +214,7 @@ class PlaybackRecoveryDeviceTest : Instrumentation() {
         note("Remote back exited")
     }
 
-    private fun launch(saved: PlaybackRecoveryRecord) {
+    private fun launch(saved: PlaybackRecoveryRecord, fromHistory: Boolean = false) {
         val intent = if (saved.live) Intent(targetContext, LivePlayerActivity::class.java)
             .putExtra(LivePlayerActivity.EXTRA_ROOM_ID, saved.roomId)
             .putExtra(LivePlayerActivity.EXTRA_TITLE, saved.title)
@@ -217,6 +223,7 @@ class PlaybackRecoveryDeviceTest : Instrumentation() {
             .putExtra(PlayerActivity.EXTRA_BVID, saved.bvid).putExtra(PlayerActivity.EXTRA_CID, saved.cid)
             .putExtra(PlayerActivity.EXTRA_AID, saved.aid).putExtra(PlayerActivity.EXTRA_TITLE, saved.title)
             .putExtra(PlayerActivity.EXTRA_COVER, saved.coverUrl)
+        if (fromHistory) intent.addFlags(Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY)
         activity = startActivitySync(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
 

@@ -69,6 +69,8 @@ import blbl.cat3399.core.net.BiliClient
 import blbl.cat3399.core.prefs.AppPrefs
 import blbl.cat3399.core.prefs.VideoFillMode
 import blbl.cat3399.feature.player.recovery.PlayerRecoveryController
+import blbl.cat3399.feature.player.recovery.PlaybackRecoveryRecord
+import blbl.cat3399.feature.player.recovery.PlaybackStartReason
 import blbl.cat3399.core.ui.ActivityStackLimiter
 import blbl.cat3399.core.ui.AppToast
 import blbl.cat3399.core.ui.BaseActivity
@@ -127,6 +129,8 @@ class PlayerActivity : BaseActivity() {
     internal var player: BlblPlayerEngine? = null
     internal var playbackRecovery: PlayerRecoveryController? = null
     internal var recoveryEntryKey: String = ""
+    internal var restoredPlaybackRecord: PlaybackRecoveryRecord? = null
+    internal var initialPlaybackStartReason = PlaybackStartReason.Initial
     private var recoveryResumePending = false
     private var ijkRenderView: View? = null
     private var ijkTextureSurface: Surface? = null
@@ -177,6 +181,7 @@ class PlayerActivity : BaseActivity() {
             bindingProvider = { if (::binding.isInitialized) binding else null },
             scope = lifecycleScope,
             playbackStateProvider = { player?.playbackState },
+            suppressedProvider = { playbackRecovery?.suppressBufferingOverlay == true },
         )
     }
     internal var loadJob: kotlinx.coroutines.Job? = null
@@ -960,7 +965,7 @@ class PlayerActivity : BaseActivity() {
                 }
 
                 override fun onIsPlayingChanged(isPlaying: Boolean) {
-                    updatePlayPauseIcon(isPlaying)
+                    updatePlayPauseIcon(playbackRecovery?.desiredPlaying ?: engine.playWhenReady)
                     restartAutoHideTimer()
                     // DanmakuView stops its own vsync loop when playback is paused; kick it on state changes.
                     binding.danmakuView.invalidate()
@@ -974,6 +979,7 @@ class PlayerActivity : BaseActivity() {
 
                 override fun onPlayWhenReadyChanged(playWhenReady: Boolean) {
                     playbackRecovery?.onPlayIntentChanged(playWhenReady, fromPlayer = true)
+                    updatePlayPauseIcon(playbackRecovery?.desiredPlaying ?: playWhenReady)
                 }
 
                 override fun onPlaybackStateChanged(playbackState: Int) {
@@ -1136,8 +1142,10 @@ class PlayerActivity : BaseActivity() {
         val uncaughtHandler =
             CoroutineExceptionHandler { _, t ->
                 AppLog.e("Player", "uncaught", t)
-                AppToast.showLong(this@PlayerActivity, "播放失败：${t.message}")
-                finish()
+                if (playbackRecovery?.waiting == true) playbackRecovery?.fail() else {
+                    AppToast.showLong(this@PlayerActivity, "播放失败：${t.message}")
+                    finish()
+                }
             }
         playbackUncaughtHandler = uncaughtHandler
         initPlaybackRecovery()
@@ -1149,6 +1157,7 @@ class PlayerActivity : BaseActivity() {
             seasonIdExtra = seasonIdExtra,
             initialTitle = intent.getStringExtra(EXTRA_TITLE) ?: pageListItems.getOrNull(pageListIndex)?.title,
             startedFromList = PlayerVideoListKind.PAGE,
+            startReason = initialPlaybackStartReason,
         )
     }
 
@@ -1435,13 +1444,13 @@ class PlayerActivity : BaseActivity() {
         binding.btnBack.isFocusableInTouchMode = false
         updatePersistentBottomProgressBarVisibility()
         (binding.recyclerSettings.adapter as? PlayerSettingsAdapter)?.let { refreshSettings(it) }
-        playbackRecovery?.resume()
+        val needsReload = playbackRecovery?.resume() == true
         if (recoveryResumePending) {
             recoveryResumePending = false
             transientPlaybackResumeRequested = null
             resumeAfterDecoderRelease = false
             (player as? ExoPlayerEngine)?.let { binding.playerView.player = it.exoPlayer }
-            retryPlaybackRecovery()
+            if (needsReload) retryPlaybackRecovery()
         } else {
             consumeTransientPlaybackResumeIfNeeded()
         }
@@ -1734,11 +1743,20 @@ class PlayerActivity : BaseActivity() {
                 }
             }
 
-            KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,
+            KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE -> {
+                binding.btnPlayPause.performClick()
+                return true
+            }
+
             KeyEvent.KEYCODE_MEDIA_PLAY,
             KeyEvent.KEYCODE_MEDIA_PAUSE,
             -> {
-                binding.btnPlayPause.performClick()
+                if (keyCode == KeyEvent.KEYCODE_MEDIA_PLAY && player?.playbackState == Player.STATE_ENDED) {
+                    binding.btnPlayPause.performClick()
+                } else {
+                    setPlaybackIntent(keyCode == KeyEvent.KEYCODE_MEDIA_PLAY)
+                    if (shouldShowOsdOnPlaybackToggle()) setControlsVisible(true)
+                }
                 return true
             }
 
@@ -2089,19 +2107,25 @@ class PlayerActivity : BaseActivity() {
             restartCurrentPlaybackFromBeginning(engine = engine, showControls = showControls, showHint = showHint)
             return
         }
-        val willPlay = if (playbackRecovery?.waiting == true) !playbackRecovery!!.desiredPlaying else !engine.isPlaying
-        playbackRecovery?.onPlayIntentChanged(willPlay)
-        if (willPlay && playbackRecovery?.waiting == true) {
-            retryPlaybackRecovery()
-        } else if (willPlay) {
-            engine.play()
-        } else {
-            engine.pause()
-        }
+        val willPlay = playbackRecovery?.failed == true || !(playbackRecovery?.desiredPlaying ?: engine.playWhenReady)
+        setPlaybackIntent(willPlay)
         if (showControls) setControlsVisible(true)
         if (showHint) {
             showSeekHint(if (willPlay) "播放" else "暂停", hold = false)
         }
+    }
+
+    internal fun setPlaybackIntent(playing: Boolean) {
+        val engine = player ?: return
+        if (playing && playbackRecovery?.failed == true) {
+            playbackRecovery?.onPlayIntentChanged(true)
+            updatePlayPauseIcon(true)
+            playbackRecovery?.retry()
+            return
+        }
+        playbackRecovery?.onPlayIntentChanged(playing)
+        engine.playWhenReady = playing
+        updatePlayPauseIcon(playing)
     }
 
     private fun initControls(engine: BlblPlayerEngine) {
