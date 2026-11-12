@@ -24,6 +24,7 @@ import blbl.cat3399.R
 import blbl.cat3399.BuildConfig
 import blbl.cat3399.core.io.CreateDocumentRequest
 import blbl.cat3399.core.io.DocumentExporter
+import blbl.cat3399.core.io.OpenFileContract
 import blbl.cat3399.core.log.AppLog
 import blbl.cat3399.core.log.LogExporter
 import blbl.cat3399.core.log.LogUploadClient
@@ -79,7 +80,7 @@ class SettingsInteractionHandler(
     private val state: SettingsState,
     private val gaiaVgateLauncher: ActivityResultLauncher<Intent>,
     private val exportDocumentLauncher: ActivityResultLauncher<CreateDocumentRequest>,
-    private val importConfigLauncher: ActivityResultLauncher<Array<String>>,
+    private val importConfigLauncher: ActivityResultLauncher<OpenFileContract.Action>,
 ) {
     lateinit var renderer: SettingsRenderer
 
@@ -125,9 +126,18 @@ class SettingsInteractionHandler(
         export(uri)
     }
 
-    fun onImportConfigSelected(uri: Uri?) {
-        if (uri == null) return
-        importConfigFromUri(uri)
+    fun onImportConfigSelected(result: OpenFileContract.Result) {
+        when (result) {
+            OpenFileContract.Result.Cancelled -> AppLog.i("Settings", "import config picker cancelled")
+            OpenFileContract.Result.MissingUri -> {
+                AppLog.w("Settings", "import config picker returned OK without a single file URI")
+                AppToast.showLong(activity, "文件选择器未返回配置文件，请重新选择")
+            }
+            is OpenFileContract.Result.Selected -> {
+                AppLog.i("Settings", "import config selected scheme=${result.uri.scheme} authority=${result.uri.authority}")
+                importConfigFromUri(result.uri)
+            }
+        }
     }
 
     private fun exportLogsToUri(
@@ -269,15 +279,24 @@ class SettingsInteractionHandler(
 
     private fun startImportConfig() {
         if (!ensureConfigTransferIdle()) return
-        try {
-            importConfigLauncher.launch(arrayOf(AppConfigBackup.JSON_MIME, "text/plain", "application/octet-stream"))
-        } catch (e: ActivityNotFoundException) {
-            AppLog.w("Settings", "OpenDocument not supported", e)
-            AppToast.showLong(activity, "当前设备不支持导入配置")
-        } catch (t: Throwable) {
-            AppLog.w("Settings", "open import config picker failed", t)
-            AppToast.showLong(activity, "打开导入文件失败")
+        for (action in OpenFileContract.Action.entries) {
+            try {
+                importConfigLauncher.launch(action)
+                AppLog.i("Settings", "import config picker launched action=${action.intentAction}")
+                return
+            } catch (e: ActivityNotFoundException) {
+                AppLog.w("Settings", "import config picker unavailable action=${action.intentAction}", e)
+            } catch (t: Throwable) {
+                AppLog.w("Settings", "open import config picker failed action=${action.intentAction}", t)
+                AppToast.showLong(activity, "打开导入文件失败")
+                return
+            }
         }
+        AppPopup.message(
+            context = activity,
+            title = "未找到文件选择器",
+            message = "请安装支持文件选择的文件管理器（如 Material Files），然后返回此处重新导入配置。",
+        )
     }
 
     private fun importConfigFromUri(uri: Uri) {
@@ -288,11 +307,8 @@ class SettingsInteractionHandler(
                 failureLogMessage = "import config read failed",
                 failureToastPrefix = "读取配置失败",
                 work = {
-                    val text =
-                        activity.contentResolver.openInputStream(uri)?.use { input ->
-                            input.readBytes().toString(Charsets.UTF_8).removePrefix("\uFEFF")
-                        } ?: error("无法读取配置文件")
-                    AppConfigBackup.parse(text)
+                    activity.contentResolver.openInputStream(uri)?.use(AppConfigBackup::read)
+                        ?: error("无法读取配置文件")
                 },
             ) { parsed ->
                 showImportConfigConfirmDialog(parsed)

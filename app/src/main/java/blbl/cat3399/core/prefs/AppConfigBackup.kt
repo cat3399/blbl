@@ -4,12 +4,15 @@ import blbl.cat3399.BuildConfig
 import blbl.cat3399.core.account.AccountSessionStore
 import blbl.cat3399.core.net.CookieStore
 import org.json.JSONObject
+import java.io.ByteArrayOutputStream
+import java.io.InputStream
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
 object AppConfigBackup {
     const val JSON_MIME = "application/json"
+    private const val MAX_IMPORT_BYTES = 4 * 1024 * 1024
 
     private const val SCHEMA_VERSION = 2
     private const val KEY_SCHEMA = "schema"
@@ -70,6 +73,18 @@ object AppConfigBackup {
                     nowMs = nowMs,
                 ),
         )
+    }
+
+    fun read(input: InputStream): ParsedBackup {
+        val bytes = ByteArrayOutputStream()
+        val buffer = ByteArray(8 * 1024)
+        while (true) {
+            val count = input.read(buffer)
+            if (count == -1) break
+            require(bytes.size() + count <= MAX_IMPORT_BYTES) { "配置文件过大，最大支持 4 MiB" }
+            bytes.write(buffer, 0, count)
+        }
+        return parse(bytes.toString(Charsets.UTF_8.name()).removePrefix("\uFEFF"))
     }
 
     fun parse(raw: String): ParsedBackup {

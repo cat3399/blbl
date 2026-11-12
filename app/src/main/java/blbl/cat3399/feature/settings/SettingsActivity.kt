@@ -1,6 +1,5 @@
 package blbl.cat3399.feature.settings
 
-import android.net.Uri
 import android.os.Bundle
 import android.view.KeyEvent
 import android.view.View
@@ -8,7 +7,9 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import blbl.cat3399.core.io.CreateDocumentContract
+import blbl.cat3399.core.io.OpenFileContract
 import blbl.cat3399.core.net.BiliClient
+import blbl.cat3399.core.prefs.AppConfigBackup
 import blbl.cat3399.core.ui.BaseActivity
 import blbl.cat3399.core.ui.FocusTreeUtils
 import blbl.cat3399.core.ui.cloneInUserScale
@@ -38,9 +39,11 @@ class SettingsActivity : BaseActivity() {
         }
 
     private val importConfigLauncher =
-        registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+        registerForActivityResult(
+            OpenFileContract(arrayOf(AppConfigBackup.JSON_MIME, "text/plain", "application/octet-stream")),
+        ) { result ->
             if (!this::interactionHandler.isInitialized) return@registerForActivityResult
-            interactionHandler.onImportConfigSelected(uri)
+            interactionHandler.onImportConfigSelected(result)
         }
 
     private val sections =
