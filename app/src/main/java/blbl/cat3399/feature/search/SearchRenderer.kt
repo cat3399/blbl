@@ -357,8 +357,19 @@ class SearchRenderer internal constructor(
 
     private fun setupQueryInput() {
         val input = binding.tvQuery
+        val editableKeyListener = input.keyListener
+        val editableInputType = input.inputType
 
         var imeEditMode = false
+
+        fun setImeInputEnabled(enabled: Boolean) {
+            if (enabled) {
+                if (input.keyListener !== editableKeyListener) input.keyListener = editableKeyListener
+                if (input.inputType != editableInputType) input.setRawInputType(editableInputType)
+            } else if (input.keyListener != null) {
+                input.keyListener = null
+            }
+        }
 
         input.setOnEditorActionListener { _, actionId, _ ->
             // Only treat explicit IME "search" action as a search trigger.
@@ -381,7 +392,7 @@ class SearchRenderer internal constructor(
             if (isResultsVisible()) showInput()
             imeEditMode = true
 
-            input.showSoftInputOnFocus = true
+            setImeInputEnabled(true)
             input.isCursorVisible = true
             input.isLongClickable = true
             if (input.isInTouchMode) {
@@ -395,7 +406,7 @@ class SearchRenderer internal constructor(
 
         fun exitImeEditMode() {
             imeEditMode = false
-            input.showSoftInputOnFocus = false
+            setImeInputEnabled(false)
             input.isCursorVisible = false
             input.isLongClickable = false
             input.hideImeReliable()
@@ -409,7 +420,7 @@ class SearchRenderer internal constructor(
             isCursorVisible = false
             isLongClickable = false
             setTextIsSelectable(false)
-            showSoftInputOnFocus = false
+            setImeInputEnabled(false)
         }
 
         input.setOnClickListener { enterImeEditMode() }

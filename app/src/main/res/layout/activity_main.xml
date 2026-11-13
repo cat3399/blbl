@@ -58,8 +58,8 @@
             android:layout_weight="1"
             android:clipChildren="false"
             android:clipToPadding="false"
-            android:paddingVertical="0dp" />
-
+            android:paddingTop="0dp"
+            android:paddingBottom="0dp" />
         <com.google.android.material.card.MaterialCardView
             android:id="@+id/btn_sidebar_settings"
             android:layout_width="@dimen/sidebar_main_settings_size"

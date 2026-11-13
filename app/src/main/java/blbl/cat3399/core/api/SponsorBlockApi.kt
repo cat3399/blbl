@@ -3,8 +3,8 @@ package blbl.cat3399.core.api
 import blbl.cat3399.BuildConfig
 import blbl.cat3399.core.log.AppLog
 import blbl.cat3399.core.net.BiliClient
-import blbl.cat3399.core.prefs.AppPrefs
 import blbl.cat3399.core.net.toMediaTypeCompat
+import blbl.cat3399.core.prefs.AppPrefs
 import okhttp3.RequestBody
 import org.json.JSONArray
 import org.json.JSONObject

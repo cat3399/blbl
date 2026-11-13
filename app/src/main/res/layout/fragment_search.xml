@@ -30,8 +30,10 @@
         android:imeOptions="actionSearch"
         android:inputType="text"
         android:maxLines="1"
-        android:paddingHorizontal="12dp"
-        android:paddingVertical="2dp"
+        android:paddingStart="12dp"
+        android:paddingEnd="12dp"
+        android:paddingTop="2dp"
+        android:paddingBottom="2dp"
         android:textColor="?attr/blblOnPageBackdrop"
         android:textColorHint="?attr/blblOnPageBackdropSecondary"
         android:textSize="22sp"
@@ -270,8 +272,8 @@
                 android:layout_height="match_parent"
                 android:gravity="center"
                 android:orientation="horizontal"
-                android:paddingHorizontal="12dp">
-
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp">
                 <ImageView
                     android:layout_width="18dp"
                     android:layout_height="18dp"

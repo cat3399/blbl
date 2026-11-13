@@ -5,7 +5,6 @@
     android:layout_height="48dp"
     android:layout_marginTop="2dp"
     android:layout_marginBottom="2dp"
-    android:background="@drawable/bg_popup_action"
     android:clickable="true"
     android:focusable="true"
     android:stateListAnimator="@animator/blbl_focus_scale">
@@ -18,7 +17,8 @@
         android:gravity="center"
         android:maxLines="1"
         android:minWidth="76dp"
-        android:paddingHorizontal="12dp"
+        android:paddingStart="12dp"
+        android:paddingEnd="12dp"
         android:textColor="?attr/colorOnSurface"
         android:textSize="16sp" />
 </FrameLayout>

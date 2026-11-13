@@ -1,6 +1,7 @@
 package blbl.cat3399.ui
 
 import android.content.Intent
+import android.os.Build
 import android.os.Bundle
 import android.os.SystemClock
 import android.view.KeyEvent
@@ -930,6 +931,11 @@ class MainActivity : BaseActivity(), SidebarFocusHost {
         if (ijkKernelPromptPopup?.isShowing == true) return
 
         val status = IjkPlayerPlugin.status(this)
+        // kitkat so not managed by backend yet
+        if (Build.VERSION.SDK_INT < 21 && status == IjkPlayerPlugin.InstallStatus.NeedsUpdate) {
+            showAutoUpdatePromptIfReady()
+            return
+        }
         val (title, message) =
             when (status) {
                 IjkPlayerPlugin.InstallStatus.NeedsUpdate ->

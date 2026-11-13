@@ -18,6 +18,7 @@ import androidx.core.graphics.Insets
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import blbl.cat3399.R
+import blbl.cat3399.core.ui.CompatThemedBackgrounds
 import blbl.cat3399.core.ui.FocusReturn
 import blbl.cat3399.core.ui.FocusTreeUtils
 import blbl.cat3399.core.ui.userScaledContext
@@ -284,6 +285,7 @@ internal class PopupHost private constructor(
                 LayoutInflater.from(dialogContext)
                 .inflate(R.layout.item_popup_action, actionsRow, false)
             btn.id = View.generateViewId()
+            btn.background = CompatThemedBackgrounds.popupAction(dialogContext)
             val tv = btn.findViewById<TextView>(R.id.tv_text)
             tv.text = a.text
             btn.setOnClickListener {

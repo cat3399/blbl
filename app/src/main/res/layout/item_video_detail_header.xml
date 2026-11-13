@@ -51,8 +51,10 @@
             android:background="@drawable/bg_pgc_access_badge"
             android:gravity="center"
             android:minWidth="20dp"
-            android:paddingHorizontal="@dimen/video_card_duration_padding_h"
-            android:paddingVertical="@dimen/video_card_duration_padding_v"
+            android:paddingStart="@dimen/video_card_duration_padding_h"
+            android:paddingEnd="@dimen/video_card_duration_padding_h"
+            android:paddingTop="@dimen/video_card_duration_padding_v"
+            android:paddingBottom="@dimen/video_card_duration_padding_v"
             android:textColor="@android:color/white"
             android:textSize="@dimen/video_card_duration_text_size"
             android:textStyle="bold"
@@ -113,9 +115,10 @@
             android:layout_height="wrap_content"
             android:gravity="center_vertical"
             android:orientation="horizontal"
-            android:paddingHorizontal="12dp"
-            android:paddingVertical="10dp">
-
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp"
+            android:paddingTop="10dp"
+            android:paddingBottom="10dp">
             <com.google.android.material.imageview.ShapeableImageView
                 android:id="@+id/iv_up_avatar"
                 android:layout_width="56dp"
@@ -148,8 +151,10 @@
         android:clickable="false"
         android:focusable="false"
         android:orientation="vertical"
-        android:paddingHorizontal="6dp"
-        android:paddingVertical="4dp"
+        android:paddingStart="6dp"
+        android:paddingTop="4dp"
+        android:paddingEnd="6dp"
+        android:paddingBottom="4dp"
         android:stateListAnimator="@animator/blbl_focus_scale"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="@id/tv_title"
@@ -210,8 +215,10 @@
             android:layout_height="wrap_content"
             android:ellipsize="end"
             android:maxLines="1"
-            android:paddingHorizontal="12dp"
-            android:paddingVertical="10dp"
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp"
+            android:paddingTop="10dp"
+            android:paddingBottom="10dp"
             android:textColor="?android:attr/textColorSecondary"
             android:textSize="18sp" />
     </com.google.android.material.card.MaterialCardView>
@@ -407,8 +414,8 @@
             android:layout_height="match_parent"
             android:gravity="center"
             android:orientation="horizontal"
-            android:paddingHorizontal="10dp">
-
+            android:paddingStart="10dp"
+            android:paddingEnd="10dp">
             <ImageView
                 android:id="@+id/iv_parts_order_icon"
                 android:layout_width="18dp"
@@ -441,7 +448,8 @@
         android:layout_height="wrap_content"
         android:clipChildren="false"
         android:clipToPadding="false"
-        android:paddingVertical="8dp"
+        android:paddingTop="8dp"
+        android:paddingBottom="8dp"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@id/barrier_parts_header_bottom" />
@@ -479,8 +487,8 @@
             android:layout_height="match_parent"
             android:gravity="center"
             android:orientation="horizontal"
-            android:paddingHorizontal="10dp">
-
+            android:paddingStart="10dp"
+            android:paddingEnd="10dp">
             <ImageView
                 android:id="@+id/iv_season_order_icon"
                 android:layout_width="18dp"
@@ -513,7 +521,8 @@
         android:layout_height="wrap_content"
         android:clipChildren="false"
         android:clipToPadding="false"
-        android:paddingVertical="8dp"
+        android:paddingTop="8dp"
+        android:paddingBottom="8dp"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@id/barrier_season_header_bottom" />

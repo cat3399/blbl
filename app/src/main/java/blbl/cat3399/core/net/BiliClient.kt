@@ -1,8 +1,8 @@
 package blbl.cat3399.core.net
 
 import android.content.Context
-import blbl.cat3399.core.account.AccountSessionStore
 import android.os.Build
+import blbl.cat3399.core.account.AccountSessionStore
 import blbl.cat3399.core.log.AppLog
 import blbl.cat3399.core.prefs.AppPrefs
 import blbl.cat3399.core.net.urlIsHttps

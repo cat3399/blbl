@@ -4,8 +4,8 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="?attr/blblPageBackdrop"
-    android:paddingVertical="20dp">
-
+    android:paddingTop="20dp"
+    android:paddingBottom="20dp">
     <androidx.constraintlayout.widget.Guideline
         android:id="@+id/guideline_left_20"
         android:layout_width="wrap_content"

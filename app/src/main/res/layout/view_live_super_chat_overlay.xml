@@ -91,8 +91,10 @@
                     android:gravity="center"
                     android:includeFontPadding="false"
                     android:minWidth="@dimen/live_super_chat_countdown_min_width"
-                    android:paddingHorizontal="@dimen/live_super_chat_countdown_padding_h"
-                    android:paddingVertical="@dimen/live_super_chat_countdown_padding_v"
+                    android:paddingStart="@dimen/live_super_chat_countdown_padding_h"
+                    android:paddingEnd="@dimen/live_super_chat_countdown_padding_h"
+                    android:paddingTop="@dimen/live_super_chat_countdown_padding_v"
+                    android:paddingBottom="@dimen/live_super_chat_countdown_padding_v"
                     android:textColor="#CC202020"
                     android:textSize="@dimen/live_super_chat_countdown_text_size"
                     android:textStyle="bold" />

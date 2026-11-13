@@ -4,8 +4,10 @@
     android:id="@+id/card"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:layout_marginVertical="@dimen/sidebar_nav_card_margin_v"
-    android:layout_marginHorizontal="@dimen/sidebar_nav_card_margin_h"
+    android:layout_marginTop="@dimen/sidebar_nav_card_margin_v"
+    android:layout_marginBottom="@dimen/sidebar_nav_card_margin_v"
+    android:layout_marginStart="@dimen/sidebar_nav_card_margin_h"
+    android:layout_marginEnd="@dimen/sidebar_nav_card_margin_h"
     android:clickable="true"
     android:focusable="true"
     android:stateListAnimator="@animator/blbl_focus_scale"
@@ -22,8 +24,8 @@
         android:layout_height="wrap_content"
         android:gravity="center"
         android:orientation="vertical"
-        android:paddingVertical="@dimen/sidebar_nav_container_padding_v">
-
+        android:paddingTop="@dimen/sidebar_nav_container_padding_v"
+        android:paddingBottom="@dimen/sidebar_nav_container_padding_v">
         <ImageView
             android:id="@+id/iv_icon"
             android:layout_width="@dimen/sidebar_nav_icon_size"

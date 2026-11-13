@@ -25,6 +25,7 @@ internal class IjkPlayerEngine(
     private val listeners: MutableSet<BlblPlayerEngine.Listener> = CopyOnWriteArraySet()
 
     private var ijk: IjkMediaPlayer? = null
+    private var dashProxy: DashLocalHttpProxy? = null
     private var prepared: Boolean = false
     private var buffering: Boolean = false
     private var preparing: Boolean = false
@@ -205,6 +206,12 @@ internal class IjkPlayerEngine(
         clearVisibleSeekPosition()
         updateState(Player.STATE_IDLE)
 
+        val needDashProxy = dataSource is PlaybackSource.Vod && dataSource.playable is Playable.Dash
+        if (!needDashProxy) {
+            dashProxy?.stop()
+            dashProxy = null
+        }
+
         applyCommonOptions(p)
         runCatching { p.setSurface(videoSurface) }
         runCatching { p.setLooping(repeatModeInternal == Player.REPEAT_MODE_ONE) }
@@ -226,17 +233,24 @@ internal class IjkPlayerEngine(
                 is PlaybackSource.Vod -> {
                     when (val playable = dataSource.playable) {
                         is Playable.Dash -> {
+                            val proxy =
+                                dashProxy ?: DashLocalHttpProxy(okHttpClient = BiliClient.cdnOkHttp).also { dashProxy = it }
+                            proxy.resetRegistrations()
+                            val videoBaseUrl = proxy.register(kind = "v", upstreamUrl = playable.videoUrl)
+                            val audioBaseUrl = proxy.register(kind = "a", upstreamUrl = playable.audioUrl)
                             val mpdFile =
                                 writeDashMpd(
                                     playable,
                                     durationMs = dataSource.durationMs,
+                                    videoBaseUrl = videoBaseUrl,
+                                    audioBaseUrl = audioBaseUrl,
                                 )
                             if (BuildConfig.DEBUG) {
                                 val vLen = playable.videoUrl.length
                                 val aLen = playable.audioUrl.length
                                 AppLog.i(
                                     "IjkEngine",
-                                    "dash source mode=direct mpd=${mpdFile.name} bytes=${mpdFile.length()} vUrlLen=$vLen aUrlLen=$aLen",
+                                    "dash source mode=proxy mpd=${mpdFile.name} bytes=${mpdFile.length()} vUrlLen=$vLen aUrlLen=$aLen proxyPort=${proxy.port}",
                                 )
                                 if (vLen > 1024 || aLen > 1024) {
                                     AppLog.w(
@@ -336,6 +350,9 @@ internal class IjkPlayerEngine(
         pendingSeekMs = null
         clearVisibleSeekPosition()
         updateState(Player.STATE_IDLE)
+
+        dashProxy?.stop()
+        dashProxy = null
 
         val p = ijk
         ijk = null
