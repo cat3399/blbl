@@ -76,9 +76,16 @@ jobs:
           apk="app/build/outputs/apk/kitkat/release/app-kitkat-release.apk"
           test -s "$apk"
           sdk_root="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
-          build_tools="$sdk_root/build-tools/35.0.0"
-          aapt="$build_tools/aapt2"
-          apksigner="$build_tools/apksigner"
+          aapt="$(command -v aapt2 || true)"
+          apksigner="$(command -v apksigner || true)"
+          if [[ -z "$aapt" && -d "$sdk_root/build-tools" ]]; then
+            aapt="$(find "$sdk_root/build-tools" -name aapt2 -perm -u+x | sort -V | tail -n 1 || true)"
+          fi
+          if [[ -z "$apksigner" && -d "$sdk_root/build-tools" ]]; then
+            apksigner="$(find "$sdk_root/build-tools" -name apksigner -perm -u+x | sort -V | tail -n 1 || true)"
+          fi
+          echo "aapt2: ${aapt:-missing}"
+          echo "apksigner: ${apksigner:-missing}"
           test -x "$aapt"
           test -x "$apksigner"
           badging="$RUNNER_TEMP/api19-badging.txt"
