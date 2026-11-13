@@ -92,7 +92,7 @@ jobs:
           badging="$RUNNER_TEMP/api19-badging.txt"
           "$aapt" dump badging "$apk" > "$badging" || true
           cat "$badging"
-          grep -F "sdkVersion:'19'" "$badging"
+          grep -F "minSdkVersion:'19'" "$badging"
           echo "Native libraries in APK:"
           unzip -Z1 "$apk" | grep '^lib/' || true
           unzip -l "$apk" | grep -F "lib/armeabi-v7a/libijkplayer.so"
