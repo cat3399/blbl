@@ -62,7 +62,7 @@ jobs:
           set -euo pipefail
           apk="app/build/outputs/apk/kitkat/release/app-kitkat-release.apk"
           test -s "$apk"
-          aapt="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort | tail -n 1)"
+          aapt="$(find "$ANDROID_HOME/build-tools" -type f -name aapt2 | sort -V | tail -n 1)"
           apksigner="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort | tail -n 1)"
           test -x "$aapt"
           test -x "$apksigner"
