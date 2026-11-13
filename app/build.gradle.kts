@@ -103,11 +103,6 @@ android {
                 "META-INF/*.kotlin_module",
             )
         }
-        jniLibs {
-            // libijkplayer.so is excluded by default (downloaded on demand).
-            // The kitkat flavor will override this via androidComponents.onVariants.
-            excludes += setOf("**/libijkplayer.so")
-        }
     }
 
     // Configure per-variant packaging for kitkat flavor
