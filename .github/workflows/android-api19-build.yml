@@ -92,6 +92,8 @@ jobs:
           badging="$RUNNER_TEMP/api19-badging.txt"
           "$aapt" dump badging "$apk" | tee "$badging"
           grep -F "sdkVersion:'19'" "$badging"
+          echo "Native libraries in APK:"
+          unzip -Z1 "$apk" | grep '^lib/' || true
           unzip -l "$apk" | grep -F "lib/armeabi-v7a/libijkplayer.so"
           if unzip -l "$apk" | grep -E "lib/(arm64-v8a|x86|x86_64)/"; then
             echo "Unexpected non-ARM32 native library found in API19 APK." >&2
