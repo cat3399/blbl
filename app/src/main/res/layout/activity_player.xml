@@ -339,7 +339,7 @@
             android:nextFocusUp="@id/btn_up_quick_follow"
             android:nextFocusDown="@id/seek_progress"
             android:paddingStart="@dimen/player_up_quick_follow_padding_start"
-            android:paddingEnd="@dimen/player_up_quick_follow_padding_end">
+            android:paddingEnd="@dimen/player_up_quick_follow_padding_end"
             android:text="@string/player_up_quick_follow"
             android:textColor="?attr/colorOnSurface"
             android:textSize="@dimen/player_up_quick_follow_text_size" />

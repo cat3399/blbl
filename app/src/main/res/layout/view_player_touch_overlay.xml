@@ -26,6 +26,5 @@
         android:scaleType="fitCenter"
         app:srcCompat="@drawable/ic_player_unlock"
         android:visibility="gone"
-        app:srcCompat="@drawable/ic_player_unlock"
         app:tint="@color/player_button_tint" />
 </FrameLayout>
