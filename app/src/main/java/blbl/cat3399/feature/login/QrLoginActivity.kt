@@ -7,8 +7,6 @@ import androidx.lifecycle.lifecycleScope
 import blbl.cat3399.R
 import blbl.cat3399.core.log.AppLog
 import blbl.cat3399.core.net.BiliClient
-import blbl.cat3399.core.net.AppSigner
-import blbl.cat3399.core.prefs.BiliAppAuthSession
 import blbl.cat3399.core.net.WebCookieMaintainer
 import blbl.cat3399.core.ui.BaseActivity
 import blbl.cat3399.core.ui.Immersive
@@ -32,31 +30,12 @@ import kotlin.math.min
 class QrLoginActivity : BaseActivity() {
     private lateinit var binding: ActivityQrLoginBinding
     private var pollJob: Job? = null
-    private val tvLoginLocalId = "0"
-    private val tvLoginPlatform = "android"
-    private val tvLoginMobiApp = "android_hd"
-    private val tvLoginUserAgent =
-        "Mozilla/5.0 BiliDroid/2.0.1 (bbcallen@gmail.com) os/android model/android_hd mobi_app/android_hd " +
-            "build/2001100 channel/master innerVer/2001100 osVer/15 network/2"
     private val passportHeaders =
         mapOf(
-            "Referer" to "https://passport.bilibili.com/",
-            "Origin" to "https://passport.bilibili.com",
+            "Accept" to "application/json, text/plain, */*",
+            "Referer" to "https://www.bilibili.com/",
+            "Origin" to "https://www.bilibili.com",
         )
-    private fun tvHeaders(): Map<String, String> {
-        return buildMap {
-            putAll(passportHeaders)
-            put("buvid", BiliClient.prefs.deviceBuvid)
-            put("env", "prod")
-            put("app-key", "android_hd")
-            put("User-Agent", tvLoginUserAgent)
-            put("x-bili-trace-id", "11111111111111111111111111111111:1111111111111111:0:0")
-            put("x-bili-aurora-eid", "")
-            put("x-bili-aurora-zone", "")
-            put("bili-http-engine", "cronet")
-            put("content-type", "application/x-www-form-urlencoded; charset=utf-8")
-        }
-    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -119,36 +98,25 @@ class QrLoginActivity : BaseActivity() {
         lifecycleScope.launch {
             try {
                 WebCookieMaintainer.ensureWebFingerprintCookies()
-                val genParams =
-                    AppSigner.signQuery(
-                        mapOf(
-                            "local_id" to tvLoginLocalId,
-                            "platform" to tvLoginPlatform,
-                            "mobi_app" to tvLoginMobiApp,
-                        ),
-                    )
-                val genUrl =
-                    BiliClient.withQuery(
-                        "https://passport.bilibili.com/x/passport-tv-login/qrcode/auth_code",
-                        genParams,
-                    )
                 val genRaw =
                     BiliClient.requestString(
-                        genUrl,
-                        method = "POST",
-                        headers = tvHeaders(),
+                        "https://passport.bilibili.com/x/passport-login/web/qrcode/generate",
+                        headers = passportHeaders,
                     )
                 val gen = withContext(Dispatchers.Default) { JSONObject(genRaw) }
                 val data = gen.optJSONObject("data") ?: JSONObject()
                 val url = data.optString("url", "")
-                val authCode = data.optString("auth_code", "").trim()
-                AppLog.i("QrLogin", "tv generate ok auth=${authCode.take(6)}")
+                val qrcodeKey = data.optString("qrcode_key", "").trim()
+                if (gen.optInt("code", -1) != 0 || url.isBlank() || qrcodeKey.isBlank()) {
+                    throw IllegalStateException("二维码接口返回无效数据")
+                }
+                AppLog.i("QrLogin", "web generate ok key=${qrcodeKey.take(6)}")
                 val qrSizePx = targetQrSizePx()
-                binding.tvDebug.text = "auth=${authCode.take(6)} size=$qrSizePx"
+                binding.tvDebug.text = "key=${qrcodeKey.take(6)} size=$qrSizePx"
                 val bmp = withContext(Dispatchers.Default) { makeQr(url, qrSizePx) }
                 binding.ivQr.setImageBitmap(bmp)
                 binding.tvStatus.text = "请使用哔哩哔哩 App 扫码并确认登录"
-                pollJob = poll(authCode)
+                pollJob = poll(qrcodeKey)
             } catch (t: Throwable) {
                 AppLog.e("QrLogin", "generate failed", t)
                 binding.tvStatus.text = "获取二维码失败：${t.message?.takeIf { it.isNotBlank() } ?: "未知错误"}"
@@ -168,23 +136,20 @@ class QrLoginActivity : BaseActivity() {
 
     private fun poll(key: String): Job {
         return lifecycleScope.launch {
-            val pollBase = "https://passport.bilibili.com/x/passport-tv-login/qrcode/poll"
+            val pollBase = "https://passport.bilibili.com/x/passport-login/web/qrcode/poll"
             var lastCode = Int.MIN_VALUE
             while (isActive) {
                 try {
-                    val pollParams =
-                        AppSigner.signQuery(
-                            mapOf(
-                                "auth_code" to key,
-                                "local_id" to tvLoginLocalId,
-                            ),
+                    val pollUrl =
+                        BiliClient.withQuery(
+                            pollBase,
+                            mapOf("qrcode_key" to key, "source" to "main_web"),
                         )
-                    val pollUrl = BiliClient.withQuery(pollBase, pollParams)
-                    val raw = BiliClient.requestString(pollUrl, method = "POST", headers = tvHeaders())
+                    val raw = BiliClient.requestString(pollUrl, headers = passportHeaders)
                     val json = withContext(Dispatchers.Default) { JSONObject(raw) }
                     val data = json.optJSONObject("data") ?: JSONObject()
-                    val code = json.optInt("code", -1)
-                    val msg = json.optString("message", json.optString("msg", ""))
+                    val code = data.optInt("code", json.optInt("code", -1))
+                    val msg = data.optString("message", json.optString("message", json.optString("msg", "")))
                     if (code != lastCode) {
                         binding.tvDebug.text = "code=$code ${msg.trim()}"
                         lastCode = code
@@ -199,51 +164,11 @@ class QrLoginActivity : BaseActivity() {
                         }
 
                         0 -> {
-                            val tokenInfo = data.optJSONObject("token_info") ?: data
-                            val accessToken = tokenInfo.optString("access_token", "").trim()
-                            val refreshToken = tokenInfo.optString("refresh_token", "").trim()
-                            AppLog.i("QrLogin", "tv login ok access=${accessToken.take(6)} refresh=${refreshToken.take(6)}")
-                            BiliAppAuthSession
-                                .fromTvLoginData(
-                                    data = data,
-                                    appKey = AppSigner.APP_KEY_ANDROID_HD,
-                                    mobiApp = tvLoginMobiApp,
-                                    platform = tvLoginPlatform,
-                                    localId = tvLoginLocalId,
-                                )?.let { session ->
-                                    BiliClient.prefs.appAuthSession = session
-                                    AppLog.i(
-                                        "QrLogin",
-                                        "app auth saved mid=${session.mid ?: 0L} expiresAt=${session.expiresAtMs ?: 0L}",
-                                    )
-                                } ?: AppLog.w("QrLogin", "tv login response missing app access token")
-                            // PiliPlus-style login does not rely on web cookie refresh_token.
-                            BiliClient.prefs.webRefreshToken = null
-
-                            val cookieInfo = data.optJSONObject("cookie_info") ?: JSONObject()
-                            val cookies = cookieInfo.optJSONArray("cookies")
-                            if (cookies != null) {
-                                val nowMs = System.currentTimeMillis()
-                                val out = ArrayList<okhttp3.Cookie>(cookies.length())
-                                for (i in 0 until cookies.length()) {
-                                    val c = cookies.optJSONObject(i) ?: continue
-                                    val name = c.optString("name", "").trim()
-                                    val value = c.optString("value", "").trim()
-                                    if (name.isBlank() || value.isBlank()) continue
-                                    val expiresSec = c.optLong("expires", 0L)
-                                    val expiresAt = if (expiresSec > 0L) expiresSec * 1000L else (nowMs + 180L * 24 * 60 * 60 * 1000)
-                                    val builder = okhttp3.Cookie.Builder()
-                                        .name(name)
-                                        .value(value)
-                                        .domain("bilibili.com")
-                                        .path("/")
-                                        .expiresAt(expiresAt)
-                                    if (c.optInt("http_only", 0) == 1) builder.httpOnly()
-                                    if (c.optInt("secure", 0) == 1) builder.secure()
-                                    out.add(builder.build())
-                                }
-                                if (out.isNotEmpty()) BiliClient.cookies.upsertAll(out)
-                            }
+                            val refreshToken = data.optString("refresh_token", "").trim()
+                            BiliClient.prefs.webRefreshToken = refreshToken.takeIf { it.isNotBlank() }
+                            // 网页二维码只返回网页凭据；清除旧的 TV/App 会话，避免继续使用旧账号令牌。
+                            BiliClient.prefs.appAuthSession = null
+                            AppLog.i("QrLogin", "web login ok refresh=${refreshToken.take(6)} sess=${BiliClient.cookies.hasSessData()}")
                             WebCookieMaintainer.ensureBuvidActiveOncePerDay()
                             BiliClient.accounts.saveCurrentSessionAsActive(
                                 appPrefs = BiliClient.prefs,

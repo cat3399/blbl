@@ -4,8 +4,8 @@ import blbl.cat3399.BuildConfig
 import blbl.cat3399.core.log.AppLog
 import blbl.cat3399.core.net.BiliClient
 import blbl.cat3399.core.prefs.AppPrefs
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.RequestBody.Companion.toRequestBody
+import blbl.cat3399.core.net.toMediaTypeCompat
+import okhttp3.RequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
@@ -161,7 +161,7 @@ object SponsorBlockApi {
                 url = url,
                 method = "POST",
                 headers = sponsorBlockRequestHeaders(),
-                body = bodyText.toRequestBody("application/json; charset=utf-8".toMediaType()),
+                body = RequestBody.create("application/json; charset=utf-8".toMediaTypeCompat(), bodyText),
                 noCookies = true,
             )
         }.fold(

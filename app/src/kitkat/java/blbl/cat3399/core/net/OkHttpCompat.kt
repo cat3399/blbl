@@ -21,6 +21,8 @@ fun Request.requestMethod(): String = method()
 fun Request.requestUrl(): HttpUrl = url()
 
 fun HttpUrl.urlHost(): String = host()
+fun HttpUrl.urlIsHttps(): Boolean = isHttps()
+fun HttpUrl.urlPort(): Int = port()
 fun HttpUrl.urlEncodedPath(): String = encodedPath()
 fun HttpUrl.urlQuery(): String? = query()
 fun HttpUrl.urlFragment(): String? = fragment()

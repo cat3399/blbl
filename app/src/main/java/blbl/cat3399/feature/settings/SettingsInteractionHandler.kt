@@ -1603,7 +1603,7 @@ class SettingsInteractionHandler(
     private fun handlePlayerKernelCheck() {
         when (IjkPlayerPlugin.status(activity)) {
             IjkPlayerPlugin.InstallStatus.Unsupported -> {
-                AppToast.showLong(activity, "当前设备不支持 IjkPlayer（ABI=${Build.SUPPORTED_ABIS.joinToString()}）")
+                AppToast.showLong(activity, "当前设备不支持 IjkPlayer（ABI=${DeviceAbi.getSupportedAbis().joinToString()}）")
             }
 
             IjkPlayerPlugin.InstallStatus.Installed -> {

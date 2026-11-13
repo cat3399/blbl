@@ -3,6 +3,7 @@ package blbl.cat3399.feature.player.engine
 import blbl.cat3399.core.api.video.VideoMediaRequestProfile
 import blbl.cat3399.core.log.AppLog
 import blbl.cat3399.core.net.BiliClient
+import blbl.cat3399.core.net.bodyOrNull
 import blbl.cat3399.feature.player.DashAudioKind
 import blbl.cat3399.feature.player.DashSegmentBase
 import blbl.cat3399.feature.player.DashTrackInfo
@@ -130,7 +131,7 @@ internal object DashPlaybackCatalogResolver {
         return runCatching {
             client.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) return@use null
-                val body = response.body ?: return@use null
+                val body = response.bodyOrNull() ?: return@use null
                 parseSegmentBase(readAtMost(body.byteStream(), byteLimit))
             }
         }.getOrNull()

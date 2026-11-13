@@ -1,7 +1,9 @@
 package blbl.cat3399.core.image
 
 import blbl.cat3399.core.net.BiliClient
-import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+import blbl.cat3399.core.net.parseHttpUrl
+import blbl.cat3399.core.net.urlEncodedPath
+import blbl.cat3399.core.net.urlHost
 
 object ImageUrl {
     private fun imageQuality(): String = runCatching { BiliClient.prefs.imageQuality }.getOrDefault("medium")
@@ -20,14 +22,14 @@ object ImageUrl {
         val u = url ?: return null
         if (u.isBlank()) return null
         val normalized = normalize(u)
-        val httpUrl = normalized.toHttpUrlOrNull() ?: return normalized
-        val host = httpUrl.host.lowercase()
+        val httpUrl = normalized.parseHttpUrl() ?: return normalized
+        val host = httpUrl.urlHost().lowercase()
         val supportsResize =
             (host == "hdslb.com" ||
                 host.endsWith(".hdslb.com") ||
                 host == "biliimg.com" ||
                 host.endsWith(".biliimg.com")) &&
-                httpUrl.encodedPath.contains("/bfs/")
+                httpUrl.urlEncodedPath().contains("/bfs/")
         if (!supportsResize) return normalized
 
         val queryIndex = normalized.indexOf('?')

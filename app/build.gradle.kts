@@ -16,6 +16,16 @@ android {
         return null
     }
 
+    val releaseStoreFile = rootProject.file("keystore/release.keystore")
+    val releaseStorePassword = propOrEnv("RELEASE_STORE_PASSWORD")
+    val releaseKeyAlias = propOrEnv("RELEASE_KEY_ALIAS")
+    val releaseKeyPassword = propOrEnv("RELEASE_KEY_PASSWORD")
+    val hasReleaseSigning =
+        releaseStoreFile.isFile &&
+            !releaseStorePassword.isNullOrBlank() &&
+            !releaseKeyAlias.isNullOrBlank() &&
+            !releaseKeyPassword.isNullOrBlank()
+
     defaultConfig {
         applicationId = "blbl.cat3399"
         minSdk = 19
@@ -32,10 +42,12 @@ android {
 
     signingConfigs {
         create("release") {
-            storeFile = rootProject.file("keystore/release.keystore")
-            storePassword = propOrEnv("RELEASE_STORE_PASSWORD")
-            keyAlias = propOrEnv("RELEASE_KEY_ALIAS")
-            keyPassword = propOrEnv("RELEASE_KEY_PASSWORD")
+            if (hasReleaseSigning) {
+                storeFile = releaseStoreFile
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
         }
     }
 
@@ -46,7 +58,7 @@ android {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
-            signingConfig = signingConfigs.getByName("release")
+            signingConfig = if (hasReleaseSigning) signingConfigs.getByName("release") else null
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",

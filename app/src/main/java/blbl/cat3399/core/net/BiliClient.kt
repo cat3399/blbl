@@ -5,6 +5,8 @@ import blbl.cat3399.core.account.AccountSessionStore
 import android.os.Build
 import blbl.cat3399.core.log.AppLog
 import blbl.cat3399.core.prefs.AppPrefs
+import blbl.cat3399.core.net.urlIsHttps
+import blbl.cat3399.core.net.urlPort
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.CookieJar
@@ -127,12 +129,13 @@ object BiliClient {
             .protocols(listOf(Protocol.HTTP_1_1))
             .addInterceptor { chain ->
                 val original = chain.request()
-                val defaultPort = if (original.url.isHttps) 443 else 80
+                val originalUrl = original.requestUrl()
+                val defaultPort = if (originalUrl.urlIsHttps()) 443 else 80
                 val hostHeader =
-                    if (original.url.port == defaultPort) {
-                        original.url.host
+                    if (originalUrl.urlPort() == defaultPort) {
+                        originalUrl.urlHost()
                     } else {
-                        "${original.url.host}:${original.url.port}"
+                        "${originalUrl.urlHost()}:${originalUrl.urlPort()}"
                     }
                 val req =
                     original
@@ -146,7 +149,8 @@ object BiliClient {
                 val res = chain.proceed(req)
                 val costMs = (System.nanoTime() - start) / 1_000_000
                 if (LOG_HTTP_REQUESTS) {
-                    AppLog.d(TAG, "APP CDN ${req.method} ${req.url.host}${req.url.encodedPath} -> ${res.code} (${costMs}ms)")
+                    val reqUrl = req.requestUrl()
+                    AppLog.d(TAG, "APP CDN ${req.requestMethod()} ${reqUrl.urlHost()}${reqUrl.urlEncodedPath()} -> ${res.statusCode()} (${costMs}ms)")
                 }
                 res
             }
