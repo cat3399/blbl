@@ -90,7 +90,8 @@ jobs:
           test -x "$aapt"
           test -x "$apksigner"
           badging="$RUNNER_TEMP/api19-badging.txt"
-          "$aapt" dump badging "$apk" | tee "$badging"
+          "$aapt" dump badging "$apk" > "$badging" || true
+          cat "$badging"
           grep -F "sdkVersion:'19'" "$badging"
           echo "Native libraries in APK:"
           unzip -Z1 "$apk" | grep '^lib/' || true
