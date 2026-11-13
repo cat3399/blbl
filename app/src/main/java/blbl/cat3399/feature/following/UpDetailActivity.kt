@@ -693,7 +693,7 @@ class UpDetailActivity : BaseActivity() {
             } catch (t: Throwable) {
                 if (t is CancellationException) throw t
                 AppLog.e("UpDetail", "loadArchive failed mid=$mid page=$targetPage", t)
-                AppToast.show(this@UpDetailActivity, "加载失败，可查看 Logcat(标签 BLBL)")
+                AppToast.show(this@UpDetailActivity, getString(R.string.error_load_retry))
             } finally {
                 if (token == archiveRequestToken) binding.swipeRefresh.isRefreshing = false
                 archiveIsLoadingMore = false
@@ -954,7 +954,7 @@ class UpDetailActivity : BaseActivity() {
             try {
                 BiliApi.modifyRelation(fid = mid, act = if (wantFollow) 1 else 2, reSrc = 11)
                 isFollowed = wantFollow
-                AppToast.show(this@UpDetailActivity, if (wantFollow) "已关注" else "已取关")
+                AppToast.show(this@UpDetailActivity, if (wantFollow) "已关注" else "已取消关注")
             } catch (t: Throwable) {
                 if (t is CancellationException) throw t
                 AppLog.w("UpDetail", "modifyRelation failed mid=$mid wantFollow=$wantFollow", t)

@@ -1090,6 +1090,7 @@ class VideoDetailActivity : BaseActivity() {
                     AppToast.show(this@VideoDetailActivity, result.toastMessage())
                 } catch (t: Throwable) {
                     if (t is CancellationException) return@launch
+                    AppLog.w("VideoAction", "triple action failed bvid=$requestBvid aid=$requestAid", t)
                     AppToast.show(this@VideoDetailActivity, t.userMessage(defaultMessage = "操作失败"))
                 } finally {
                     tripleActionJob = null
@@ -1115,7 +1116,7 @@ class VideoDetailActivity : BaseActivity() {
                     BiliApi.archiveLike(bvid = requestBvid, aid = aid, like = targetLike)
                     if (bvid != requestBvid) return@launch
                     actionLiked = targetLike
-                    AppToast.show(this@VideoDetailActivity, if (targetLike) "点赞成功" else "已取消赞")
+                    AppToast.show(this@VideoDetailActivity, if (targetLike) "点赞成功" else "已取消点赞")
                 } catch (t: Throwable) {
                     if (t is CancellationException) return@launch
                     val e = t as? BiliApiException
@@ -1124,6 +1125,7 @@ class VideoDetailActivity : BaseActivity() {
                         actionLiked = true
                         AppToast.show(this@VideoDetailActivity, "已点赞")
                     } else {
+                        AppLog.w("VideoAction", "like failed bvid=$requestBvid wantLike=$targetLike", t)
                         val msg = e?.apiMessage?.takeIf { it.isNotBlank() } ?: (t.message ?: "操作失败")
                         AppToast.show(this@VideoDetailActivity, msg)
                     }
@@ -1160,6 +1162,7 @@ class VideoDetailActivity : BaseActivity() {
                         actionCoinCount = 2
                         AppToast.show(this@VideoDetailActivity, "已达到投币上限")
                     } else {
+                        AppLog.w("VideoAction", "coin failed bvid=$requestBvid", t)
                         val msg = e?.apiMessage?.takeIf { it.isNotBlank() } ?: (t.message ?: "操作失败")
                         AppToast.show(this@VideoDetailActivity, msg)
                     }
@@ -1239,6 +1242,7 @@ class VideoDetailActivity : BaseActivity() {
                 } catch (t: Throwable) {
                     if (t is CancellationException) return@launch
                     val e = t as? BiliApiException
+                    AppLog.w("VideoAction", "load favorites failed bvid=$requestBvid aid=$requestAid", t)
                     val msg = e?.apiMessage?.takeIf { it.isNotBlank() } ?: (t.message ?: "加载收藏夹失败")
                     AppToast.show(this@VideoDetailActivity, msg)
                 } finally {
@@ -1268,6 +1272,7 @@ class VideoDetailActivity : BaseActivity() {
                 } catch (t: Throwable) {
                     if (t is CancellationException) return@launch
                     val e = t as? BiliApiException
+                    AppLog.w("VideoAction", "favorite failed aid=$rid add=$add del=$del", t)
                     val msg = e?.apiMessage?.takeIf { it.isNotBlank() } ?: (t.message ?: "操作失败")
                     AppToast.show(this@VideoDetailActivity, msg)
                 } finally {

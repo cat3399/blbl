@@ -244,7 +244,7 @@ private fun PlayerActivity.applyPlayerCustomShortcut(keyCode: Int, action: Playe
                     target
                 }
             applyResolutionSetting(next)
-            showSeekHint("分辨率：${qnHintText(next)}", hold = false)
+            showSeekHint("画质：${qnHintText(next)}", hold = false)
         }
 
         is PlayerCustomShortcutAction.SetAudioId -> {
@@ -258,7 +258,7 @@ private fun PlayerActivity.applyPlayerCustomShortcut(keyCode: Int, action: Playe
                     target
                 }
             applyAudioTrackSetting(next)
-            showSeekHint("音轨：${audioIdHintText(next)}", hold = false)
+            showSeekHint("音质：${audioIdHintText(next)}", hold = false)
         }
 
         is PlayerCustomShortcutAction.SetCodec -> {
@@ -367,7 +367,7 @@ private fun PlayerActivity.applyPlayerCustomShortcut(keyCode: Int, action: Playe
                 syncToGlobal = { danmakuOpacity = it },
                 afterApplied = { binding.danmakuView.invalidate() },
             )
-            showSeekHint("弹幕透明度：${String.format(Locale.US, "%.2f", next)}", hold = false)
+            showSeekHint("弹幕不透明度：${opacityText(next)}", hold = false)
         }
 
         is PlayerCustomShortcutAction.SetDanmakuTextSize -> {

@@ -36,6 +36,23 @@ jobs:
           RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
           RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
         run: ./gradlew assembleRelease -PversionName=${{ inputs.version_name }} -PversionCode=${{ github.run_number }}
+      - name: Archive release mapping
+        env:
+          VERSION_NAME: ${{ inputs.version_name }}
+        run: |
+          set -euo pipefail
+          CLEAN_VERSION="${VERSION_NAME#v}"
+          MAPPING_SOURCE="app/build/outputs/mapping/release/mapping.txt"
+          test -s "${MAPPING_SOURCE}"
+          DOWNLOAD_MAPPING="app/build/outputs/mapping/release/blbl-${CLEAN_VERSION}-mapping.txt"
+          cp "${MAPPING_SOURCE}" "${DOWNLOAD_MAPPING}"
+          echo "DOWNLOAD_MAPPING=${DOWNLOAD_MAPPING}" >> "${GITHUB_ENV}"
+      - name: Upload release mapping artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: blbl-${{ inputs.version_name }}-mapping
+          path: ${{ env.DOWNLOAD_MAPPING }}
+          if-no-files-found: error
       - name: Upload release APK to R2 (optional)
         env:
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
@@ -111,4 +128,4 @@ jobs:
               gh release create "$RELEASE_TAG" --title "$RELEASE_TAG" --generate-notes --target "$GITHUB_SHA"
             fi
           fi
-          gh release upload "$RELEASE_TAG" "$DOWNLOAD_APK" --clobber
+          gh release upload "$RELEASE_TAG" "$DOWNLOAD_APK" "$DOWNLOAD_MAPPING" --clobber

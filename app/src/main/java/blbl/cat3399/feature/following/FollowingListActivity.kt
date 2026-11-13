@@ -1,5 +1,6 @@
 package blbl.cat3399.feature.following
 
+import blbl.cat3399.R
 import android.content.Intent
 import android.os.Bundle
 import android.view.KeyEvent
@@ -265,7 +266,7 @@ class FollowingListActivity : BaseActivity() {
             } catch (t: Throwable) {
                 if (t is CancellationException) throw t
                 AppLog.e("FollowingList", "load failed page=$startPage", t)
-                AppToast.show(this@FollowingListActivity, "加载失败，可查看 Logcat(标签 BLBL)")
+                AppToast.show(this@FollowingListActivity, getString(R.string.error_load_retry))
             } finally {
                 if (paging.snapshot().generation == startGen) binding.swipeRefresh.isRefreshing = false
             }

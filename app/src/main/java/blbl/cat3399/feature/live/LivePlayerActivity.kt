@@ -67,6 +67,7 @@ import blbl.cat3399.feature.player.PlayerTouchController
 import blbl.cat3399.feature.player.PlayerTouchGestureHost
 import blbl.cat3399.feature.player.PlayerUpQuickCardController
 import blbl.cat3399.feature.player.PlayerUiMode
+import blbl.cat3399.feature.player.opacityText
 import blbl.cat3399.feature.player.areaText
 import blbl.cat3399.feature.player.danmaku.DanmakuSessionSettings
 import blbl.cat3399.feature.player.danmaku.DanmakuFontWeight
@@ -923,7 +924,7 @@ class LivePlayerActivity : BaseActivity() {
                     }
                 session = session.copy(danmaku = session.danmaku.copy(opacity = next))
                 this.binding.danmakuView.invalidate()
-                showShortcutHint("弹幕透明度：${String.format(Locale.US, "%.2f", next)}")
+                showShortcutHint("弹幕不透明度：${opacityText(next)}")
                 return true
             }
 
@@ -1076,6 +1077,10 @@ class LivePlayerActivity : BaseActivity() {
     }
 
     private fun showAudioBalanceDialog() {
+        if (player !is ExoPlayerEngine) {
+            AppToast.show(this, "当前播放器内核不支持音量均衡")
+            return
+        }
         val prefs = BiliClient.prefs
         val options = AudioBalanceLevel.ordered
         val labels = options.map { it.label }
@@ -1084,19 +1089,18 @@ class LivePlayerActivity : BaseActivity() {
 
         AppPopup.singleChoice(
             context = this,
-            title = "音频平衡",
+            title = "音量均衡",
             items = labels,
             checkedIndex = checked,
         ) { which, _ ->
+            val engine = player as? ExoPlayerEngine
+            if (engine == null) {
+                AppToast.show(this, "当前播放器内核不支持音量均衡")
+                return@singleChoice
+            }
             val picked = options.getOrNull(which) ?: AudioBalanceLevel.Off
             prefs.playerAudioBalanceLevel = picked.prefValue
-            val engine = player
-            if (engine is ExoPlayerEngine) {
-                engine.setAudioBalanceLevel(picked)
-                AppToast.show(this, "音频平衡：${picked.label}")
-            } else {
-                AppToast.show(this, "当前播放器内核不支持音频平衡")
-            }
+            engine.setAudioBalanceLevel(picked)
             refreshSettings()
         }
     }
@@ -1119,14 +1123,14 @@ class LivePlayerActivity : BaseActivity() {
         val balanceLabel = AudioBalanceLevel.fromPrefValue(prefs.playerAudioBalanceLevel).label
         val list =
             listOf(
-                PlayerSettingsAdapter.SettingItem(key = LivePlayerSettingKeys.QUALITY, title = "清晰度", subtitle = qLabel),
+                PlayerSettingsAdapter.SettingItem(key = LivePlayerSettingKeys.QUALITY, title = "画质", subtitle = qLabel),
                 PlayerSettingsAdapter.SettingItem(key = LivePlayerSettingKeys.LINE, title = "线路选择", subtitle = lineLabel),
                 PlayerSettingsAdapter.SettingItem(
                     key = LivePlayerSettingKeys.HIGH_BITRATE,
                     title = "提高直播码率",
                     subtitle = if (session.highBitrateEnabled) "开" else "关",
                 ),
-                PlayerSettingsAdapter.SettingItem(key = LivePlayerSettingKeys.AUDIO_BALANCE, title = "音频平衡", subtitle = balanceLabel),
+                PlayerSettingsAdapter.SettingItem(key = LivePlayerSettingKeys.AUDIO_BALANCE, title = "音量均衡", subtitle = balanceLabel),
                 PlayerSettingsAdapter.SettingItem(key = LivePlayerSettingKeys.PLAYER_ENGINE, title = "播放器内核", subtitle = engineLabel),
                 PlayerSettingsAdapter.SettingItem(key = LivePlayerSettingKeys.DEBUG_INFO, title = "调试信息", subtitle = if (session.debugEnabled) "开" else "关"),
             )
@@ -1138,7 +1142,6 @@ class LivePlayerActivity : BaseActivity() {
         session = session.copy(highBitrateEnabled = enabled, lineOrder = 1, originFailCount = 0)
         resetPlaybackRecoveryState()
         refreshSettings()
-        AppToast.show(this, "提高直播码率：${if (enabled) "开" else "关"}")
         lifecycleScope.launch { loadAndPlay(initial = false) }
     }
 
@@ -1854,12 +1857,12 @@ class LivePlayerActivity : BaseActivity() {
 
     private fun showQualityDialog() {
         val play = lastPlay ?: run {
-            AppToast.show(this, "暂无可用清晰度")
+            AppToast.show(this, "暂无可用画质")
             return
         }
         val available = play.acceptQn.ifEmpty { play.qnDesc.keys.sortedDescending() }.distinct()
         if (available.isEmpty()) {
-            AppToast.show(this, "暂无可用清晰度")
+            AppToast.show(this, "暂无可用画质")
             return
         }
         val optionsAvailable = available.sortedWith(compareBy({ it != LIVE_QN_ORIGINAL }, { -it }))
@@ -1871,7 +1874,7 @@ class LivePlayerActivity : BaseActivity() {
                 ?: 0
         AppPopup.singleChoice(
             context = this,
-            title = "清晰度",
+            title = "画质",
             items = options,
             checkedIndex = checked,
         ) { which, _ ->

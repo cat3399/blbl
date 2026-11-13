@@ -1122,7 +1122,7 @@ class PlayerActivity : BaseActivity() {
         val uncaughtHandler =
             CoroutineExceptionHandler { _, t ->
                 AppLog.e("Player", "uncaught", t)
-                AppToast.showLong(this@PlayerActivity, "播放失败：${t.message}")
+                AppToast.showLong(this@PlayerActivity, "播放失败：${t.message?.takeIf { it.isNotBlank() } ?: "未知错误"}")
                 finish()
             }
         playbackUncaughtHandler = uncaughtHandler
@@ -3207,7 +3207,7 @@ class PlayerActivity : BaseActivity() {
             } catch (t: Throwable) {
                 AppLog.e("Player", "reloadStream failed", t)
                 if (!handlePlayUrlErrorIfNeeded(t)) {
-                    AppToast.show(this@PlayerActivity, "切换失败：${t.message}")
+                    AppToast.show(this@PlayerActivity, "切换失败：${t.message?.takeIf { it.isNotBlank() } ?: "未知错误"}")
                 }
             }
         }

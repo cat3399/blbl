@@ -1,5 +1,6 @@
 package blbl.cat3399.feature.player
 
+import blbl.cat3399.core.log.AppLog
 import android.view.View
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
@@ -178,7 +179,7 @@ internal fun PlayerActivity.onLikeButtonClicked(showControls: Boolean = true) {
                         if (targetLike) count + 1 else (count - 1).coerceAtLeast(0L)
                     }
                 actionLiked = targetLike
-                AppToast.show(this@onLikeButtonClicked, if (targetLike) "点赞成功" else "已取消赞")
+                AppToast.show(this@onLikeButtonClicked, if (targetLike) "点赞成功" else "已取消点赞")
             } catch (t: Throwable) {
                 if (t is CancellationException) return@launch
                 val e = t as? BiliApiException
@@ -187,6 +188,7 @@ internal fun PlayerActivity.onLikeButtonClicked(showControls: Boolean = true) {
                     actionLiked = true
                     AppToast.show(this@onLikeButtonClicked, "已点赞")
                 } else {
+                    AppLog.w("VideoAction", "like failed bvid=$requestBvid wantLike=$targetLike", t)
                     val msg = e?.apiMessage?.takeIf { it.isNotBlank() } ?: (t.message ?: "操作失败")
                     AppToast.show(this@onLikeButtonClicked, msg)
                 }
@@ -221,6 +223,7 @@ internal fun PlayerActivity.onCoinButtonClicked(showControls: Boolean = true) {
                     actionCoinCount = 2
                     AppToast.show(this@onCoinButtonClicked, "已达到投币上限")
                 } else {
+                    AppLog.w("VideoAction", "coin failed bvid=$requestBvid", t)
                     val msg = e?.apiMessage?.takeIf { it.isNotBlank() } ?: (t.message ?: "操作失败")
                     AppToast.show(this@onCoinButtonClicked, msg)
                 }
@@ -303,6 +306,7 @@ internal fun PlayerActivity.onFavButtonClicked(showControls: Boolean = true) {
             } catch (t: Throwable) {
                 if (t is CancellationException) return@launch
                 val e = t as? BiliApiException
+                AppLog.w("VideoAction", "load favorites failed bvid=$requestBvid aid=$requestAid", t)
                 val msg = e?.apiMessage?.takeIf { it.isNotBlank() } ?: (t.message ?: "加载收藏夹失败")
                 AppToast.show(this@onFavButtonClicked, msg)
             } finally {
@@ -336,6 +340,7 @@ internal fun PlayerActivity.applyFavSelection(
             } catch (t: Throwable) {
                 if (t is CancellationException) return@launch
                 val e = t as? BiliApiException
+                AppLog.w("VideoAction", "favorite failed aid=$rid add=$add del=$del", t)
                 val msg = e?.apiMessage?.takeIf { it.isNotBlank() } ?: (t.message ?: "操作失败")
                 AppToast.show(this@applyFavSelection, msg)
             } finally {

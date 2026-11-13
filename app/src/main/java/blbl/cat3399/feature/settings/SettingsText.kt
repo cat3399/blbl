@@ -75,7 +75,12 @@ object SettingsText {
 
     fun subtitleBackgroundOpacityText(opacity: Float): String {
         val v = opacity.takeIf { it.isFinite() } ?: (34f / 255f)
-        return String.format(Locale.US, "%.2f", v.coerceIn(0f, 1.0f))
+        return opacityText(v)
+    }
+
+    fun opacityText(opacity: Float): String {
+        val value = opacity.takeIf { it.isFinite() } ?: 1f
+        return "${(value.coerceIn(0f, 1f) * 100f).roundToInt()}%"
     }
 
     fun areaText(area: Float): String = "${(AppPrefs.normalizeDanmakuArea(area) * 100f).roundToInt()}%"
@@ -248,7 +253,7 @@ object SettingsText {
             blbl.cat3399.core.prefs.AppPrefs.PLAYER_DOWN_KEY_OSD_FOCUS_COIN -> "投币"
             blbl.cat3399.core.prefs.AppPrefs.PLAYER_DOWN_KEY_OSD_FOCUS_FAV -> "收藏"
             blbl.cat3399.core.prefs.AppPrefs.PLAYER_DOWN_KEY_OSD_FOCUS_LIST_PANEL -> "列表面板"
-            blbl.cat3399.core.prefs.AppPrefs.PLAYER_DOWN_KEY_OSD_FOCUS_SPONSOR_SUBMIT -> "上传广告片段"
+            blbl.cat3399.core.prefs.AppPrefs.PLAYER_DOWN_KEY_OSD_FOCUS_SPONSOR_SUBMIT -> "提交空降片段"
             blbl.cat3399.core.prefs.AppPrefs.PLAYER_DOWN_KEY_OSD_FOCUS_ADVANCED -> "更多设置"
             else -> "播放/暂停"
         }
@@ -269,7 +274,7 @@ object SettingsText {
                 if (enabled.contains(blbl.cat3399.core.prefs.AppPrefs.PLAYER_OSD_BTN_COIN)) add("投币")
                 if (enabled.contains(blbl.cat3399.core.prefs.AppPrefs.PLAYER_OSD_BTN_FAV)) add("收藏")
                 if (enabled.contains(blbl.cat3399.core.prefs.AppPrefs.PLAYER_OSD_BTN_LIST_PANEL)) add("列表")
-                if (enabled.contains(blbl.cat3399.core.prefs.AppPrefs.PLAYER_OSD_BTN_SPONSOR_SUBMIT)) add("上传广告片段")
+                if (enabled.contains(blbl.cat3399.core.prefs.AppPrefs.PLAYER_OSD_BTN_SPONSOR_SUBMIT)) add("提交空降片段")
                 if (enabled.contains(blbl.cat3399.core.prefs.AppPrefs.PLAYER_OSD_BTN_ADVANCED)) add("更多设置")
                 if (enabled.contains(blbl.cat3399.core.prefs.AppPrefs.PLAYER_OSD_BTN_CLOSE_PLAYER)) add("关闭播放器")
             }

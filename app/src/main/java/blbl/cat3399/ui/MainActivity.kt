@@ -698,7 +698,7 @@ class MainActivity : BaseActivity(), SidebarFocusHost {
                 } else {
                     "将清除当前登录状态，需要重新登录。确定继续吗？"
                 },
-            positiveText = "确定退出",
+            positiveText = getString(R.string.action_logout),
             negativeText = "取消",
             onPositive = {
                 val next =
@@ -950,7 +950,7 @@ class MainActivity : BaseActivity(), SidebarFocusHost {
                 context = this,
                 title = title,
                 message = message,
-                positiveText = "立即更新",
+                positiveText = if (status == IjkPlayerPlugin.InstallStatus.NotInstalled) "下载内核" else "更新内核",
                 negativeText = "稍后",
                 onPositive = {
                     IjkPlayerPluginUi.ensureInstalled(this) {}

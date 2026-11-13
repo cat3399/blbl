@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import android.os.Bundle
 import android.view.KeyEvent
 import androidx.lifecycle.lifecycleScope
+import blbl.cat3399.R
 import blbl.cat3399.core.log.AppLog
 import blbl.cat3399.core.net.BiliClient
 import blbl.cat3399.core.net.AppSigner
@@ -12,6 +13,7 @@ import blbl.cat3399.core.net.WebCookieMaintainer
 import blbl.cat3399.core.ui.BaseActivity
 import blbl.cat3399.core.ui.Immersive
 import blbl.cat3399.core.ui.cloneInUserScale
+import blbl.cat3399.core.ui.popup.AppPopup
 import blbl.cat3399.databinding.ActivityQrLoginBinding
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.EncodeHintType
@@ -64,15 +66,24 @@ class QrLoginActivity : BaseActivity() {
 
         binding.btnRefresh.setOnClickListener { startFlow() }
         binding.btnClear.setOnClickListener {
-            BiliClient.accounts.clearAllAccountsAndCurrentSession(
-                appPrefs = BiliClient.prefs,
-                cookies = BiliClient.cookies,
+            AppPopup.confirm(
+                context = this,
+                title = getString(R.string.clear_login_title),
+                message = getString(R.string.clear_login_message),
+                positiveText = getString(R.string.action_clear_all),
+                negativeText = getString(R.string.action_cancel),
+                onPositive = {
+                    BiliClient.accounts.clearAllAccountsAndCurrentSession(
+                        appPrefs = BiliClient.prefs,
+                        cookies = BiliClient.cookies,
+                    )
+                    binding.tvStatus.text = "已清除登录状态"
+                    binding.tvDebug.text = "login cleared"
+                },
             )
-            binding.tvStatus.text = "已清除登录状态"
-            binding.tvDebug.text = "login cleared"
         }
 
-        binding.tvStatus.text = "正在申请二维码..."
+        binding.tvStatus.text = "正在获取二维码…"
         binding.tvDebug.text = ""
         binding.ivQr.post { startFlow() }
     }
@@ -104,7 +115,7 @@ class QrLoginActivity : BaseActivity() {
 
     private fun startFlow() {
         pollJob?.cancel()
-        binding.tvStatus.text = "正在申请二维码..."
+        binding.tvStatus.text = "正在获取二维码…"
         lifecycleScope.launch {
             try {
                 WebCookieMaintainer.ensureWebFingerprintCookies()
@@ -140,7 +151,7 @@ class QrLoginActivity : BaseActivity() {
                 pollJob = poll(authCode)
             } catch (t: Throwable) {
                 AppLog.e("QrLogin", "generate failed", t)
-                binding.tvStatus.text = "申请二维码失败：${t.message}"
+                binding.tvStatus.text = "获取二维码失败：${t.message?.takeIf { it.isNotBlank() } ?: "未知错误"}"
                 binding.tvDebug.text = "gen err=${t.javaClass.simpleName}"
             }
         }
@@ -179,9 +190,9 @@ class QrLoginActivity : BaseActivity() {
                         lastCode = code
                     }
                     when (code) {
-                        86101 -> binding.tvStatus.text = "等待扫码..."
+                        86101 -> binding.tvStatus.text = "等待扫码…"
                         86090 -> binding.tvStatus.text = "已扫码，请在手机端确认"
-                        86039 -> binding.tvStatus.text = "等待扫码..."
+                        86039 -> binding.tvStatus.text = "等待扫码…"
                         86038 -> {
                             binding.tvStatus.text = "二维码已失效，请刷新"
                             return@launch
@@ -238,7 +249,7 @@ class QrLoginActivity : BaseActivity() {
                                 appPrefs = BiliClient.prefs,
                                 cookies = BiliClient.cookies,
                             )
-                            binding.tvStatus.text = "登录成功，Cookie 已写入（返回上一页）"
+                            binding.tvStatus.text = "登录成功，Cookie 已写入，正在返回"
                             AppLog.i("QrLogin", "login success sess=${BiliClient.cookies.hasSessData()}")
                             binding.tvDebug.text = "login ok sess=${BiliClient.cookies.hasSessData()}"
                             delay(800)
@@ -250,7 +261,7 @@ class QrLoginActivity : BaseActivity() {
                     }
                 } catch (t: Throwable) {
                     AppLog.w("QrLogin", "poll failed", t)
-                    binding.tvStatus.text = "轮询失败：${t.message}"
+                    binding.tvStatus.text = "轮询失败：${t.message?.takeIf { it.isNotBlank() } ?: "未知错误"}"
                     binding.tvDebug.text = "poll err=${t.javaClass.simpleName}"
                 }
                 delay(2000)

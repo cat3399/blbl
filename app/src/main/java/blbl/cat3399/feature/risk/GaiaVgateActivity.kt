@@ -96,7 +96,7 @@ class GaiaVgateActivity : BaseActivity() {
                 )
             } catch (t: Throwable) {
                 AppLog.e("GaiaVgate", "register failed $registerContext", t)
-                status.text = "申请失败：${t.message}"
+                status.text = "申请失败：${t.message?.takeIf { it.isNotBlank() } ?: "未知错误"}"
             }
         }
     }
@@ -136,7 +136,7 @@ class GaiaVgateActivity : BaseActivity() {
                     finish()
                 } catch (t: Throwable) {
                     AppLog.e("GaiaVgate", "validate failed token=${token.take(8)}", t)
-                    status.text = "提交失败：${t.message}"
+                    status.text = "提交失败：${t.message?.takeIf { it.isNotBlank() } ?: "未知错误"}"
                 }
             }
         }

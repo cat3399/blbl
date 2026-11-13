@@ -387,7 +387,7 @@ class PgcRecommendGridFragment : Fragment(), RefreshKeyHandler, TabSwitchFocusTa
             } catch (t: Throwable) {
                 if (t is CancellationException) throw t
                 AppLog.e("PgcRecommend", "load failed source=${source.logName} key=$nextKey", t)
-                context?.let { AppToast.show(it, "加载失败，可查看 Logcat(标签 BLBL)") }
+                context?.let { AppToast.show(it, getString(R.string.error_load_retry)) }
             } finally {
                 if (token == requestToken) _binding?.swipeRefresh?.isRefreshing = false
                 isLoadingMore = false

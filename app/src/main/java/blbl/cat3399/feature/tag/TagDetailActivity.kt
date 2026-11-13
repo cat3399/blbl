@@ -240,7 +240,7 @@ class TagDetailActivity : BaseActivity() {
             } catch (t: Throwable) {
                 if (t is CancellationException) throw t
                 AppLog.e("TagDetail", "load failed keyword=${tagName.take(20)} page=$page", t)
-                AppToast.show(this@TagDetailActivity, "加载失败，可查看 Logcat(标签 BLBL)")
+                AppToast.show(this@TagDetailActivity, getString(R.string.error_load_retry))
             } finally {
                 if (token == requestToken) binding.swipeRefresh.isRefreshing = false
                 isLoadingMore = false

@@ -227,16 +227,16 @@ class SettingsRenderer(
                     SettingEntry(SettingId.ThemePreset, "主题", SettingsText.themePresetText(prefs.themePreset), null),
                     SettingEntry(SettingId.ApiSource, "接口类别", SettingsText.apiSourceText(prefs.apiSource), null),
                     SettingEntry(SettingId.UserAgent, "User-Agent", prefs.userAgent.take(60), null),
-                    SettingEntry(SettingId.Ipv4OnlyEnabled, "是否只允许使用IPV4", if (prefs.ipv4OnlyEnabled) "开" else "关", null),
+                    SettingEntry(SettingId.Ipv4OnlyEnabled, "仅使用 IPv4", if (prefs.ipv4OnlyEnabled) "开" else "关", null),
                     SettingEntry(SettingId.GaiaVgate, "风控验证", gaiaVgateStatusText(), "播放被拦截后可在此手动完成人机验证"),
                     SettingEntry(SettingId.ClearCache, "清理缓存", cacheSizeText(), null),
-                    SettingEntry(SettingId.ConfigTransfer, "导出/入配置", "打开", null),
+                    SettingEntry(SettingId.ConfigTransfer, "导入/导出配置", "打开", null),
                     SettingEntry(SettingId.ClearLogin, "清除登录", loginStatusText(), null),
                 )
 
             "页面设置" ->
                 listOf(
-                    SettingEntry(SettingId.StartupPage, "启动默认页", SettingsText.startupPageText(activity, prefs.startupPage), null),
+                    SettingEntry(SettingId.StartupPage, "启动页面", SettingsText.startupPageText(activity, prefs.startupPage), null),
                     SettingEntry(SettingId.GridSpanCount, "每行卡片数量", SettingsText.gridSpanText(prefs.gridSpanCount), null),
                     SettingEntry(
                         SettingId.DynamicGridSpanCount,
@@ -246,9 +246,9 @@ class SettingsRenderer(
                     ),
                     SettingEntry(SettingId.PgcGridSpanCount, "番剧/电视剧每行卡片数量", SettingsText.gridSpanText(prefs.pgcGridSpanCount), null),
                     SettingEntry(SettingId.UiScaleFactor, "界面大小", SettingsText.uiScaleFactorText(prefs.uiScaleFactor), null),
-                    SettingEntry(SettingId.FullscreenEnabled, "以全屏模式运行", if (prefs.fullscreenEnabled) "开" else "关", null),
+                    SettingEntry(SettingId.FullscreenEnabled, "全屏显示", if (prefs.fullscreenEnabled) "开" else "关", null),
                     SettingEntry(SettingId.AvoidDisplayCutout, "避开挖孔/圆角区域", if (prefs.avoidDisplayCutout) "开" else "关", null),
-                    SettingEntry(SettingId.TabSwitchFollowsFocus, "tab跟随焦点切换", if (prefs.tabSwitchFollowsFocus) "开" else "关", null),
+                    SettingEntry(SettingId.TabSwitchFollowsFocus, "标签页随焦点切换", if (prefs.tabSwitchFollowsFocus) "开" else "关", null),
                     SettingEntry(
                         SettingId.MainAutoHideSidebarOnEnterContent,
                         "进入内容区后关闭侧边栏",
@@ -323,14 +323,14 @@ class SettingsRenderer(
                     ),
                     SettingEntry(
                         SettingId.PlayerPreferredQnPgc,
-                        "PGC 默认画质",
+                        "番剧/影视默认画质",
                         SettingsText.qnText(prefs.playerPreferredQnPgc),
                         null,
                     ),
-                    SettingEntry(SettingId.PlayerPreferredAudioId, "默认音轨", SettingsText.audioText(prefs.playerPreferredAudioId), null),
+                    SettingEntry(SettingId.PlayerPreferredAudioId, "默认音质", SettingsText.audioText(prefs.playerPreferredAudioId), null),
                     SettingEntry(
                         SettingId.PlayerSeamlessQualitySwitchEnabled,
-                        "无缝切换清晰度",
+                        "无缝切换画质",
                         if (prefs.playerSeamlessQualitySwitchEnabled) "开" else "关",
                         null,
                     ),
@@ -397,13 +397,13 @@ class SettingsRenderer(
                     ),
                     SettingEntry(
                         SettingId.SubtitleBackgroundOpacity,
-                        "字幕背景透明度",
+                        "字幕背景不透明度",
                         SettingsText.subtitleBackgroundOpacityText(prefs.subtitleBackgroundOpacity),
                         null,
                     ),
                     SettingEntry(SettingId.SubtitleEnabledDefault, "默认开启字幕", if (prefs.subtitleEnabledDefault) "开" else "关", null),
                     SettingEntry(SettingId.PlayerPreferredCodec, "视频编码", prefs.playerPreferredCodec, null),
-                    SettingEntry(SettingId.PlayerOsdButtons, "OSD按钮显示", SettingsText.playerOsdButtonsText(prefs.playerOsdButtons), null),
+                    SettingEntry(SettingId.PlayerOsdButtons, "控制栏按钮", SettingsText.playerOsdButtonsText(prefs.playerOsdButtons), null),
                     SettingEntry(SettingId.PlayerUpQuickCardEnabled, "UP关注卡片", if (prefs.playerUpQuickCardEnabled) "开" else "关", null),
                     SettingEntry(SettingId.PlayerDoubleBackToExit, "按两次退出键才退出播放器", if (prefs.playerDoubleBackToExit) "开" else "关", null),
                     SettingEntry(
@@ -456,7 +456,7 @@ class SettingsRenderer(
                     ),
                     SettingEntry(
                         SettingId.PlayerAudioBalance,
-                        "音频平衡",
+                        "音量均衡",
                         AudioBalanceLevel.fromPrefValue(prefs.playerAudioBalanceLevel).label,
                         null,
                     ),
@@ -475,8 +475,8 @@ class SettingsRenderer(
                     SettingEntry(SettingId.DanmakuEnabled, "弹幕开关", if (prefs.danmakuEnabled) "开" else "关", null),
                     SettingEntry(
                         SettingId.DanmakuOpacity,
-                        "弹幕透明度",
-                        String.format(java.util.Locale.US, "%.2f", prefs.danmakuOpacity),
+                        "弹幕不透明度",
+                        SettingsText.opacityText(prefs.danmakuOpacity),
                         null,
                     ),
                     SettingEntry(SettingId.DanmakuTextSizeSp, "弹幕字体大小", prefs.danmakuTextSizeSp.toInt().toString(), null),

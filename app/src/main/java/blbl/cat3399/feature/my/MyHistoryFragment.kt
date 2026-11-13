@@ -1,5 +1,6 @@
 package blbl.cat3399.feature.my
 
+import blbl.cat3399.R
 import android.content.Intent
 import android.os.Bundle
 import android.os.SystemClock
@@ -376,7 +377,7 @@ class MyHistoryFragment : Fragment(), MyTabSwitchFocusTarget, RefreshKeyHandler 
                 if (t is CancellationException) throw t
                 if (preserveCurrentOrderRefresh) resetLoadedKeysFromAdapter()
                 AppLog.e("MyHistory", "load failed", t)
-                context?.let { AppToast.show(it, "加载失败，可查看 Logcat(标签 BLBL)") }
+                context?.let { AppToast.show(it, getString(R.string.error_load_retry)) }
             } finally {
                 if (paging.snapshot().generation == startGen) _binding?.swipeRefresh?.isRefreshing = false
             }

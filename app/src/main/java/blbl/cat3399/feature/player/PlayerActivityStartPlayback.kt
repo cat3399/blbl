@@ -8,6 +8,7 @@ import blbl.cat3399.core.api.BiliApi
 import blbl.cat3399.core.api.video.VideoDetail
 import blbl.cat3399.core.api.video.VideoPlayStream
 import blbl.cat3399.core.ui.AppToast
+import blbl.cat3399.core.ui.popup.AppPopup
 import blbl.cat3399.core.log.AppLog
 import blbl.cat3399.core.model.BangumiEpisode
 import blbl.cat3399.core.model.BangumiSeasonDetail
@@ -78,10 +79,22 @@ private fun PlayerActivity.startPlaybackFailureMessage(throwable: Throwable): St
 }
 
 private fun PlayerActivity.finishAfterStartPlaybackFailure(throwable: Throwable) {
-    if (!handlePlayUrlErrorIfNeeded(throwable)) {
-        AppToast.showLong(this, startPlaybackFailureMessage(throwable))
+    if (isFinishing || isDestroyed) return
+    if (handlePlayUrlErrorIfNeeded(throwable)) {
+        finish()
+        return
     }
-    if (!isFinishing) finish()
+    val popup = AppPopup.message(
+        context = this,
+        title = "播放失败",
+        message = startPlaybackFailureMessage(throwable),
+        positiveText = "返回",
+        onDismiss = { if (!isFinishing && !isDestroyed) finish() },
+    )
+    if (popup == null) {
+        AppLog.w("Player", "could not show startup failure dialog", throwable)
+        finish()
+    }
 }
 
 private fun resolveCurrentVodDurationMsFromDetail(detail: VideoDetail, cid: Long): Long? {
@@ -398,7 +411,7 @@ internal fun PlayerActivity.startPlayback(
         playbackUncaughtHandler
             ?: CoroutineExceptionHandler { _, throwable ->
                 AppLog.e("Player", "uncaught", throwable)
-                AppToast.showLong(this@startPlayback, "播放失败：${throwable.message}")
+                AppToast.showLong(this@startPlayback, "播放失败：${throwable.message?.takeIf { it.isNotBlank() } ?: "未知错误"}")
                 finish()
             }
 

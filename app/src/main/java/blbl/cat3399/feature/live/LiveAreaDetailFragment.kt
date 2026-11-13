@@ -1,5 +1,6 @@
 package blbl.cat3399.feature.live
 
+import blbl.cat3399.R
 import android.content.Intent
 import android.os.Bundle
 import android.os.SystemClock
@@ -332,7 +333,7 @@ class LiveAreaDetailFragment : Fragment() {
             } catch (t: Throwable) {
                 if (t is CancellationException) throw t
                 AppLog.e("LiveAreaDetail", "load failed pid=$parentAreaId aid=$areaId page=$page", t)
-                context?.let { AppToast.show(it, "加载失败，可查看 Logcat(标签 BLBL)") }
+                context?.let { AppToast.show(it, getString(R.string.error_load_retry)) }
             } finally {
                 if (isRefresh && token == requestToken) _binding?.swipeRefresh?.isRefreshing = false
                 isLoadingMore = false

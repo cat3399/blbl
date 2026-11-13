@@ -42,6 +42,23 @@ jobs:
           RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
           RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
         run: ./gradlew :app:assembleKitkatRelease -PversionName=${{ inputs.version_name }} -PversionCode=${{ github.run_number }}
+      - name: Archive release mapping
+        env:
+          VERSION_NAME: ${{ inputs.version_name }}
+        run: |
+          set -euo pipefail
+          CLEAN_VERSION="${VERSION_NAME#v}"
+          MAPPING_SOURCE="app/build/outputs/mapping/kitkatRelease/mapping.txt"
+          test -s "${MAPPING_SOURCE}"
+          DOWNLOAD_MAPPING="app/build/outputs/mapping/kitkatRelease/blbl-${CLEAN_VERSION}-api19-mapping.txt"
+          cp "${MAPPING_SOURCE}" "${DOWNLOAD_MAPPING}"
+          echo "DOWNLOAD_MAPPING=${DOWNLOAD_MAPPING}" >> "${GITHUB_ENV}"
+      - name: Upload release mapping artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: blbl-${{ inputs.version_name }}-api19-mapping
+          path: ${{ env.DOWNLOAD_MAPPING }}
+          if-no-files-found: error
       - name: Upload API19 release APK to R2 (optional)
         env:
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
@@ -113,4 +130,4 @@ jobs:
               gh release create "$RELEASE_TAG" --title "$RELEASE_TAG" --generate-notes --target "$BUILD_SHA"
             fi
           fi
-          gh release upload "$RELEASE_TAG" "${APK_PATH}#blbl-android-${VERSION_NAME}-api19-release.apk" --clobber
+          gh release upload "$RELEASE_TAG" "${APK_PATH}#blbl-android-${VERSION_NAME}-api19-release.apk" "$DOWNLOAD_MAPPING" --clobber

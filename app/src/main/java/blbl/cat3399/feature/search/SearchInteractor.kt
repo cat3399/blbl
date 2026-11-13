@@ -396,7 +396,7 @@ class SearchInteractor(
             } catch (t: Throwable) {
                 if (t is CancellationException) throw t
                 AppLog.e("Search", "load failed tab=${tabAtStart.name} page=$startPage", t)
-                fragment.context?.let { AppToast.show(it, "搜索失败，可查看 Logcat(标签 BLBL)") }
+                fragment.context?.let { AppToast.show(it, fragment.getString(R.string.error_search_retry)) }
             } finally {
                 val stillSameRefresh = isRefresh && state.refreshUiToken == refreshToken
                 val stillSameGen = paging.snapshot().generation == startGen

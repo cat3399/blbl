@@ -1,5 +1,6 @@
 package blbl.cat3399.feature.video
 
+import blbl.cat3399.R
 import android.content.Intent
 import android.os.Bundle
 import android.os.SystemClock
@@ -241,7 +242,7 @@ class RegionDetailActivity : BaseActivity() {
             } catch (t: Throwable) {
                 if (t is CancellationException) throw t
                 AppLog.e("RegionDetail", "load failed rid=$rid page=$page", t)
-                AppToast.show(this@RegionDetailActivity, "加载失败，可查看 Logcat(标签 BLBL)")
+                AppToast.show(this@RegionDetailActivity, getString(R.string.error_load_retry))
             } finally {
                 if (token == requestToken) binding.swipeRefresh.isRefreshing = false
                 isLoadingMore = false

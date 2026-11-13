@@ -50,8 +50,8 @@ object ApkUpdateFlow {
             cancelable = true,
             actions =
                 listOf(
-                    PopupAction(role = PopupActionRole.NEGATIVE, text = "本次关闭"),
-                    PopupAction(role = PopupActionRole.NEUTRAL, text = "此版本不再提醒") {
+                    PopupAction(role = PopupActionRole.NEGATIVE, text = "稍后"),
+                    PopupAction(role = PopupActionRole.NEUTRAL, text = "忽略 v${update.versionName.removePrefix("v").removePrefix("V")}") {
                         BiliClient.prefs.autoUpdateIgnoredVersionName = update.versionName
                         onSkipVersion?.invoke()
                     },
@@ -71,7 +71,7 @@ object ApkUpdateFlow {
                             renderSelectedVersion()
                         }
                     },
-                    PopupAction(role = PopupActionRole.POSITIVE, text = "立即更新") {
+                    PopupAction(role = PopupActionRole.POSITIVE, text = "安装所选版本") {
                         onUpdate(selectedUpdate)
                     },
                 ),
