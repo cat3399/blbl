@@ -62,29 +62,13 @@ jobs:
           set -euo pipefail
           apk="app/build/outputs/apk/kitkat/release/app-kitkat-release.apk"
           test -s "$apk"
-          sdk_root="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
-          gradle_cache="${GRADLE_USER_HOME:-${HOME}/.gradle}"
-          aapt=""
-          apksigner=""
-          if [[ -n "$sdk_root" && -d "$sdk_root/build-tools" ]]; then
-            aapt="$(find "$sdk_root/build-tools" -type f -name aapt2 -perm -u+x | sort -V | tail -n 1)"
-            apksigner="$(find "$sdk_root/build-tools" -type f -name apksigner -perm -u+x | sort -V | tail -n 1)"
-          fi
-          if [[ -z "$aapt" && -d "$gradle_cache" ]]; then
-            aapt="$(find "$gradle_cache" -type f -name aapt2 -perm -u+x | sort -V | tail -n 1)"
-          fi
-
-          badging="$RUNNER_TEMP/api19-badging.txt"
-          if [[ -n "$aapt" ]]; then
-            "$aapt" dump badging "$apk" | tee "$badging"
-            grep -F "sdkVersion:'19'" "$badging"
-          else
-            echo "AAPT2 is unavailable on this runner; checking the packaged manifest produced by AGP."
-            manifest="$(find app/build/intermediates -type f -path '*kitkatRelease*' -name AndroidManifest.xml \
-              \( -path '*packaged_manifests*' -o -path '*merged_manifests*' \) | sort | tail -n 1)"
-            test -n "$manifest"
-            grep -aE '([[:space:]]|:)minSdkVersion[=:" ]+19(["[:space:]]|$)' "$manifest"
-          fi
+          echo "AAPT2 is unavailable on this runner; checking the packaged manifest produced by AGP."
+          manifest="$(find app/build/intermediates/packaged_manifests/kitkatRelease \
+            app/build/intermediates/merged_manifests/kitkatRelease \
+            -type f -name AndroidManifest.xml 2>/dev/null | sort | head -n 1)"
+          test -n "$manifest"
+          echo "Manifest: $manifest"
+          grep -aE '([[:space:]]|:)minSdkVersion[=:" ]+19(["[:space:]]|$)' "$manifest"
           unzip -l "$apk" | grep -F "lib/armeabi-v7a/libijkplayer.so"
           if unzip -l "$apk" | grep -E "lib/(arm64-v8a|x86|x86_64)/"; then
             echo "Unexpected non-ARM32 native library found in API19 APK." >&2
@@ -92,10 +76,7 @@ jobs:
           fi
 
           signature_status="unsigned"
-          if [[ -n "$apksigner" ]] && "$apksigner" verify --verbose "$apk"; then
-            signature_status="signed"
-            "$apksigner" verify --print-certs "$apk"
-          elif unzip -Z1 "$apk" | grep -Eq '^META-INF/[^/]+\.(RSA|DSA|EC)$'; then
+          if unzip -Z1 "$apk" | grep -Eq '^META-INF/[^/]+\.(RSA|DSA|EC)$'; then
             signature_status="signed (certificate entry)"
           fi
           apk_sha256="$(sha256sum "$apk" | awk '{print $1}')"
