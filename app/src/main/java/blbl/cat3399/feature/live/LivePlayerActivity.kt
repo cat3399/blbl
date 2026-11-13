@@ -84,6 +84,7 @@ import blbl.cat3399.feature.player.engine.LiveHlsDebugInfo
 import blbl.cat3399.feature.player.engine.PlayerEngineKind
 import blbl.cat3399.feature.player.engine.PlaybackSource
 import blbl.cat3399.feature.player.requirePlayerTouchOverlayBinding
+import blbl.cat3399.feature.player.videoCommentsPanelContent
 import kotlinx.coroutines.CancellationException
 import org.json.JSONObject
 import kotlinx.coroutines.Job
@@ -2594,8 +2595,9 @@ class LivePlayerActivity : BaseActivity() {
             binding.tabPageList.stateListAnimator = android.animation.AnimatorInflater.loadStateListAnimator(this, R.animator.blbl_focus_scale)
             binding.tabPartsList.stateListAnimator = android.animation.AnimatorInflater.loadStateListAnimator(this, R.animator.blbl_focus_scale)
             binding.tabRecommendList.stateListAnimator = android.animation.AnimatorInflater.loadStateListAnimator(this, R.animator.blbl_focus_scale)
-            binding.chipCommentSortHot.stateListAnimator = android.animation.AnimatorInflater.loadStateListAnimator(this, R.animator.blbl_focus_scale)
-            binding.chipCommentSortNew.stateListAnimator = android.animation.AnimatorInflater.loadStateListAnimator(this, R.animator.blbl_focus_scale)
+            val commentViews = binding.videoCommentsPanelContent()
+            commentViews.chipCommentSortHot.stateListAnimator = android.animation.AnimatorInflater.loadStateListAnimator(this, R.animator.blbl_focus_scale)
+            commentViews.chipCommentSortNew.stateListAnimator = android.animation.AnimatorInflater.loadStateListAnimator(this, R.animator.blbl_focus_scale)
         }
         if (Build.VERSION.SDK_INT >= 26) {
             binding.root.defaultFocusHighlightEnabled = false

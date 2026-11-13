@@ -8,8 +8,8 @@ import okhttp3.Request
 import okhttp3.Response
 import okhttp3.ResponseBody
 import okio.BufferedSink
-import okio.Okio
 import okio.Sink
+import okio.buffer
 
 // OkHttp 3.x (Java-style API) compat shim for kitkat flavor
 
@@ -42,4 +42,4 @@ fun Cookie.cookieHttpOnly(): Boolean = httpOnly()
 fun Cookie.cookieHostOnly(): Boolean = hostOnly()
 fun Cookie.cookiePersistent(): Boolean = persistent()
 
-fun Sink.bufferCompat(): BufferedSink = Okio.buffer(this)
+fun Sink.bufferCompat(): BufferedSink = buffer()

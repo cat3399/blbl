@@ -4235,8 +4235,9 @@ class PlayerActivity : BaseActivity() {
             binding.tabPageList.stateListAnimator = android.animation.AnimatorInflater.loadStateListAnimator(this, R.animator.blbl_focus_scale)
             binding.tabPartsList.stateListAnimator = android.animation.AnimatorInflater.loadStateListAnimator(this, R.animator.blbl_focus_scale)
             binding.tabRecommendList.stateListAnimator = android.animation.AnimatorInflater.loadStateListAnimator(this, R.animator.blbl_focus_scale)
-            binding.chipCommentSortHot.stateListAnimator = android.animation.AnimatorInflater.loadStateListAnimator(this, R.animator.blbl_focus_scale)
-            binding.chipCommentSortNew.stateListAnimator = android.animation.AnimatorInflater.loadStateListAnimator(this, R.animator.blbl_focus_scale)
+            val commentViews = binding.videoCommentsPanelContent()
+            commentViews.chipCommentSortHot.stateListAnimator = android.animation.AnimatorInflater.loadStateListAnimator(this, R.animator.blbl_focus_scale)
+            commentViews.chipCommentSortNew.stateListAnimator = android.animation.AnimatorInflater.loadStateListAnimator(this, R.animator.blbl_focus_scale)
         }
         if (Build.VERSION.SDK_INT >= 26) {
             binding.root.defaultFocusHighlightEnabled = false
