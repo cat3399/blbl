@@ -28,6 +28,19 @@ jobs:
           java-version: "17"
           cache: gradle
 
+      - name: Install Android package tools
+        run: |
+          set -euo pipefail
+          sdk_root="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          test -n "$sdk_root"
+          sdkmanager="$(command -v sdkmanager || true)"
+          if [[ -z "$sdkmanager" && -d "$sdk_root/cmdline-tools" ]]; then
+            sdkmanager="$(find "$sdk_root/cmdline-tools" -type f -name sdkmanager -perm -u+x | sort -V | tail -n 1 || true)"
+          fi
+          test -x "$sdkmanager"
+          yes | "$sdkmanager" --licenses >/dev/null || true
+          "$sdkmanager" "build-tools;35.0.0"
+
       - name: Prepare optional release signing
         env:
           RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
@@ -62,13 +75,15 @@ jobs:
           set -euo pipefail
           apk="app/build/outputs/apk/kitkat/release/app-kitkat-release.apk"
           test -s "$apk"
-          echo "AAPT2 is unavailable on this runner; checking the packaged manifest produced by AGP."
-          manifest="$(find app/build/intermediates -name AndroidManifest.xml -print0 2>/dev/null \
-            | xargs -0 -r grep -alE 'minSdkVersion[^0-9]{0,16}19([^0-9]|$)' \
-            | head -n 1 || true)"
-          test -n "$manifest"
-          echo "Manifest: $manifest"
-          grep -aE '([[:space:]]|:)minSdkVersion[=:" ]+19(["[:space:]]|$)' "$manifest"
+          sdk_root="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          build_tools="$sdk_root/build-tools/35.0.0"
+          aapt="$build_tools/aapt2"
+          apksigner="$build_tools/apksigner"
+          test -x "$aapt"
+          test -x "$apksigner"
+          badging="$RUNNER_TEMP/api19-badging.txt"
+          "$aapt" dump badging "$apk" | tee "$badging"
+          grep -F "sdkVersion:'19'" "$badging"
           unzip -l "$apk" | grep -F "lib/armeabi-v7a/libijkplayer.so"
           if unzip -l "$apk" | grep -E "lib/(arm64-v8a|x86|x86_64)/"; then
             echo "Unexpected non-ARM32 native library found in API19 APK." >&2
@@ -76,8 +91,9 @@ jobs:
           fi
 
           signature_status="unsigned"
-          if unzip -Z1 "$apk" | grep -Eq '^META-INF/[^/]+\.(RSA|DSA|EC)$'; then
-            signature_status="signed (certificate entry)"
+          if "$apksigner" verify --verbose "$apk"; then
+            signature_status="signed"
+            "$apksigner" verify --print-certs "$apk"
           fi
           apk_sha256="$(sha256sum "$apk" | awk '{print $1}')"
           {
