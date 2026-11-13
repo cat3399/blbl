@@ -73,7 +73,8 @@ jobs:
       - name: Inspect APK
         run: |
           set -euo pipefail
-          apk="app/build/outputs/apk/kitkat/release/app-kitkat-release.apk"
+          apk="$(find app/build/outputs/apk -type f -name '*.apk' | sort | tail -n 1)"
+          test -n "$apk"
           test -s "$apk"
           sdk_root="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
           aapt="$(command -v aapt2 || true)"
@@ -117,5 +118,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: blbl-api19-kitkat-release-${{ github.sha }}
-          path: app/build/outputs/apk/kitkat/release/app-kitkat-release.apk
+          path: app/build/outputs/apk/**/*.apk
           if-no-files-found: error
