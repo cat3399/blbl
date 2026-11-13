@@ -29,6 +29,7 @@ import kotlin.math.min
 
 class QrLoginActivity : BaseActivity() {
     private lateinit var binding: ActivityQrLoginBinding
+    private var flowJob: Job? = null
     private var pollJob: Job? = null
     private val passportHeaders =
         mapOf(
@@ -88,19 +89,24 @@ class QrLoginActivity : BaseActivity() {
     }
 
     override fun onDestroy() {
+        flowJob?.cancel()
         pollJob?.cancel()
         super.onDestroy()
     }
 
     private fun startFlow() {
+        flowJob?.cancel()
         pollJob?.cancel()
         binding.tvStatus.text = "正在获取二维码…"
-        lifecycleScope.launch {
+        flowJob = lifecycleScope.launch {
             try {
                 WebCookieMaintainer.ensureWebFingerprintCookies()
                 val genRaw =
                     BiliClient.requestString(
-                        "https://passport.bilibili.com/x/passport-login/web/qrcode/generate",
+                        BiliClient.withQuery(
+                            "https://passport.bilibili.com/x/passport-login/web/qrcode/generate",
+                            mapOf("source" to "main_web"),
+                        ),
                         headers = passportHeaders,
                     )
                 val gen = withContext(Dispatchers.Default) { JSONObject(genRaw) }

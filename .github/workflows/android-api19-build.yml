@@ -110,11 +110,11 @@ jobs:
           {
             echo "## API19 APK"
             echo
-            echo "- Path: `$apk`"
-            echo "- SHA-256: `$apk_sha256`"
-            echo "- Signature: `$signature_status`"
-            echo "- ABI: `armeabi-v7a`"
-            echo "- minSdk: `19`"
+            printf '%s\n' "- Path: $apk"
+            printf '%s\n' "- SHA-256: $apk_sha256"
+            printf '%s\n' "- Signature: $signature_status"
+            printf '%s\n' "- ABI: armeabi-v7a"
+            printf '%s\n' "- minSdk: 19"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload KitKat release APK

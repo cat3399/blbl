@@ -425,7 +425,12 @@ internal class ExoPlayerEngine(
                 override fun onTransferEnd(source: DataSource, dataSpec: DataSpec, isNetwork: Boolean) {}
             }
 
-        val upstream = createHttpDataSourceFactory(transferListener = listener)
+        val client =
+            when (mediaRequestProfile) {
+                VideoMediaRequestProfile.WEB -> BiliClient.cdnOkHttp
+                VideoMediaRequestProfile.APP -> BiliClient.appCdnOkHttp
+            }
+        val upstream = createHttpDataSourceFactory(client = client, transferListener = listener)
         val uris =
             urlCandidates
                 .orEmpty()

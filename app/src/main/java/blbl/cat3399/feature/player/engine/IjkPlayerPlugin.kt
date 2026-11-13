@@ -171,6 +171,8 @@ internal object IjkPlayerPlugin {
             val targetSo = soFile(context, abi)
             targetSo.parentFile?.mkdirs()
             bundledSo.copyTo(targetSo, overwrite = true)
+            validateInstalledSo(targetSo)
+            writeInstallStamp(context, abi)
 
             if (isInstalled(context, abi)) targetSo else null
         } catch (e: Exception) {

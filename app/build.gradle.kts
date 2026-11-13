@@ -115,6 +115,10 @@ android {
                     "**/x86/**",
                     "**/x86_64/**",
                 ))
+                // The API19-specific ARM32 library intentionally overrides the
+                // same ABI entry bundled in the IJK AAR. Keep one deterministic
+                // entry in the APK and avoid AGP's duplicate native library warning.
+                variant.packaging.jniLibs.pickFirsts.add("**/armeabi-v7a/libijkplayer.so")
             }
         }
     }
