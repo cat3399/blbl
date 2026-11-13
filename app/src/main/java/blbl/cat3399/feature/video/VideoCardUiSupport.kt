@@ -200,6 +200,8 @@ internal fun Context.openPlayerFromPlaybackSource(
         Intent(this, blbl.cat3399.feature.player.PlayerActivity::class.java)
             .putExtra(blbl.cat3399.feature.player.PlayerActivity.EXTRA_BVID, card.bvid)
             .putExtra(blbl.cat3399.feature.player.PlayerActivity.EXTRA_CID, card.cid ?: -1L)
+            .putExtra(blbl.cat3399.feature.player.PlayerActivity.EXTRA_TITLE, card.title)
+            .putExtra(blbl.cat3399.feature.player.PlayerActivity.EXTRA_COVER, card.coverUrl)
             .putExtra(blbl.cat3399.feature.player.PlayerActivity.EXTRA_PLAYLIST_TOKEN, token)
             .putExtra(blbl.cat3399.feature.player.PlayerActivity.EXTRA_PLAYLIST_INDEX, safePosition)
             .apply { card.aid?.takeIf { it > 0L }?.let { putExtra(blbl.cat3399.feature.player.PlayerActivity.EXTRA_AID, it) } }

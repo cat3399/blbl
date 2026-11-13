@@ -802,6 +802,10 @@ class AppPrefs(context: Context) {
         get() = PlayerPlaybackModes.normalize(prefs.getString(KEY_PLAYER_PLAYBACK_MODE, PLAYER_PLAYBACK_MODE_NONE))
         set(value) = prefs.edit().putString(KEY_PLAYER_PLAYBACK_MODE, PlayerPlaybackModes.normalize(value)).apply()
 
+    var playerVideoFillMode: String
+        get() = VideoFillMode.fromPrefValue(prefs.getString(KEY_PLAYER_VIDEO_FILL_MODE, null)).prefValue
+        set(value) = prefs.edit().putString(KEY_PLAYER_VIDEO_FILL_MODE, VideoFillMode.fromPrefValue(value).prefValue).apply()
+
     var playerSettingsApplyToGlobal: Boolean
         get() = prefs.getBoolean(KEY_PLAYER_SETTINGS_APPLY_TO_GLOBAL, false)
         set(value) = prefs.edit().putBoolean(KEY_PLAYER_SETTINGS_APPLY_TO_GLOBAL, value).apply()
@@ -1135,6 +1139,7 @@ class AppPrefs(context: Context) {
         private const val KEY_PLAYER_VIDEOSHOT_PREVIEW_SIZE = "player_videoshot_preview_size"
         private const val KEY_PLAYER_AUDIO_BALANCE_LEVEL = "player_audio_balance_level"
         private const val KEY_PLAYER_PLAYBACK_MODE = "player_playback_mode"
+        private const val KEY_PLAYER_VIDEO_FILL_MODE = "player_video_fill_mode"
         private const val KEY_PLAYER_SETTINGS_APPLY_TO_GLOBAL = "player_settings_apply_to_global"
         private const val KEY_PLAYER_UP_QUICK_CARD_ENABLED = "player_up_quick_card_enabled"
         private const val KEY_PLAYER_OSD_BUTTONS = "player_osd_buttons"

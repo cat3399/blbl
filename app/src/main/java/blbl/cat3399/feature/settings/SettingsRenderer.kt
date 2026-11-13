@@ -7,6 +7,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import blbl.cat3399.BuildConfig
 import blbl.cat3399.core.net.BiliClient
+import blbl.cat3399.core.prefs.VideoFillMode
 import blbl.cat3399.core.ui.FocusTreeUtils
 import blbl.cat3399.core.ui.requestFocusAdapterPositionReliable
 import blbl.cat3399.databinding.ActivitySettingsBinding
@@ -381,6 +382,12 @@ class SettingsRenderer(
                     ),
                     SettingEntry(SettingId.PlayerOpenDetailBeforePlay, "播放前打开详情页", if (prefs.playerOpenDetailBeforePlay) "开" else "关", null),
                     SettingEntry(SettingId.PlayerPlaybackMode, "播放模式", SettingsText.playbackModeText(prefs.playerPlaybackMode), null),
+                    SettingEntry(
+                        SettingId.PlayerVideoFillMode,
+                        "默认画面填充",
+                        VideoFillMode.fromPrefValue(prefs.playerVideoFillMode).label,
+                        null,
+                    ),
                     SettingEntry(
                         SettingId.PlayerSettingsApplyToGlobal,
                         "播放器设置应用到全局",

@@ -19,6 +19,7 @@ internal class PlayerBufferingOverlayController(
     private val scope: CoroutineScope,
     private val playbackStateProvider: () -> Int?,
     private val showDelayMs: Long = DEFAULT_BUFFERING_OVERLAY_SHOW_DELAY_MS,
+    private val suppressedProvider: () -> Boolean = { false },
 ) {
     private val speedMeter = BufferingSpeedMeter()
     private var showJob: Job? = null
@@ -74,6 +75,12 @@ internal class PlayerBufferingOverlayController(
 
     fun update() {
         val binding = bindingProvider() ?: return
+        if (suppressedProvider()) {
+            showJob?.cancel()
+            showJob = null
+            binding.bufferingOverlay.visibility = View.GONE
+            return
+        }
         val nowMs = SystemClock.elapsedRealtime()
         val isBuffering = playbackStateProvider() == Player.STATE_BUFFERING
         val suppressedUntil = overlaySuppressedUntilMs

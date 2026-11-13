@@ -66,6 +66,10 @@ android {
         jvmTarget = "17"
     }
 
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
+    }
+
     packaging {
         resources {
             excludes += setOf(
@@ -138,6 +142,10 @@ dependencies {
     implementation("com.google.zxing:core:3.5.3")
 
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.robolectric:robolectric:4.14.1") {
+        // These tests measure View layouts with legacy graphics; no native renderer is needed.
+        exclude(group = "org.robolectric", module = "nativeruntime-dist-compat")
+    }
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")
 }
 

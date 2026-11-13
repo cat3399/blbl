@@ -472,6 +472,8 @@ class BangumiDetailActivity : BaseActivity() {
             Intent(this, PlayerActivity::class.java)
                 .putExtra(PlayerActivity.EXTRA_BVID, bvid)
                 .putExtra(PlayerActivity.EXTRA_CID, cid)
+                .putExtra(PlayerActivity.EXTRA_TITLE, card.title)
+                .putExtra(PlayerActivity.EXTRA_COVER, card.coverUrl)
                 .putExtra(PlayerActivity.EXTRA_SEASON_ID, seasonId)
                 .apply { card.epId?.let { putExtra(PlayerActivity.EXTRA_EP_ID, it) } }
                 .apply { card.aid?.let { putExtra(PlayerActivity.EXTRA_AID, it) } }

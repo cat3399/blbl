@@ -63,6 +63,8 @@ internal interface BlblPlayerEngine {
 
         fun onIsPlayingChanged(isPlaying: Boolean) {}
 
+        fun onPlayWhenReadyChanged(playWhenReady: Boolean) {}
+
         fun onPlaybackStateChanged(playbackState: Int) {}
 
         fun onPositionDiscontinuity(newPositionMs: Long) {}

@@ -55,7 +55,9 @@ internal class IjkPlayerEngine(
     override var playWhenReady: Boolean
         get() = playWhenReadyInternal
         set(value) {
+            val changed = playWhenReadyInternal != value
             playWhenReadyInternal = value
+            if (changed) listeners.forEach { it.onPlayWhenReadyChanged(value) }
             val p = ijk ?: return
             syncPlayWhenReadyToNative(p)
         }
