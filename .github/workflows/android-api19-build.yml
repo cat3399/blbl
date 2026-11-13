@@ -63,9 +63,9 @@ jobs:
           apk="app/build/outputs/apk/kitkat/release/app-kitkat-release.apk"
           test -s "$apk"
           echo "AAPT2 is unavailable on this runner; checking the packaged manifest produced by AGP."
-          manifest="$(find app/build/intermediates/packaged_manifests/kitkatRelease \
-            app/build/intermediates/merged_manifests/kitkatRelease \
-            -type f -name AndroidManifest.xml 2>/dev/null | sort | head -n 1)"
+          manifest="$(find app/build/intermediates -type f -path '*kitkatRelease*' \
+            -name AndroidManifest.xml 2>/dev/null | grep -E '/(packaged_manifests|merged_manifests)/' \
+            | sort | head -n 1 || true)"
           test -n "$manifest"
           echo "Manifest: $manifest"
           grep -aE '([[:space:]]|:)minSdkVersion[=:" ]+19(["[:space:]]|$)' "$manifest"
