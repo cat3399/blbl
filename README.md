@@ -66,8 +66,12 @@
 ./gradlew assembleRelease -PversionName=0.1.1 -PversionCode=2
 ```
 
-## 临时更新方案
-**目前在代码中内置了国内环境可直接访问的直链,用于在测试阶段方便的覆盖更新,待后续稳定之后将会移除**,介意者请从release中下载action编译的安装包
+## API19 版本与更新
+
+- `Android API19 Build` 默认从 `CHANGELOG.md` 第一条 `x.y.z` 版本生成 `x.y.z-api19-kitkat`，版本号按 `major * 1,000,000 + minor * 1,000 + patch` 计算。
+- API19 更新检查读取 `MTGA-Legacy/blbl` 的 `mtga-api19-main/CHANGELOG.md`。
+- `Android API19 Release` 手动输入基础版本（例如 `0.1.30`），发布 tag `v0.1.30-api19`，并附带版本 APK 与 `blbl-latest-api19-release.apk`。
+- API19 Release 必须配置签名 Secrets，且签名证书必须与设备上已安装的 APK 一致；工作流会拒绝发布未签名 APK。
 
 ## GitHub Actions
 
