@@ -152,3 +152,22 @@ jobs:
             "$LATEST_APK" \
             "$DOWNLOAD_MAPPING" \
             --clobber
+
+          # Keep the fixed URL used as the API19 updater fallback synchronized with the
+          # latest signed manual release. This tag is a prerelease by design.
+          ROLLING_TAG="api19-latest"
+          ROLLING_APK="app/build/outputs/apk/kitkat/release/blbl-api19-kitkat-latest.apk"
+          cp "$APK_PATH" "$ROLLING_APK"
+          if gh release view "$ROLLING_TAG" >/dev/null 2>&1; then
+            gh release edit "$ROLLING_TAG" \
+              --title "Blbl API19 最新构建" \
+              --notes "由 API19 Release 工作流自动更新。此滚动构建用于更新兜底下载。" \
+              --target "$BUILD_SHA"
+          else
+            gh release create "$ROLLING_TAG" \
+              --title "Blbl API19 最新构建" \
+              --notes "由 API19 Release 工作流自动更新。此滚动构建用于更新兜底下载。" \
+              --prerelease \
+              --target "$BUILD_SHA"
+          fi
+          gh release upload "$ROLLING_TAG" "$ROLLING_APK" --clobber
