@@ -45,17 +45,18 @@ jobs:
           yes | "$sdkmanager" --licenses >/dev/null || true
           "$sdkmanager" "build-tools;35.0.0"
 
-      - name: Prepare optional release signing
+      - name: Prepare release signing
         env:
           RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
         run: |
           set -euo pipefail
-          if [[ -n "${RELEASE_KEYSTORE_BASE64:-}" ]]; then
-            mkdir -p keystore
-            printf '%s' "$RELEASE_KEYSTORE_BASE64" | base64 --decode > keystore/release.keystore
-          else
-            echo "No release keystore configured; the APK will be unsigned."
+          if [[ -z "${RELEASE_KEYSTORE_BASE64:-}" ]]; then
+            echo "RELEASE_KEYSTORE_BASE64 is required for an installable API19 APK." >&2
+            exit 1
           fi
+          mkdir -p keystore
+          printf '%s' "$RELEASE_KEYSTORE_BASE64" | base64 --decode > keystore/release.keystore
+          test -s keystore/release.keystore
 
       - name: Build KitKat release APK
         env:
@@ -112,11 +113,9 @@ jobs:
             exit 1
           fi
 
-          signature_status="unsigned"
-          if "$apksigner" verify --verbose "$apk"; then
-            signature_status="signed"
-            "$apksigner" verify --print-certs "$apk"
-          fi
+          "$apksigner" verify --verbose "$apk"
+          "$apksigner" verify --print-certs "$apk"
+          signature_status="signed"
           apk_sha256="$(sha256sum "$apk" | awk '{print $1}')"
           {
             echo "## API19 APK"
