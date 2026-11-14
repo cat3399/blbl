@@ -1,6 +1,7 @@
 package blbl.cat3399.feature.player
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Path
@@ -547,8 +548,12 @@ private class SponsorSubmitThumbnailItemView(context: Context) : View(context) {
         clipPath.addRoundRect(rect, radius, radius, Path.Direction.CW)
         val checkpoint = canvas.save()
         canvas.clipPath(clipPath)
-        updateDrawSourceRect(itemFrame.srcRect)
-        canvas.drawBitmap(itemFrame.spriteSheet, srcRect, rect, bitmapPaint)
+        updateDrawSourceRect(itemFrame.bitmap)
+        try {
+            canvas.drawBitmap(itemFrame.bitmap, srcRect, rect, bitmapPaint)
+        } catch (_: RuntimeException) {
+            frame = null
+        }
         canvas.restoreToCount(checkpoint)
     }
 
@@ -565,10 +570,10 @@ private class SponsorSubmitThumbnailItemView(context: Context) : View(context) {
         return dstRect
     }
 
-    private fun updateDrawSourceRect(cellRect: Rect) {
-        srcRect.set(cellRect)
-        val sourceWidth = cellRect.width().coerceAtLeast(1)
-        val sourceHeight = cellRect.height().coerceAtLeast(1)
+    private fun updateDrawSourceRect(bitmap: Bitmap) {
+        srcRect.set(0, 0, bitmap.width, bitmap.height)
+        val sourceWidth = srcRect.width().coerceAtLeast(1)
+        val sourceHeight = srcRect.height().coerceAtLeast(1)
         val targetAspect = aspectWidth.toFloat() / aspectHeight.coerceAtLeast(1).toFloat()
         val sourceAspect = sourceWidth.toFloat() / sourceHeight.toFloat()
         if (abs(sourceAspect - targetAspect) < 0.001f) return
@@ -576,14 +581,14 @@ private class SponsorSubmitThumbnailItemView(context: Context) : View(context) {
         if (sourceAspect > targetAspect) {
             val croppedWidth = (sourceHeight * targetAspect).roundToInt().coerceIn(1, sourceWidth)
             val inset = ((sourceWidth - croppedWidth) / 2).coerceAtLeast(0)
-            srcRect.left = cellRect.left + inset
+            srcRect.left = inset
             srcRect.right = srcRect.left + croppedWidth
             return
         }
 
         val croppedHeight = (sourceWidth / targetAspect.coerceAtLeast(0.0001f)).roundToInt().coerceIn(1, sourceHeight)
         val inset = ((sourceHeight - croppedHeight) / 2).coerceAtLeast(0)
-        srcRect.top = cellRect.top + inset
+        srcRect.top = inset
         srcRect.bottom = srcRect.top + croppedHeight
     }
 

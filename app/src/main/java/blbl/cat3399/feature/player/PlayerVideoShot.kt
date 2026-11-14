@@ -2,6 +2,7 @@ package blbl.cat3399.feature.player
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.BitmapRegionDecoder
 import android.graphics.Rect
 import android.util.LruCache
 import blbl.cat3399.core.api.video.VideoShotInfo
@@ -142,20 +143,17 @@ internal data class VideoShot(
         val imagesIndex = (index / singleImgCount).coerceIn(0, images.lastIndex)
         val imageIndex = (index % singleImgCount).coerceIn(0, singleImgCount - 1)
 
-        val spriteSheet =
-            cache.getOrDecodeImage(
+        val frameBitmap =
+            cache.getOrDecodeFrame(
                 imagesIndex,
                 images[imagesIndex],
+                imageIndex,
+                imageCountX,
+                imageCountY,
             )
 
-        val cellWidth = spriteSheet.width / imageCountX
-        val cellHeight = spriteSheet.height / imageCountY
-        val left = (imageIndex % imageCountX) * cellWidth
-        val top = (imageIndex / imageCountX) * cellHeight
-
         return SpriteFrame(
-            spriteSheet = spriteSheet,
-            srcRect = Rect(left, top, left + cellWidth, top + cellHeight),
+            bitmap = frameBitmap,
         )
     }
 
@@ -177,43 +175,42 @@ internal data class VideoShot(
 
 internal class VideoShotImageCache {
     private val cacheLock = Any()
-    private val memoryCache = LruCache<Int, Bitmap>(3)
-    private val activeTasks = ConcurrentHashMap<Int, Deferred<Bitmap>>()
+    private val memoryCache = LruCache<Long, Bitmap>(48)
+    private val activeTasks = ConcurrentHashMap<Long, Deferred<Bitmap>>()
 
     companion object {
         private const val TAG = "VideoShotCache"
-        private val bitmapOptions =
+
+        private fun bitmapOptions(): BitmapFactory.Options =
             BitmapFactory.Options().apply {
                 inPreferredConfig = Bitmap.Config.RGB_565
                 inScaled = false
             }
 
-        private val placeholderBitmap: Bitmap by lazy {
-            Bitmap.createBitmap(1, 1, Bitmap.Config.RGB_565).apply {
-                eraseColor(0x00000000)
-            }
-        }
+        private fun frameCacheKey(imagesIndex: Int, imageIndex: Int): Long =
+            (imagesIndex.toLong() shl 32) xor (imageIndex.toLong() and 0xffffffffL)
     }
 
-    suspend fun getOrDecodeImage(imagesIndex: Int, imageData: ByteArray): Bitmap =
+    suspend fun getOrDecodeFrame(
+        imagesIndex: Int,
+        imageData: ByteArray,
+        imageIndex: Int,
+        imageCountX: Int,
+        imageCountY: Int,
+    ): Bitmap =
         coroutineScope {
+            if (imageData.isEmpty()) throw IllegalStateException("empty videoshot image")
+            val key = frameCacheKey(imagesIndex, imageIndex)
             synchronized(cacheLock) {
-                memoryCache.get(imagesIndex)
+                memoryCache.get(key)
             }?.let { return@coroutineScope it }
 
-            if (imageData.isEmpty()) return@coroutineScope placeholderBitmap
-
             val task =
-                activeTasks.getOrPut(imagesIndex) {
+                activeTasks.getOrPut(key) {
                     async(Dispatchers.IO) {
-                        val decoded =
-                            BitmapFactory.decodeByteArray(imageData, 0, imageData.size, bitmapOptions)
-                                ?: run {
-                                    AppLog.w(TAG, "decode videoshot bitmap failed: index=$imagesIndex size=${imageData.size}")
-                                    placeholderBitmap
-                                }
+                        val decoded = decodeFrameBitmap(imageData, imageIndex, imageCountX, imageCountY)
                         synchronized(cacheLock) {
-                            memoryCache.put(imagesIndex, decoded)
+                            memoryCache.put(key, decoded)
                         }
                         decoded
                     }
@@ -221,9 +218,48 @@ internal class VideoShotImageCache {
             try {
                 return@coroutineScope task.await()
             } finally {
-                activeTasks.remove(imagesIndex)
+                activeTasks.remove(key, task)
             }
         }
+
+    @Suppress("DEPRECATION")
+    private fun decodeFrameBitmap(
+        imageData: ByteArray,
+        imageIndex: Int,
+        imageCountX: Int,
+        imageCountY: Int,
+    ): Bitmap {
+        val xCount = imageCountX.coerceAtLeast(1)
+        val yCount = imageCountY.coerceAtLeast(1)
+        val decoder = BitmapRegionDecoder.newInstance(imageData, 0, imageData.size, false)
+        try {
+            val cellWidth = decoder.width / xCount
+            val cellHeight = decoder.height / yCount
+            if (cellWidth <= 0 || cellHeight <= 0) {
+                throw IllegalStateException(
+                    "invalid videoshot grid: image=${decoder.width}x${decoder.height} grid=${xCount}x$yCount",
+                )
+            }
+
+            val safeImageIndex = imageIndex.coerceIn(0, xCount * yCount - 1)
+            val left = (safeImageIndex % xCount) * cellWidth
+            val top = (safeImageIndex / xCount) * cellHeight
+            val rect =
+                Rect(
+                    left,
+                    top,
+                    (left + cellWidth).coerceAtMost(decoder.width),
+                    (top + cellHeight).coerceAtMost(decoder.height),
+                )
+            return decoder.decodeRegion(rect, bitmapOptions())
+                ?: throw IllegalStateException("decode videoshot frame failed: index=$safeImageIndex rect=$rect")
+        } catch (t: Throwable) {
+            AppLog.w(TAG, "decode videoshot frame failed: index=$imageIndex size=${imageData.size}", t)
+            throw t
+        } finally {
+            decoder.recycle()
+        }
+    }
 
     fun clear() {
         synchronized(cacheLock) {
@@ -234,6 +270,5 @@ internal class VideoShotImageCache {
 }
 
 internal data class SpriteFrame(
-    val spriteSheet: Bitmap,
-    val srcRect: Rect,
+    val bitmap: Bitmap,
 )

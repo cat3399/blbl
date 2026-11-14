@@ -1,9 +1,12 @@
 package blbl.cat3399.feature.player
 
 import android.view.KeyEvent
+import android.view.ViewConfiguration
+import androidx.lifecycle.lifecycleScope
 import blbl.cat3399.core.net.BiliClient
 import blbl.cat3399.core.prefs.AppPrefs
 import blbl.cat3399.core.prefs.PlayerCustomShortcutAction
+import blbl.cat3399.core.prefs.PlayerCustomShortcutTrigger
 import blbl.cat3399.core.prefs.PlayerCustomShortcutsStore
 import blbl.cat3399.core.prefs.PlayerPlaybackModes
 import blbl.cat3399.feature.player.engine.ExoPlayerEngine
@@ -27,6 +30,9 @@ private class PlayerCustomShortcutToggleMemory {
 
 private val shortcutToggleMemoryByPlayer = WeakHashMap<PlayerActivity, PlayerCustomShortcutToggleMemory>()
 
+private val shortcutPressControllerByPlayer =
+    WeakHashMap<PlayerActivity, PlayerCustomShortcutPressController<PlayerCustomShortcutAction, KeyEvent>>()
+
 private fun PlayerActivity.shortcutToggleMemory(): PlayerCustomShortcutToggleMemory {
     return shortcutToggleMemoryByPlayer.getOrPut(this) { PlayerCustomShortcutToggleMemory() }
 }
@@ -45,13 +51,53 @@ private fun PlayerActivity.showShortcutOsd() {
     focusDownKeyOsdTargetControl()
 }
 
-internal fun PlayerActivity.dispatchPlayerCustomShortcutIfNeeded(event: KeyEvent): Boolean {
-    if (event.action != KeyEvent.ACTION_DOWN) return false
-    if (event.repeatCount != 0) return false
+internal fun PlayerActivity.dispatchPlayerCustomShortcutIfNeeded(
+    event: KeyEvent,
+): PlayerCustomShortcutDispatchResult<KeyEvent> {
+    val controller =
+        shortcutPressControllerByPlayer.getOrPut(this) {
+            PlayerCustomShortcutPressController(
+                scope = lifecycleScope,
+                longPressTimeoutMillis = ViewConfiguration.getLongPressTimeout().toLong(),
+                isEligibleKey = { keyCode ->
+                    keyCode > 0 &&
+                        keyCode != KeyEvent.KEYCODE_UNKNOWN &&
+                        !PlayerCustomShortcutsStore.isForbiddenKeyCode(keyCode)
+                },
+                bindingsForKey = { keyCode ->
+                    val bindings = BiliClient.prefs.playerCustomShortcuts.filter { it.keyCode == keyCode }
+                    PlayerCustomShortcutBindings(
+                        shortAction =
+                            bindings.firstOrNull { it.trigger == PlayerCustomShortcutTrigger.SHORT_PRESS }
+                                ?.action,
+                        longAction =
+                            bindings.firstOrNull { it.trigger == PlayerCustomShortcutTrigger.LONG_PRESS }
+                                ?.action,
+                    )
+                },
+                canDispatch = ::canDispatchPlayerCustomShortcut,
+                copyEventToken = { source -> KeyEvent(source) },
+                executeAction = { keyCode, trigger, action ->
+                    noteUserInteraction()
+                    applyPlayerCustomShortcut(
+                        keyCode = shortcutMemoryKey(keyCode, trigger),
+                        action = action,
+                    )
+                },
+            )
+        }
+    return when (event.action) {
+        KeyEvent.ACTION_DOWN -> controller.onKeyDown(event.keyCode, event.repeatCount, event)
+        KeyEvent.ACTION_UP -> controller.onKeyUp(event.keyCode, event)
+        else -> PlayerCustomShortcutDispatchResult.NotHandled
+    }
+}
 
-    val keyCode = event.keyCode
-    if (keyCode <= 0 || keyCode == KeyEvent.KEYCODE_UNKNOWN) return false
-    if (PlayerCustomShortcutsStore.isForbiddenKeyCode(keyCode)) return false
+internal fun PlayerActivity.cancelPlayerCustomShortcutPending() {
+    shortcutPressControllerByPlayer.remove(this)?.clear()
+}
+
+private fun PlayerActivity.canDispatchPlayerCustomShortcut(): Boolean {
     if (
         !PlayerCustomShortcutInputPolicy.canDispatchInVod(
             hasInteractiveOsd = osdMode != PlayerActivity.OsdMode.Hidden,
@@ -61,12 +107,11 @@ internal fun PlayerActivity.dispatchPlayerCustomShortcutIfNeeded(event: KeyEvent
     ) {
         return false
     }
-
-    val binding = BiliClient.prefs.playerCustomShortcuts.firstOrNull { it.keyCode == keyCode } ?: return false
-    noteUserInteraction()
-    applyPlayerCustomShortcut(keyCode = keyCode, action = binding.action)
     return true
 }
+
+private fun shortcutMemoryKey(keyCode: Int, trigger: PlayerCustomShortcutTrigger): Int =
+    if (trigger == PlayerCustomShortcutTrigger.SHORT_PRESS) keyCode else keyCode xor Int.MIN_VALUE
 
 private fun PlayerActivity.applyPlayerCustomShortcut(keyCode: Int, action: PlayerCustomShortcutAction) {
     val memory = shortcutToggleMemory()
@@ -129,14 +174,14 @@ private fun PlayerActivity.applyPlayerCustomShortcut(keyCode: Int, action: Playe
                 return
             }
             if (!subtitleAvailabilityKnown) {
-                showSeekHint("字幕：加载中", hold = false)
+                toggleSubtitles(exo)
                 return
             }
             if (!subtitleAvailable) {
                 showSeekHint("字幕：暂无", hold = false)
                 return
             }
-            applySubtitleEnabledSetting(!session.subtitleEnabled, exo)
+            toggleSubtitles(exo)
             val state = if (session.subtitleEnabled) "开" else "关"
             showSeekHint("字幕：$state", hold = false)
         }
@@ -199,7 +244,7 @@ private fun PlayerActivity.applyPlayerCustomShortcut(keyCode: Int, action: Playe
                     target
                 }
             applyResolutionSetting(next)
-            showSeekHint("分辨率：${qnHintText(next)}", hold = false)
+            showSeekHint("画质：${qnHintText(next)}", hold = false)
         }
 
         is PlayerCustomShortcutAction.SetAudioId -> {
@@ -213,7 +258,7 @@ private fun PlayerActivity.applyPlayerCustomShortcut(keyCode: Int, action: Playe
                     target
                 }
             applyAudioTrackSetting(next)
-            showSeekHint("音轨：${audioIdHintText(next)}", hold = false)
+            showSeekHint("音质：${audioIdHintText(next)}", hold = false)
         }
 
         is PlayerCustomShortcutAction.SetCodec -> {
@@ -322,7 +367,7 @@ private fun PlayerActivity.applyPlayerCustomShortcut(keyCode: Int, action: Playe
                 syncToGlobal = { danmakuOpacity = it },
                 afterApplied = { binding.danmakuView.invalidate() },
             )
-            showSeekHint("弹幕透明度：${String.format(Locale.US, "%.2f", next)}", hold = false)
+            showSeekHint("弹幕不透明度：${opacityText(next)}", hold = false)
         }
 
         is PlayerCustomShortcutAction.SetDanmakuTextSize -> {

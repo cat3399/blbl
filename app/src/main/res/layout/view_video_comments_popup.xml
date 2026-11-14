@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:clipChildren="false"
+    android:clipToPadding="false">
+
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/comments_popup_content"
+        android:layout_width="match_parent"
+        android:layout_height="640dp"
+        android:clipChildren="false"
+        android:clipToPadding="false">
+
+        <include layout="@layout/include_video_comments_panel_content" />
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+    <FrameLayout
+        android:id="@+id/comment_image_viewer"
+        android:layout_width="match_parent"
+        android:layout_height="640dp"
+        android:background="@color/player_overlay_bg"
+        android:clickable="true"
+        android:defaultFocusHighlightEnabled="false"
+        android:elevation="20dp"
+        android:focusable="true"
+        android:visibility="gone">
+
+        <include layout="@layout/include_video_comment_image_viewer_content" />
+    </FrameLayout>
+</FrameLayout>

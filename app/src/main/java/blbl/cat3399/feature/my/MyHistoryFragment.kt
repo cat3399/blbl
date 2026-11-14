@@ -1,5 +1,6 @@
 package blbl.cat3399.feature.my
 
+import blbl.cat3399.R
 import android.content.Intent
 import android.os.Bundle
 import android.os.SystemClock
@@ -36,6 +37,7 @@ import blbl.cat3399.feature.video.VideoCardActionController
 import blbl.cat3399.feature.video.VideoCardDismissBehavior
 import blbl.cat3399.feature.video.VideoCardVisibilityFilter
 import blbl.cat3399.feature.video.buildPagedVideoCardPlaybackHandle
+import blbl.cat3399.feature.video.hasVideoDetailIdentity
 import blbl.cat3399.feature.video.historyVideoCardPlaylistItem
 import blbl.cat3399.feature.video.openVideoDetailFromPlaybackHandle
 import blbl.cat3399.feature.video.openVideoFromPlaybackHandle
@@ -89,7 +91,7 @@ class MyHistoryFragment : Fragment(), MyTabSwitchFocusTarget, RefreshKeyHandler 
                             playbackHandle = historyPlaybackHandle(),
                             position = pos,
                             openDetailBeforePlay = BiliClient.prefs.playerOpenDetailBeforePlay,
-                            canOpenDetail = { it.bvid.isNotBlank() && (it.epId == null || it.epId <= 0L) },
+                            canOpenDetail = { it.hasVideoDetailIdentity() && (it.epId == null || it.epId <= 0L) },
                             configurePlayerIntent = { card ->
                                 card.epId?.let { putExtra(PlayerActivity.EXTRA_EP_ID, it) }
                                 card.aid?.let { putExtra(PlayerActivity.EXTRA_AID, it) }
@@ -375,7 +377,7 @@ class MyHistoryFragment : Fragment(), MyTabSwitchFocusTarget, RefreshKeyHandler 
                 if (t is CancellationException) throw t
                 if (preserveCurrentOrderRefresh) resetLoadedKeysFromAdapter()
                 AppLog.e("MyHistory", "load failed", t)
-                context?.let { AppToast.show(it, "加载失败，可查看 Logcat(标签 BLBL)") }
+                context?.let { AppToast.show(it, getString(R.string.error_load_retry)) }
             } finally {
                 if (paging.snapshot().generation == startGen) _binding?.swipeRefresh?.isRefreshing = false
             }

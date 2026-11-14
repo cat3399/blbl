@@ -121,8 +121,14 @@ data class VideoPlayClipSegment(
 
 data class VideoPlayResume(
     val rawTime: Long,
+    val timeUnit: VideoResumeTimeUnit,
     val lastCid: Long?,
 )
+
+enum class VideoResumeTimeUnit {
+    SECONDS,
+    MILLIS,
+}
 
 data class VideoPlayRiskControl(
     val bypassed: Boolean,

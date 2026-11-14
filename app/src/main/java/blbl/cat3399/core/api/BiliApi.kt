@@ -12,6 +12,7 @@ import blbl.cat3399.core.model.Following
 import blbl.cat3399.core.model.HistoryEntry
 import blbl.cat3399.core.model.LiveAreaParent
 import blbl.cat3399.core.model.LiveRoomCard
+import blbl.cat3399.core.model.LiveSuperChat
 import blbl.cat3399.core.model.VideoCard
 import blbl.cat3399.core.model.VideoTag
 import blbl.cat3399.core.prefs.AppPrefs
@@ -33,10 +34,11 @@ import blbl.cat3399.core.api.video.VideoPlayRequest
 import blbl.cat3399.core.api.video.VideoPlayStream
 import blbl.cat3399.core.api.video.VideoPopularRequest
 import blbl.cat3399.core.api.video.VideoRecommendRequest
-import blbl.cat3399.core.api.video.VideoRegionLatestRequest
+import blbl.cat3399.core.api.video.VideoRegionRankRequest
 import blbl.cat3399.core.api.video.VideoSeriesArchivesRequest
 import blbl.cat3399.core.api.video.VideoShotInfo
 import blbl.cat3399.core.api.video.VideoShotRequest
+import blbl.cat3399.core.api.video.VideoSubtitle
 import blbl.cat3399.core.api.video.VideoTagsRequest
 import blbl.cat3399.core.net.BiliClient
 import blbl.cat3399.core.net.PiliWebHeaders
@@ -403,6 +405,9 @@ object BiliApi {
         LiveApi.livePlayUrl(roomId = roomId, qn = qn, highBitrateEnabled = highBitrateEnabled)
 
     suspend fun liveDanmuInfo(roomId: Long): LiveDanmuInfo = LiveApi.liveDanmuInfo(roomId = roomId)
+
+    suspend fun liveSuperChats(roomId: Long): List<LiveSuperChat> =
+        LiveApi.liveSuperChats(roomId = roomId)
 
     suspend fun historyCursor(
         max: Long = 0,
@@ -1228,8 +1233,6 @@ object BiliApi {
                 val seen = HashSet<Long>(256)
                 for (i in 0 until modules.length()) {
                     val module = modules.optJSONObject(i) ?: continue
-                    val moduleTitle = module.optString("title", "").trim()
-                    if (!moduleTitle.contains("猜你喜欢")) continue
                     val list = module.optJSONArray("items") ?: continue
                     for (j in 0 until list.length()) {
                         val obj = list.optJSONObject(j) ?: continue
@@ -1329,16 +1332,16 @@ object BiliApi {
             .popular(VideoPopularRequest(pn = pn, ps = ps))
             .toHasMorePage()
 
-    suspend fun regionLatest(rid: Int, pn: Int = 1, ps: Int = 20): List<VideoCard> =
-        regionLatestPage(rid = rid, pn = pn, ps = ps).items
+    suspend fun regionRank(rid: Int, pn: Int = 1, ps: Int = 20): List<VideoCard> =
+        regionRankPage(rid = rid, pn = pn, ps = ps).items
 
-    suspend fun regionLatestPage(
+    suspend fun regionRankPage(
         rid: Int,
         pn: Int = 1,
         ps: Int = 20,
     ): HasMorePage<VideoCard> =
         VideoApiGateway
-            .regionLatest(VideoRegionLatestRequest(rid = rid, pn = pn, ps = ps))
+            .regionRank(VideoRegionRankRequest(rid = rid, pn = pn, ps = ps))
             .toHasMorePage()
 
     suspend fun dynamicTag(
@@ -1444,6 +1447,9 @@ object BiliApi {
 
     suspend fun videoPlayerInfo(bvid: String, cid: Long): VideoPlayerInfo =
         VideoApiGateway.playerInfo(VideoPlayerInfoRequest(bvid = bvid, cid = cid))
+
+    suspend fun dmViewSubtitles(aid: Long, cid: Long): List<VideoSubtitle> =
+        blbl.cat3399.core.api.video.app.DmViewGrpcApi.subtitles(aid = aid, cid = cid)
 
     suspend fun historyReport(aid: Long, cid: Long, progressSec: Long, platform: String = "android") =
         VideoApi.historyReport(aid = aid, cid = cid, progressSec = progressSec, platform = platform)

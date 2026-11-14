@@ -91,9 +91,9 @@ internal fun PlayerActivity.openSponsorSubmitPanel() {
         return
     }
 
-    hideBottomCardPanel(restoreFocus = false, dismissTarget = null)
-    if (isSettingsPanelVisible()) hideSettingsPanel(dismissTarget = PlayerActivity.PanelDismissTarget.Fullscreen)
-    if (isCommentsPanelVisible()) hideCommentsPanel(dismissTarget = PlayerActivity.PanelDismissTarget.Fullscreen)
+    hideBottomCardPanel(finalizeOverlaySession = false)
+    if (isSettingsPanelVisible()) hideSettingsPanel()
+    if (isCommentsPanelVisible()) hideCommentsPanel()
     closeCommentImageViewer(restoreFocus = false)
 
     val wasPlaying = engine.isPlaying || engine.playWhenReady
@@ -103,7 +103,7 @@ internal fun PlayerActivity.openSponsorSubmitPanel() {
     engine.pause()
     setControlsVisible(false)
     autoHideJob?.cancel()
-    binding.videoShotPreview.visibility = View.GONE
+    hideVideoShotPreviewNow()
     binding.sponsorSubmitScrim.visibility = View.VISIBLE
     binding.sponsorSubmitPanel.visibility = View.VISIBLE
     binding.sponsorSubmitTimeline.post { focusSponsorSubmitTimeline() }

@@ -27,7 +27,7 @@ data class VideoPopularRequest(
     val ps: Int = 20,
 )
 
-data class VideoRegionLatestRequest(
+data class VideoRegionRankRequest(
     val rid: Int,
     val pn: Int = 1,
     val ps: Int = 20,
@@ -201,7 +201,7 @@ internal interface VideoSourceApi : BiliApiSourceProvider {
 
     suspend fun popular(request: VideoPopularRequest): VideoCardPage<VideoPopularRequest>
 
-    suspend fun regionLatest(request: VideoRegionLatestRequest): VideoCardPage<VideoRegionLatestRequest>
+    suspend fun regionRank(request: VideoRegionRankRequest): VideoCardPage<VideoRegionRankRequest>
 
     suspend fun dynamicTag(request: VideoDynamicTagRequest): VideoCardPage<VideoDynamicTagRequest>
 
@@ -240,8 +240,8 @@ internal class VideoApiSources(
     suspend fun popular(request: VideoPopularRequest): VideoCardPage<VideoPopularRequest> =
         selector.providerFor(BiliApiCapability.VIDEO_POPULAR).popular(request)
 
-    suspend fun regionLatest(request: VideoRegionLatestRequest): VideoCardPage<VideoRegionLatestRequest> =
-        selector.providerFor(BiliApiCapability.VIDEO_REGION_LATEST).regionLatest(request)
+    suspend fun regionRank(request: VideoRegionRankRequest): VideoCardPage<VideoRegionRankRequest> =
+        selector.providerFor(BiliApiCapability.VIDEO_REGION_RANK).regionRank(request)
 
     suspend fun dynamicTag(request: VideoDynamicTagRequest): VideoCardPage<VideoDynamicTagRequest> =
         selector.providerFor(BiliApiCapability.VIDEO_DYNAMIC_TAG).dynamicTag(request)
@@ -295,8 +295,8 @@ internal object VideoApiGateway {
 
     suspend fun popular(request: VideoPopularRequest): VideoCardPage<VideoPopularRequest> = sources.popular(request)
 
-    suspend fun regionLatest(request: VideoRegionLatestRequest): VideoCardPage<VideoRegionLatestRequest> =
-        sources.regionLatest(request)
+    suspend fun regionRank(request: VideoRegionRankRequest): VideoCardPage<VideoRegionRankRequest> =
+        sources.regionRank(request)
 
     suspend fun dynamicTag(request: VideoDynamicTagRequest): VideoCardPage<VideoDynamicTagRequest> =
         sources.dynamicTag(request)

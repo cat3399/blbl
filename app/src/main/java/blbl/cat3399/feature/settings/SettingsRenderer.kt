@@ -3,13 +3,13 @@ package blbl.cat3399.feature.settings
 import android.os.Build
 import android.view.KeyEvent
 import android.view.View
-import androidx.core.view.doOnPreDraw
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import blbl.cat3399.BuildConfig
 import blbl.cat3399.core.net.BiliClient
 import blbl.cat3399.core.net.cookieExpiresAt
 import blbl.cat3399.core.ui.FocusTreeUtils
+import blbl.cat3399.core.ui.requestFocusAdapterPositionReliable
 import blbl.cat3399.databinding.ActivitySettingsBinding
 import blbl.cat3399.core.util.DeviceAbi
 import blbl.cat3399.feature.player.AudioBalanceLevel
@@ -34,10 +34,14 @@ class SettingsRenderer(
                 if (newFocus == null) return@OnGlobalFocusChangeListener
                 when {
                     newFocus == binding.btnBack -> {
+                        state.focusRequestToken++
+                        state.pendingRestoreRightId = null
                         state.pendingRestoreBack = false
                     }
 
                     FocusTreeUtils.isDescendantOf(newFocus, binding.recyclerLeft) -> {
+                        state.focusRequestToken++
+                        state.pendingRestoreRightId = null
                         val holder = binding.recyclerLeft.findContainingViewHolder(newFocus) ?: return@OnGlobalFocusChangeListener
                         val pos =
                             holder.bindingAdapterPosition.takeIf { it != RecyclerView.NO_POSITION }
@@ -49,8 +53,11 @@ class SettingsRenderer(
                     FocusTreeUtils.isDescendantOf(newFocus, binding.recyclerRight) -> {
                         val itemView = binding.recyclerRight.findContainingItemView(newFocus) ?: newFocus
                         val id = itemView.tag as? SettingId
-                        if (id != null) state.lastFocusedRightId = id
-                        if (state.pendingRestoreRightId == id) state.pendingRestoreRightId = null
+                        if (id != null && rightAdapter.indexOfId(id) != RecyclerView.NO_POSITION) {
+                            state.focusRequestToken++
+                            state.rememberFocusedRightId(id)
+                            state.pendingRestoreRightId = null
+                        }
                     }
                 }
             }.also { binding.root.viewTreeObserver.addOnGlobalFocusChangeListener(it) }
@@ -62,6 +69,7 @@ class SettingsRenderer(
     }
 
     fun showSection(index: Int, keepScroll: Boolean = index == state.currentSectionIndex, focusId: SettingId? = null) {
+        state.focusRequestToken++
         val lm = binding.recyclerRight.layoutManager as? LinearLayoutManager
         val scrollAnchor =
             if (keepScroll && lm != null) {
@@ -95,9 +103,9 @@ class SettingsRenderer(
         onSectionShown(sectionName.orEmpty())
 
         state.pendingRestoreRightId = focusId
-        val token = ++state.focusRequestToken
-        binding.recyclerRight.doOnPreDraw {
-            if (token != state.focusRequestToken) return@doOnPreDraw
+        val token = ++state.sectionRenderToken
+        binding.recyclerRight.post {
+            if (token != state.sectionRenderToken) return@post
             if (keepScroll && lm != null) {
                 scrollAnchor?.let { (position, offset) ->
                     lm.scrollToPositionWithOffset(position, offset)
@@ -113,7 +121,11 @@ class SettingsRenderer(
 
     fun refreshAboutSectionKeepPosition() {
         if (sections.getOrNull(state.currentSectionIndex) != "关于应用") return
-        showSection(state.currentSectionIndex, keepScroll = true, focusId = state.lastFocusedRightId)
+        showSection(
+            state.currentSectionIndex,
+            keepScroll = true,
+            focusId = state.lastFocusedRightIdForCurrentSection(),
+        )
     }
 
     fun ensureInitialFocus() {
@@ -143,7 +155,7 @@ class SettingsRenderer(
             }
         }
 
-        val rightId = state.lastFocusedRightId
+        val rightId = state.lastFocusedRightIdForCurrentSection()
         if (rightId != null) {
             if (focusRightById(rightId)) return true
         }
@@ -157,14 +169,39 @@ class SettingsRenderer(
         return true
     }
 
-    fun focusSectionTab(index: Int): Boolean {
+    fun focusActiveSectionTab(): Boolean {
         val count = leftAdapter.itemCount
         if (count <= 0) return false
         val safeIndex =
-            index.takeIf { it in 0 until count }
+            state.currentSectionIndex.takeIf { it in 0 until count }
                 ?: state.lastFocusedLeftIndex.takeIf { it in 0 until count }
                 ?: 0
         return focusLeftAt(safeIndex)
+    }
+
+    fun focusLastSectionTab(): Boolean {
+        val count = leftAdapter.itemCount
+        if (count <= 0) return false
+        val safeIndex =
+            state.lastFocusedLeftIndex.takeIf { it in 0 until count }
+                ?: state.currentSectionIndex.takeIf { it in 0 until count }
+                ?: 0
+        return focusLeftAt(safeIndex)
+    }
+
+    fun focusActiveSectionContent(): Boolean {
+        if (state.currentSectionIndex !in 0 until leftAdapter.itemCount) return false
+        if (rightAdapter.itemCount <= 0) return false
+
+        val rememberedId = state.lastFocusedRightIdForCurrentSection()
+        val targetPosition =
+            rememberedId
+                ?.let(rightAdapter::indexOfId)
+                ?.takeIf { it != RecyclerView.NO_POSITION }
+                ?: 0
+        val targetId = rightAdapter.idAt(targetPosition) ?: return false
+        state.pendingRestoreRightId = targetId
+        return focusRightById(targetId)
     }
 
     fun isNavKey(keyCode: Int): Boolean {
@@ -192,16 +229,16 @@ class SettingsRenderer(
                     SettingEntry(SettingId.ThemePreset, "主题", SettingsText.themePresetText(prefs.themePreset), null),
                     SettingEntry(SettingId.ApiSource, "接口类别", SettingsText.apiSourceText(prefs.apiSource), null),
                     SettingEntry(SettingId.UserAgent, "User-Agent", prefs.userAgent.take(60), null),
-                    SettingEntry(SettingId.Ipv4OnlyEnabled, "是否只允许使用IPV4", if (prefs.ipv4OnlyEnabled) "开" else "关", null),
+                    SettingEntry(SettingId.Ipv4OnlyEnabled, "仅使用 IPv4", if (prefs.ipv4OnlyEnabled) "开" else "关", null),
                     SettingEntry(SettingId.GaiaVgate, "风控验证", gaiaVgateStatusText(), "播放被拦截后可在此手动完成人机验证"),
                     SettingEntry(SettingId.ClearCache, "清理缓存", cacheSizeText(), null),
-                    SettingEntry(SettingId.ConfigTransfer, "导出/入配置", "打开", null),
+                    SettingEntry(SettingId.ConfigTransfer, "导入/导出配置", "打开", null),
                     SettingEntry(SettingId.ClearLogin, "清除登录", loginStatusText(), null),
                 )
 
             "页面设置" ->
                 listOf(
-                    SettingEntry(SettingId.StartupPage, "启动默认页", SettingsText.startupPageText(activity, prefs.startupPage), null),
+                    SettingEntry(SettingId.StartupPage, "启动页面", SettingsText.startupPageText(activity, prefs.startupPage), null),
                     SettingEntry(SettingId.GridSpanCount, "每行卡片数量", SettingsText.gridSpanText(prefs.gridSpanCount), null),
                     SettingEntry(
                         SettingId.DynamicGridSpanCount,
@@ -211,9 +248,9 @@ class SettingsRenderer(
                     ),
                     SettingEntry(SettingId.PgcGridSpanCount, "番剧/电视剧每行卡片数量", SettingsText.gridSpanText(prefs.pgcGridSpanCount), null),
                     SettingEntry(SettingId.UiScaleFactor, "界面大小", SettingsText.uiScaleFactorText(prefs.uiScaleFactor), null),
-                    SettingEntry(SettingId.FullscreenEnabled, "以全屏模式运行", if (prefs.fullscreenEnabled) "开" else "关", null),
+                    SettingEntry(SettingId.FullscreenEnabled, "全屏显示", if (prefs.fullscreenEnabled) "开" else "关", null),
                     SettingEntry(SettingId.AvoidDisplayCutout, "避开挖孔/圆角区域", if (prefs.avoidDisplayCutout) "开" else "关", null),
-                    SettingEntry(SettingId.TabSwitchFollowsFocus, "tab跟随焦点切换", if (prefs.tabSwitchFollowsFocus) "开" else "关", null),
+                    SettingEntry(SettingId.TabSwitchFollowsFocus, "标签页随焦点切换", if (prefs.tabSwitchFollowsFocus) "开" else "关", null),
                     SettingEntry(
                         SettingId.MainAutoHideSidebarOnEnterContent,
                         "进入内容区后关闭侧边栏",
@@ -286,7 +323,19 @@ class SettingsRenderer(
                         SettingsText.qnText(prefs.playerPreferredQnPortrait),
                         null,
                     ),
-                    SettingEntry(SettingId.PlayerPreferredAudioId, "默认音轨", SettingsText.audioText(prefs.playerPreferredAudioId), null),
+                    SettingEntry(
+                        SettingId.PlayerPreferredQnPgc,
+                        "番剧/影视默认画质",
+                        SettingsText.qnText(prefs.playerPreferredQnPgc),
+                        null,
+                    ),
+                    SettingEntry(SettingId.PlayerPreferredAudioId, "默认音质", SettingsText.audioText(prefs.playerPreferredAudioId), null),
+                    SettingEntry(
+                        SettingId.PlayerSeamlessQualitySwitchEnabled,
+                        "无缝切换画质",
+                        if (prefs.playerSeamlessQualitySwitchEnabled) "开" else "关",
+                        null,
+                    ),
                     SettingEntry(SettingId.PlayerSpeed, "默认播放速度", String.format(java.util.Locale.US, "%.2fx", prefs.playerSpeed), null),
                     SettingEntry(
                         SettingId.PlayerShortSeekStepSeconds,
@@ -321,6 +370,12 @@ class SettingsRenderer(
                         null,
                     ),
                     SettingEntry(
+                        SettingId.PlayerAutoSkipSegmentCategories,
+                        "自动跳过片段类型",
+                        SettingsText.playerAutoSkipSegmentCategoriesText(prefs.playerAutoSkipSegmentCategories),
+                        null,
+                    ),
+                    SettingEntry(
                         SettingId.PlayerAutoSkipServerBaseUrl,
                         "空降助手服务器地址",
                         prefs.playerAutoSkipServerBaseUrl,
@@ -344,13 +399,13 @@ class SettingsRenderer(
                     ),
                     SettingEntry(
                         SettingId.SubtitleBackgroundOpacity,
-                        "字幕背景透明度",
+                        "字幕背景不透明度",
                         SettingsText.subtitleBackgroundOpacityText(prefs.subtitleBackgroundOpacity),
                         null,
                     ),
                     SettingEntry(SettingId.SubtitleEnabledDefault, "默认开启字幕", if (prefs.subtitleEnabledDefault) "开" else "关", null),
                     SettingEntry(SettingId.PlayerPreferredCodec, "视频编码", prefs.playerPreferredCodec, null),
-                    SettingEntry(SettingId.PlayerOsdButtons, "OSD按钮显示", SettingsText.playerOsdButtonsText(prefs.playerOsdButtons), null),
+                    SettingEntry(SettingId.PlayerOsdButtons, "控制栏按钮", SettingsText.playerOsdButtonsText(prefs.playerOsdButtons), null),
                     SettingEntry(SettingId.PlayerUpQuickCardEnabled, "UP关注卡片", if (prefs.playerUpQuickCardEnabled) "开" else "关", null),
                     SettingEntry(SettingId.PlayerDoubleBackToExit, "按两次退出键才退出播放器", if (prefs.playerDoubleBackToExit) "开" else "关", null),
                     SettingEntry(
@@ -403,7 +458,7 @@ class SettingsRenderer(
                     ),
                     SettingEntry(
                         SettingId.PlayerAudioBalance,
-                        "音频平衡",
+                        "音量均衡",
                         AudioBalanceLevel.fromPrefValue(prefs.playerAudioBalanceLevel).label,
                         null,
                     ),
@@ -422,8 +477,8 @@ class SettingsRenderer(
                     SettingEntry(SettingId.DanmakuEnabled, "弹幕开关", if (prefs.danmakuEnabled) "开" else "关", null),
                     SettingEntry(
                         SettingId.DanmakuOpacity,
-                        "弹幕透明度",
-                        String.format(java.util.Locale.US, "%.2f", prefs.danmakuOpacity),
+                        "弹幕不透明度",
+                        SettingsText.opacityText(prefs.danmakuOpacity),
                         null,
                     ),
                     SettingEntry(SettingId.DanmakuTextSizeSp, "弹幕字体大小", prefs.danmakuTextSizeSp.toInt().toString(), null),
@@ -547,57 +602,47 @@ class SettingsRenderer(
     private fun focusRightById(id: SettingId): Boolean {
         val pos = rightAdapter.indexOfId(id)
         if (pos == RecyclerView.NO_POSITION) return false
-        val holder = binding.recyclerRight.findViewHolderForAdapterPosition(pos)
-        if (holder?.itemView?.requestFocus() == true) return true
-        return focusRightAt(pos)
+        return focusRightAt(pos, id)
     }
 
-    private fun focusRightAt(position: Int): Boolean {
+    private fun focusRightAt(position: Int, expectedId: SettingId): Boolean {
         if (position < 0 || position >= rightAdapter.itemCount) return false
-        val layoutManager = binding.recyclerRight.layoutManager as? LinearLayoutManager
         return focusRecyclerItemAt(
             recyclerView = binding.recyclerRight,
             position = position,
-            shouldScroll = { isPositionOutsideVisibleRange(layoutManager, position) },
-            scroll = { layoutManager?.scrollToPositionWithOffset(position, 0) },
+            onFocused = {
+                if (rightAdapter.idAt(position) == expectedId) {
+                    state.rememberFocusedRightId(expectedId)
+                    state.pendingRestoreRightId = null
+                }
+            },
         )
     }
 
     private fun focusLeftAt(position: Int): Boolean {
         if (position < 0 || position >= leftAdapter.itemCount) return false
-        val layoutManager = binding.recyclerLeft.layoutManager as? LinearLayoutManager
         return focusRecyclerItemAt(
             recyclerView = binding.recyclerLeft,
             position = position,
-            shouldScroll = { isPositionOutsideVisibleRange(layoutManager, position) },
-            scroll = { binding.recyclerLeft.scrollToPosition(position) },
+            onFocused = {},
         )
     }
 
     private fun focusRecyclerItemAt(
         recyclerView: RecyclerView,
         position: Int,
-        shouldScroll: () -> Boolean,
-        scroll: () -> Unit,
+        onFocused: () -> Unit,
     ): Boolean {
         val token = ++state.focusRequestToken
-        val holder = recyclerView.findViewHolderForAdapterPosition(position)
-        if (holder?.itemView?.requestFocus() == true) return true
-        if (shouldScroll()) {
-            scroll()
-        }
-        recyclerView.doOnPreDraw {
-            if (token != state.focusRequestToken) return@doOnPreDraw
-            recyclerView.findViewHolderForAdapterPosition(position)?.itemView?.requestFocus()
-        }
-        return true
-    }
-
-    private fun isPositionOutsideVisibleRange(layoutManager: LinearLayoutManager?, position: Int): Boolean {
-        if (layoutManager == null) return true
-        val first = layoutManager.findFirstVisibleItemPosition()
-        val last = layoutManager.findLastVisibleItemPosition()
-        if (first == RecyclerView.NO_POSITION || last == RecyclerView.NO_POSITION) return true
-        return position < first || position > last
+        return recyclerView.requestFocusAdapterPositionReliable(
+            position = position,
+            smoothScroll = false,
+            isAlive = {
+                token == state.focusRequestToken &&
+                    !activity.isFinishing &&
+                    !activity.isDestroyed
+            },
+            onFocused = onFocused,
+        )
     }
 }

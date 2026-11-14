@@ -41,8 +41,10 @@ enum class SettingId(
 
     // 播放设置
     PlayerPreferredQn("player_preferred_qn"),
+    PlayerPreferredQnPgc("player_preferred_qn_pgc"),
     PlayerPreferredQnPortrait("player_preferred_qn_portrait"),
     PlayerPreferredAudioId("player_preferred_audio_id"),
+    PlayerSeamlessQualitySwitchEnabled("player_seamless_quality_switch_enabled"),
     PlayerCdnPreference("player_cdn_preference"),
     LiveHighBitrateEnabled("live_high_bitrate_enabled"),
     PlayerSpeed("player_speed"),
@@ -53,6 +55,7 @@ enum class SettingId(
     PlayerHoldScrubFixedStepSeconds("player_hold_scrub_fixed_step_seconds"),
     PlayerAutoResumeEnabled("player_auto_resume_enabled"),
     PlayerAutoSkipSegmentsEnabled("player_auto_skip_segments_enabled"),
+    PlayerAutoSkipSegmentCategories("player_auto_skip_segment_categories"),
     PlayerAutoSkipServerBaseUrl("player_auto_skip_server_base_url"),
     PlayerOpenDetailBeforePlay("player_open_detail_before_play"),
     PlayerPlaybackMode("player_playback_mode"),

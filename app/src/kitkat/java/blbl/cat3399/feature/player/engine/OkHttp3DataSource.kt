@@ -22,7 +22,7 @@ import androidx.core.net.toUri
  * OkHttp 3.x based HttpDataSource for API 19 (kitkat flavor).
  * Reuses connection pool and cookies from the provided OkHttpClient.
  */
-class OkHttp3DataSource(
+internal class OkHttp3DataSource(
     private val callFactory: Call.Factory,
     private val userAgent: String?,
     private val defaultRequestProperties: Map<String, String>?,
@@ -93,6 +93,23 @@ class OkHttp3DataSource(
             )
         }
 
+        // Some CDNs ignore Range and return the full resource with HTTP 200. In
+        // that case ExoPlayer still expects DataSource to start at dataSpec.position.
+        if (responseCode == 200 && dataSpec.position > 0L) {
+            val stream = responseBody.byteStream()
+            try {
+                skipFully(stream, dataSpec.position)
+                inputStream = stream
+            } catch (e: IOException) {
+                closeConnectionQuietly()
+                throw HttpDataSource.HttpDataSourceException.createForIOException(
+                    e,
+                    dataSpec,
+                    HttpDataSource.HttpDataSourceException.TYPE_OPEN,
+                )
+            }
+        }
+
         // Determine content length
         val contentLength = if (responseCode == 200 && dataSpec.position != 0L) {
             // Server doesn't support range requests, but we requested a range
@@ -118,6 +135,21 @@ class OkHttp3DataSource(
         transferStarted(dataSpec)
 
         return bytesToRead
+    }
+
+    private fun skipFully(stream: InputStream, bytesToSkip: Long) {
+        var remaining = bytesToSkip
+        val buffer = ByteArray(16 * 1024)
+        while (remaining > 0L) {
+            val skipped = stream.skip(remaining)
+            if (skipped > 0L) {
+                remaining -= skipped
+                continue
+            }
+            val read = stream.read(buffer, 0, minOf(buffer.size.toLong(), remaining).toInt())
+            if (read < 0) throw IOException("Response ended before requested position")
+            remaining -= read
+        }
     }
 
     override fun read(buffer: ByteArray, offset: Int, length: Int): Int {

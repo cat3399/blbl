@@ -11,6 +11,7 @@ import androidx.media3.ui.SubtitleView
 import androidx.recyclerview.widget.RecyclerView
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
+import blbl.cat3399.core.log.AppLog
 import blbl.cat3399.core.net.BiliClient
 import blbl.cat3399.core.prefs.AppPrefs
 import blbl.cat3399.core.prefs.PlayerPlaybackModes
@@ -144,6 +145,10 @@ internal fun PlayerActivity.toggleDanmakuReloadSettingFlag(
 }
 
 private fun PlayerActivity.persistResolutionPreference(prefs: AppPrefs, qn: Int) {
+    if (isPgcLikePlayback()) {
+        prefs.playerPreferredQnPgc = qn
+        return
+    }
     when (currentVideoIsPortrait) {
         true -> prefs.playerPreferredQnPortrait = qn
         false -> prefs.playerPreferredQn = qn
@@ -187,7 +192,29 @@ internal fun PlayerActivity.applyResolutionSetting(qn: Int) {
     if (shouldPersistPlayerSettingsToGlobal()) {
         persistResolutionPreference(BiliClient.prefs, qn)
     }
-    reloadStream(keepPosition = true)
+    val engine = player
+    pendingResolutionSuccessHintQn = qn.takeIf { it != session.actualQn }
+    AppLog.i(
+        "QualitySwitch",
+        "request qn=$qn actual=${session.actualQn} target=${session.targetQn} preferred=${session.preferredQn} " +
+            "engine=${engine?.kind?.prefValue ?: "null"} seamlessSource=${engine?.isSeamlessQualitySource == true} " +
+            "prefEnabled=${session.seamlessQualitySwitchEnabled} runtimeDisabled=$seamlessQualitySwitchDisabledForPlayback " +
+            "pos=${engine?.currentPosition ?: -1L} buffered=${engine?.bufferedPosition ?: -1L}",
+    )
+    val accepted = engine?.selectVideoQuality(qn) == true
+    AppLog.i("QualitySwitch", "selection result qn=$qn accepted=$accepted seamlessSource=${engine?.isSeamlessQualitySource == true}")
+    if (accepted) {
+        refreshSettingsPanel()
+        return
+    }
+    if (engine?.isSeamlessQualitySource == true) {
+        pendingResolutionSuccessHintQn = null
+        AppLog.w("QualitySwitch", "selection failed qn=$qn; keep current seamless track")
+        showSeekHint("切换失败", hold = false)
+        refreshSettingsPanel()
+        return
+    }
+    reloadStream(keepPosition = true, reason = "quality_select_rejected_qn_$qn")
     refreshSettingsPanel()
 }
 
@@ -487,14 +514,14 @@ private fun PlayerActivity.buildRootSettingsItems(
     subtitleSupported: Boolean,
 ): List<PlayerSettingsAdapter.SettingItem> {
     return listOfNotNull(
-        settingItem(PlayerSettingKeys.RESOLUTION, "分辨率", resolutionSubtitle()),
-        settingItem(PlayerSettingKeys.AUDIO_TRACK, "音轨", audioSubtitle()),
+        settingItem(PlayerSettingKeys.RESOLUTION, "画质", resolutionSubtitle()),
+        settingItem(PlayerSettingKeys.AUDIO_TRACK, "音质", audioSubtitle()),
         settingItem(PlayerSettingKeys.CODEC, "视频编码", session.preferCodec),
         settingItem(PlayerSettingKeys.PLAYBACK_SPEED, "播放速度", String.format(Locale.US, "%.2fx", session.playbackSpeed)),
         settingItem(PlayerSettingKeys.PLAYBACK_MODE, "播放模式", playbackModeSubtitle()),
         subtitleSupported.takeIf { it }?.let { settingItem(PlayerSettingKeys.SUBTITLE_MENU, "字幕设置", ">") },
         settingItem(PlayerSettingKeys.DANMAKU_MENU, "弹幕设置", ">"),
-        settingItem(PlayerSettingKeys.AUDIO_BALANCE, "音频平衡", session.audioBalanceLevel.label),
+        settingItem(PlayerSettingKeys.AUDIO_BALANCE, "音量均衡", session.audioBalanceLevel.label),
         settingItem(
             PlayerSettingKeys.PERSISTENT_BOTTOM_PROGRESS,
             "底部常驻进度条",
@@ -522,7 +549,7 @@ private fun PlayerActivity.buildSubtitleSettingsItems(): List<PlayerSettingsAdap
         ),
         settingItem(
             PlayerSettingKeys.SUBTITLE_BACKGROUND_OPACITY,
-            "字幕背景透明度",
+            "字幕背景不透明度",
             subtitleBackgroundOpacityText(session.subtitleBackgroundOpacity),
         ),
     )
@@ -532,7 +559,7 @@ private fun PlayerActivity.buildDanmakuSettingsItems(): List<PlayerSettingsAdapt
     return listOf(
         settingItem(PlayerSettingKeys.DANMAKU_ENABLED, "弹幕开关", session.danmaku.enabled.switchText()),
         settingItem(PlayerSettingKeys.DANMAKU_SPEED, "弹幕速度", session.danmaku.speedLevel.toString()),
-        settingItem(PlayerSettingKeys.DANMAKU_OPACITY, "弹幕透明度", String.format(Locale.US, "%.2f", session.danmaku.opacity)),
+        settingItem(PlayerSettingKeys.DANMAKU_OPACITY, "弹幕不透明度", opacityText(session.danmaku.opacity)),
         settingItem(PlayerSettingKeys.DANMAKU_TEXT_SIZE, "弹幕字体大小", session.danmaku.textSizeSp.toInt().toString()),
         settingItem(PlayerSettingKeys.DANMAKU_AREA, "弹幕占屏比", areaText(session.danmaku.area)),
         settingItem(PlayerSettingKeys.DANMAKU_STROKE_WIDTH, "弹幕文字描边粗细", session.danmaku.strokeWidthPx.toString()),
@@ -687,7 +714,7 @@ internal fun PlayerActivity.showResolutionDialog() {
     val currentQn = selectedResolutionQn()
     val currentIndex = docQns.indexOfFirst { it == currentQn }.takeIf { it >= 0 } ?: 0
     showSettingsChoiceDialog(
-        title = "分辨率",
+        title = "画质",
         options = docQns,
         checkedIndex = currentIndex,
         label = { qn ->
@@ -704,7 +731,7 @@ internal fun PlayerActivity.showAudioDialog() {
     val currentIndex = docIds.indexOfFirst { it == currentId }.takeIf { it >= 0 } ?: 0
 
     showSettingsChoiceDialog(
-        title = "音轨",
+        title = "音质",
         options = docIds,
         checkedIndex = currentIndex,
         label = { id ->
@@ -750,28 +777,31 @@ internal fun PlayerActivity.showSpeedDialog() {
 }
 
 internal fun PlayerActivity.showAudioBalanceDialog() {
+    if (player !is ExoPlayerEngine) {
+        AppToast.show(this, "当前播放器内核不支持音量均衡")
+        return
+    }
     val options = AudioBalanceLevel.ordered
     val current = session.audioBalanceLevel
     val checked = options.indexOf(current).takeIf { it >= 0 } ?: 0
 
     showSettingsChoiceDialog(
-        title = "音频平衡",
+        title = "音量均衡",
         options = options,
         checkedIndex = checked,
         label = AudioBalanceLevel::label,
     ) { picked ->
+        val engine = player as? ExoPlayerEngine
+        if (engine == null) {
+            AppToast.show(this, "当前播放器内核不支持音量均衡")
+            return@showSettingsChoiceDialog
+        }
         applySessionSettingValue(
             value = picked,
             updateSession = { copy(audioBalanceLevel = it) },
             syncToGlobal = { playerAudioBalanceLevel = it.prefValue },
             afterApplied = { nextLevel ->
-                val engine = player
-                if (engine is ExoPlayerEngine) {
-                    engine.setAudioBalanceLevel(nextLevel)
-                    AppToast.show(this, "音频平衡：${nextLevel.label}")
-                } else {
-                    AppToast.show(this, "当前播放器内核不支持音频平衡")
-                }
+                engine.setAudioBalanceLevel(nextLevel)
             },
         )
     }
@@ -934,10 +964,10 @@ internal fun PlayerActivity.showSubtitleBackgroundOpacityDialog() {
     val ordered = PlaybackSettingChoices.subtitleBackgroundOpacities
     val current = ordered.indices.minByOrNull { abs(ordered[it] - session.subtitleBackgroundOpacity) } ?: 0
     showSettingsChoiceDialog(
-        title = "字幕背景透明度",
+        title = "字幕背景不透明度",
         options = ordered,
         checkedIndex = current,
-        label = { String.format(Locale.US, "%.2f", it) },
+        label = ::opacityText,
     ) { picked ->
         applySessionSettingValue(
             value = picked.coerceIn(0f, 1.0f),
@@ -1027,10 +1057,10 @@ internal fun PlayerActivity.showDanmakuOpacityDialog() {
     val options = PlaybackSettingChoices.danmakuOpacities
     val current = options.indices.minByOrNull { kotlin.math.abs(options[it] - session.danmaku.opacity) } ?: 0
     showSettingsChoiceDialog(
-        title = "弹幕透明度",
+        title = "弹幕不透明度",
         options = options,
         checkedIndex = current,
-        label = { String.format(Locale.US, "%.2f", it) },
+        label = ::opacityText,
     ) { picked ->
         applyDanmakuSettingValue(
             value = picked.coerceIn(0.05f, 1.0f),

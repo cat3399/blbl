@@ -1,4 +1,4 @@
-package blbl.cat3399.feature.player
+package blbl.cat3399.feature.video.comment
 
 import android.graphics.Bitmap
 import android.content.Context
@@ -10,11 +10,12 @@ import android.view.MotionEvent
 import android.view.ScaleGestureDetector
 import android.view.ViewConfiguration
 import androidx.appcompat.widget.AppCompatImageView
+import androidx.constraintlayout.widget.ConstraintLayout
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 
-internal class PlayerCommentImageView
+internal class VideoCommentImageView
     @JvmOverloads
     constructor(
         context: Context,
@@ -61,6 +62,7 @@ internal class PlayerCommentImageView
         private var lastY = 0f
         private var dragging = false
         private var multiTouchActive = false
+        private var multiTouchGesture = false
 
         init {
             scaleType = ScaleType.MATRIX
@@ -69,6 +71,10 @@ internal class PlayerCommentImageView
 
         fun isZoomed(): Boolean = zoomScale > MIN_SCALE + SCALE_EPSILON
 
+        fun setSourceDimensions(width: Int?, height: Int?) {
+            updateLayoutDimensionRatio(imageDimensionRatio(width = width, height = height))
+        }
+
         fun resetViewport() {
             val wasZoomed = isZoomed()
             zoomScale = MIN_SCALE
@@ -76,6 +82,7 @@ internal class PlayerCommentImageView
             offsetY = 0f
             dragging = false
             multiTouchActive = false
+            multiTouchGesture = false
             updateMatrix()
             notifyZoomStateIfChanged(wasZoomed)
         }
@@ -107,6 +114,9 @@ internal class PlayerCommentImageView
 
         override fun setImageBitmap(bm: Bitmap?) {
             super.setImageBitmap(bm)
+            if (bm != null) {
+                setSourceDimensions(width = bm.width, height = bm.height)
+            }
             scheduleViewportReset()
         }
 
@@ -127,10 +137,12 @@ internal class PlayerCommentImageView
                     lastY = event.y
                     dragging = false
                     multiTouchActive = false
+                    multiTouchGesture = false
                 }
 
                 MotionEvent.ACTION_POINTER_DOWN -> {
                     multiTouchActive = true
+                    multiTouchGesture = true
                     dragging = false
                 }
 
@@ -172,23 +184,40 @@ internal class PlayerCommentImageView
                 MotionEvent.ACTION_UP -> {
                     val x = event.x
                     val y = event.y
+                    val totalDx = x - downX
+                    val totalDy = y - downY
+                    val isHorizontalSwipe =
+                        !multiTouchGesture &&
+                            !scaleDetector.isInProgress &&
+                            !isZoomed() &&
+                            dragging &&
+                            abs(totalDx) >= swipeThresholdPx &&
+                            abs(totalDx) > abs(totalDy) * SWIPE_DIRECTION_RATIO
                     val isTap =
-                        !multiTouchActive &&
+                        !multiTouchGesture &&
                             !scaleDetector.isInProgress &&
                             !dragging &&
-                            abs(x - downX) <= touchSlopPx &&
-                            abs(y - downY) <= touchSlopPx
-                    if (isTap) {
+                            abs(totalDx) <= touchSlopPx &&
+                            abs(totalDy) <= touchSlopPx
+                    if (isHorizontalSwipe) {
+                        if (totalDx > 0f) {
+                            onNavigatePrevious?.invoke()
+                        } else {
+                            onNavigateNext?.invoke()
+                        }
+                    } else if (isTap) {
                         handleTap(x = x, y = y)
                     }
                     dragging = false
                     multiTouchActive = false
+                    multiTouchGesture = false
                     performClick()
                 }
 
                 MotionEvent.ACTION_CANCEL -> {
                     dragging = false
                     multiTouchActive = false
+                    multiTouchGesture = false
                 }
             }
 
@@ -293,6 +322,13 @@ internal class PlayerCommentImageView
                 drawable.intrinsicHeight > 0
         }
 
+        private fun updateLayoutDimensionRatio(ratio: String?) {
+            val params = layoutParams as? ConstraintLayout.LayoutParams ?: return
+            if (params.dimensionRatio == ratio) return
+            params.dimensionRatio = ratio
+            layoutParams = params
+        }
+
         private fun notifyZoomStateIfChanged(previousZoomed: Boolean) {
             val currentZoomed = isZoomed()
             if (currentZoomed != previousZoomed) {
@@ -310,7 +346,12 @@ internal class PlayerCommentImageView
             private const val DPAD_TOGGLE_SCALE = 2f
             private const val SCALE_EPSILON = 0.01f
             private const val EDGE_TAP_RATIO = 0.2f
+            private const val SWIPE_MIN_DP = 32f
+            private const val SWIPE_DIRECTION_RATIO = 1.25f
             private const val DPAD_PAN_STEP_RATIO = 0.12f
             private const val DPAD_PAN_MIN_DP = 48f
         }
+
+        private val swipeThresholdPx: Float
+            get() = max(touchSlopPx * 2f, density * SWIPE_MIN_DP)
     }

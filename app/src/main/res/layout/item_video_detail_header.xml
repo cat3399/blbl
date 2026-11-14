@@ -245,6 +245,7 @@
         android:layout_height="48dp"
         android:layout_marginStart="12dp"
         android:clickable="true"
+        android:contentDescription="@string/player_btn_comments"
         android:focusable="true"
         android:stateListAnimator="@animator/blbl_focus_scale"
         app:cardBackgroundColor="@android:color/transparent"
@@ -320,13 +321,40 @@
             app:tint="?android:attr/textColorSecondary" />
     </com.google.android.material.card.MaterialCardView>
 
+    <com.google.android.material.card.MaterialCardView
+        android:id="@+id/btn_comments"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_marginStart="12dp"
+        android:clickable="true"
+        android:focusable="true"
+        android:stateListAnimator="@animator/blbl_focus_scale"
+        app:cardBackgroundColor="@android:color/transparent"
+        app:cardCornerRadius="14dp"
+        app:cardElevation="0dp"
+        app:strokeColor="?attr/blblFocusStrokeColor"
+        app:strokeWidth="2dp"
+        app:layout_constraintBottom_toBottomOf="@id/btn_fav"
+        app:layout_constraintStart_toEndOf="@id/btn_fav"
+        app:layout_constraintTop_toTopOf="@id/btn_fav">
+
+        <ImageView
+            android:id="@+id/iv_comments"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:contentDescription="@string/player_btn_comments"
+            android:padding="10dp"
+            app:srcCompat="@drawable/ic_comment"
+            app:tint="?android:attr/textColorSecondary" />
+    </com.google.android.material.card.MaterialCardView>
+
     <androidx.constraintlayout.widget.Barrier
         android:id="@+id/barrier_play_row_end"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         app:barrierAllowsGoneWidgets="false"
         app:barrierDirection="end"
-        app:constraint_referenced_ids="btn_play,btn_like,btn_coin,btn_fav" />
+        app:constraint_referenced_ids="btn_play,btn_like,btn_coin,btn_fav,btn_comments" />
 
     <com.google.android.material.button.MaterialButton
         android:id="@+id/btn_secondary"

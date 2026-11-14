@@ -59,12 +59,21 @@ body:
       label: 5. (可选) 样式/UI 显示问题补充
       description: |
         **如果是 UI 样式问题（如错位、遮挡等），请务必填写此项：**
-        1. 请提供屏幕参数（路径：设置 -> 关于设备 -> 屏幕）。
+        1. 请提供屏幕参数（路径：设置 -> 设备信息 -> 屏幕）。
         2. 将你的 **报错截图/异常截图** 拖拽或粘贴到下方文本框中。
       placeholder: |
         屏幕分辨率：
         DPI：
         
         在此处粘贴图片...
+    validations:
+      required: false
+
+  - type: input
+    id: log-file
+    attributes:
+      label: 6. (可选) 日志文件名
+      description: 可在“设置 -> 关于应用”上传或导出日志，将成功结果中的文件名填在这里。
+      placeholder: 例如：上传成功后显示的 .zip 文件名
     validations:
       required: false

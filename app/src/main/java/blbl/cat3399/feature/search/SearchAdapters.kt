@@ -25,9 +25,13 @@ internal class SearchAdapters(
         }
 
     val suggestAdapter: SearchSuggestAdapter =
-        SearchSuggestAdapter { keyword ->
-            fragment.onSearchKeywordClicked(keyword)
-        }
+        SearchSuggestAdapter(
+            onClick = { keyword -> fragment.onSearchKeywordClicked(keyword) },
+            onHistoryLongClick = { item, position ->
+                fragment.removeSearchHistoryAndRestoreFocus(item.keyword, position)
+                true
+            },
+        )
 
     val hotAdapter: SearchHotAdapter =
         SearchHotAdapter { keyword ->

@@ -13,6 +13,12 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 
+data class NoteImage(
+    val url: String,
+    val width: Int? = null,
+    val height: Int? = null,
+)
+
 object NoteImageRepository {
     private const val TAG = "NoteImageRepo"
     private const val MAX_CACHE_ITEMS = 256
@@ -21,14 +27,14 @@ object NoteImageRepository {
     private val lock = Any()
 
     private val cache =
-        object : LruCache<Long, List<String>>(MAX_CACHE_ITEMS) {
-            override fun sizeOf(key: Long, value: List<String>): Int = 1
+        object : LruCache<Long, List<NoteImage>>(MAX_CACHE_ITEMS) {
+            override fun sizeOf(key: Long, value: List<NoteImage>): Int = 1
         }
 
     private val inFlight: ConcurrentHashMap<Long, Job> = ConcurrentHashMap()
-    private val waiters: ConcurrentHashMap<Long, MutableList<(List<String>) -> Unit>> = ConcurrentHashMap()
+    private val waiters: ConcurrentHashMap<Long, MutableList<(List<NoteImage>) -> Unit>> = ConcurrentHashMap()
 
-    fun load(cvid: Long, onResult: (List<String>) -> Unit) {
+    fun load(cvid: Long, onResult: (List<NoteImage>) -> Unit) {
         val safe = cvid.takeIf { it > 0 } ?: run {
             onResult(emptyList())
             return
@@ -84,7 +90,7 @@ object NoteImageRepository {
         }
     }
 
-    private suspend fun fetchNoteImages(cvid: Long): List<String> {
+    private suspend fun fetchNoteImages(cvid: Long): List<NoteImage> {
         val url =
             BiliClient.withQuery(
                 "https://api.bilibili.com/x/note/publish/info",
@@ -100,15 +106,15 @@ object NoteImageRepository {
 
         val data = json.optJSONObject("data") ?: JSONObject()
         val content = data.optString("content", "").trim()
-        return extractFirstImageUrlsFromContent(content, limit = 3)
+        return extractFirstImagesFromContent(content, limit = 3)
     }
 
-    private fun extractFirstImageUrlsFromContent(content: String, limit: Int): List<String> {
+    private fun extractFirstImagesFromContent(content: String, limit: Int): List<NoteImage> {
         if (content.isBlank() || limit <= 0) return emptyList()
         if (!content.startsWith("[")) return emptyList()
 
         val arr = runCatching { JSONArray(content) }.getOrNull() ?: return emptyList()
-        val out = ArrayList<String>(minOf(limit, 3))
+        val out = ArrayList<NoteImage>(minOf(limit, 3))
         for (i in 0 until arr.length()) {
             if (out.size >= limit) break
             val obj = arr.optJSONObject(i) ?: continue
@@ -120,10 +126,16 @@ object NoteImageRepository {
                     rawUrl.startsWith("http") -> rawUrl
                     rawUrl.startsWith("//") -> "https:$rawUrl"
                     else -> continue
-                }
+            }
             if (url.isBlank()) continue
-            if (out.contains(url)) continue
-            out.add(url)
+            if (out.any { it.url == url }) continue
+            out.add(
+                NoteImage(
+                    url = url,
+                    width = img.optInt("width", 0).takeIf { it > 0 },
+                    height = img.optInt("height", 0).takeIf { it > 0 },
+                ),
+            )
         }
         return out
     }

@@ -1,5 +1,6 @@
 package blbl.cat3399.feature.video
 
+import blbl.cat3399.R
 import android.content.Intent
 import android.os.Bundle
 import android.os.SystemClock
@@ -218,7 +219,7 @@ class RegionDetailActivity : BaseActivity() {
                 var targetPage = page
                 var loadedPage: Pair<List<VideoCard>, Boolean>? = null
                 while (loadedPage == null) {
-                    val res = BiliApi.regionLatestPage(rid = rid, pn = targetPage, ps = 24)
+                    val res = BiliApi.regionRankPage(rid = rid, pn = targetPage, ps = 24)
                     if (token != requestToken) return@launch
                     val hasMore = res.hasMore
                     val visibleItems = VideoCardVisibilityFilter.filterVisibleFresh(res.items, loadedStableKeys)
@@ -241,7 +242,7 @@ class RegionDetailActivity : BaseActivity() {
             } catch (t: Throwable) {
                 if (t is CancellationException) throw t
                 AppLog.e("RegionDetail", "load failed rid=$rid page=$page", t)
-                AppToast.show(this@RegionDetailActivity, "加载失败，可查看 Logcat(标签 BLBL)")
+                AppToast.show(this@RegionDetailActivity, getString(R.string.error_load_retry))
             } finally {
                 if (token == requestToken) binding.swipeRefresh.isRefreshing = false
                 isLoadingMore = false
@@ -328,7 +329,7 @@ class RegionDetailActivity : BaseActivity() {
             hasMoreProvider = { !endReached },
         ) { targetPage ->
             val pageNum = targetPage.coerceAtLeast(1)
-            val res = BiliApi.regionLatestPage(rid = rid, pn = pageNum, ps = 24)
+            val res = BiliApi.regionRankPage(rid = rid, pn = pageNum, ps = 24)
             VideoCardPlaylistPage(
                 cards = res.items,
                 nextCursor = pageNum + 1,

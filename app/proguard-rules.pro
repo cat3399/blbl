@@ -27,3 +27,9 @@
 -dontwarn com.android.org.conscrypt.SSLParametersImpl
 -dontwarn org.apache.harmony.xnet.provider.jsse.SSLParametersImpl
 -dontwarn org.conscrypt.**
+
+# Conscrypt references platform-internal SSL classes that are not present in the compile classpath.
+# These are only used on old Android versions at runtime; suppress R8 missing-class errors.
+-dontwarn com.android.org.conscrypt.SSLParametersImpl
+-dontwarn org.apache.harmony.xnet.provider.jsse.SSLParametersImpl
+-dontwarn org.conscrypt.**

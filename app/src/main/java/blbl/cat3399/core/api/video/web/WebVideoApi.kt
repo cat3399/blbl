@@ -17,7 +17,7 @@ import blbl.cat3399.core.api.video.VideoPlayStream
 import blbl.cat3399.core.api.video.VideoPopularRequest
 import blbl.cat3399.core.api.video.VideoRecommendPage
 import blbl.cat3399.core.api.video.VideoRecommendRequest
-import blbl.cat3399.core.api.video.VideoRegionLatestRequest
+import blbl.cat3399.core.api.video.VideoRegionRankRequest
 import blbl.cat3399.core.api.video.VideoSeriesArchivesRequest
 import blbl.cat3399.core.api.video.VideoSourceApi
 import blbl.cat3399.core.api.video.VideoOnlineStatus
@@ -31,6 +31,7 @@ import blbl.cat3399.core.api.video.VideoTagsRequest
 import blbl.cat3399.core.api.video.UgcSeasonArchivesPage
 import blbl.cat3399.core.api.video.UgcSeasonArchivesRequest
 import blbl.cat3399.core.log.AppLog
+import blbl.cat3399.core.net.WbiSigner
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -46,7 +47,7 @@ internal class WebVideoApi(
             BiliApiCapability.VIDEO_DETAIL,
             BiliApiCapability.VIDEO_RECOMMEND,
             BiliApiCapability.VIDEO_POPULAR,
-            BiliApiCapability.VIDEO_REGION_LATEST,
+            BiliApiCapability.VIDEO_REGION_RANK,
             BiliApiCapability.VIDEO_DYNAMIC_TAG,
             BiliApiCapability.VIDEO_ARCHIVE_RELATED,
             BiliApiCapability.VIDEO_PLAY_URL_UGC,
@@ -125,20 +126,39 @@ internal class WebVideoApi(
         return withContext(Dispatchers.Default) { mapper.parsePopularPage(data = data, request = safeRequest) }
     }
 
-    override suspend fun regionLatest(request: VideoRegionLatestRequest): VideoCardPage<VideoRegionLatestRequest> {
-        val safeRid = request.rid.takeIf { it > 0 } ?: error("region_latest_invalid_rid")
+    override suspend fun regionRank(request: VideoRegionRankRequest): VideoCardPage<VideoRegionRankRequest> {
+        val safeRid = request.rid.takeIf { it > 0 } ?: error("region_rank_invalid_rid")
         val safePn = request.pn.coerceAtLeast(1)
         val safePs = request.ps.coerceIn(1, 50)
         val safeRequest = request.copy(rid = safeRid, pn = safePn, ps = safePs)
-        val url =
-            transport.withQuery(
-                "https://api.bilibili.com/x/web-interface/dynamic/region",
-                mapOf("rid" to safeRid.toString(), "pn" to safePn.toString(), "ps" to safePs.toString()),
+        if (safePn > 1) {
+            return VideoCardPage(
+                source = source,
+                request = safeRequest,
+                items = emptyList(),
+                page = safePn,
+                hasMore = false,
+                total = 0,
             )
-        val json = transport.getJson(url)
+        }
+
+        transport.ensurePgcPlayCookieMaintenance()
+        val keys = transport.ensureWbiKeys()
+        val url =
+            transport.signedWbiUrl(
+                path = "/x/web-interface/ranking/v2",
+                params = mapOf("rid" to safeRid.toString(), "type" to "all"),
+                keys = keys,
+            )
+        val json =
+            transport.getJson(
+                url = url,
+                headers = transport.webHeaders(targetUrl = url, includeCookie = true),
+                noCookies = true,
+            )
         checkApiCode(json)
         val data = json.optJSONObject("data") ?: JSONObject()
-        return withContext(Dispatchers.Default) { mapper.parseRegionLatestPage(data = data, request = safeRequest) }
+        return withContext(Dispatchers.Default) { mapper.parseRegionRankPage(data = data, request = safeRequest) }
     }
 
     override suspend fun dynamicTag(request: VideoDynamicTagRequest): VideoCardPage<VideoDynamicTagRequest> {
@@ -194,35 +214,74 @@ internal class WebVideoApi(
     }
 
     override suspend fun playerInfo(request: VideoPlayerInfoRequest): VideoPlayerInfo {
-        transport.ensurePgcPlayCookieMaintenance()
+        transport.ensureUgcPlayCookieMaintenance()
         val params =
             mutableMapOf(
                 "bvid" to request.bvid.trim(),
                 "cid" to request.cid.toString(),
             )
+        transport.cookieValue("x-bili-gaia-vtoken")?.trim()?.takeIf { it.isNotBlank() }?.let {
+            params["gaia_vtoken"] = it
+        }
         val keys = transport.ensureWbiKeys()
-        val url = transport.signedWbiUrl(path = "/x/player/wbi/v2", params = params, keys = keys)
+        var fallback = "none"
         val json =
             try {
-                transport.getJson(
-                    url = url,
-                    headers = transport.webHeaders(targetUrl = url, includeCookie = true),
-                    noCookies = true,
-                )
+                requestPlayerInfoWbi(params = params, keys = keys)
             } catch (t: Throwable) {
                 if (t is CancellationException) throw t
-                params["try_look"] = "1"
-                val fallbackUrl = transport.signedWbiUrl(path = "/x/player/wbi/v2", params = params, keys = keys)
-                transport.getJson(
-                    url = fallbackUrl,
-                    headers = transport.webHeaders(targetUrl = fallbackUrl, includeCookie = false),
-                    noCookies = true,
-                )
+                AppLog.w(TAG, "playerInfo wbi failed, fallback plain_v2 bvid=${request.bvid} cid=${request.cid}", t)
+                fallback = "plain_v2"
+                try {
+                    requestPlayerInfoPlain(params = params)
+                } catch (plainError: Throwable) {
+                    if (plainError is CancellationException) throw plainError
+                    AppLog.w(TAG, "playerInfo plain_v2 failed bvid=${request.bvid} cid=${request.cid}", plainError)
+                    throw plainError
+                }
             }
-        checkApiCode(json)
         val data = json.optJSONObject("data") ?: JSONObject()
+        val subtitleCount = data.optJSONObject("subtitle")?.optJSONArray("subtitles")?.length() ?: 0
+        AppLog.i(
+            TAG,
+            "playerInfo subtitle bvid=${request.bvid} cid=${request.cid} fallback=$fallback " +
+                "needLogin=${data.optBoolean("need_login_subtitle", false)} count=$subtitleCount",
+        )
         return withContext(Dispatchers.Default) { mapper.parsePlayerInfo(data = data, request = request) }
     }
+
+    private suspend fun requestPlayerInfoWbi(
+        params: Map<String, String>,
+        keys: WbiSigner.Keys,
+    ): JSONObject {
+        val url = transport.signedWbiUrl(path = "/x/player/wbi/v2", params = params, keys = keys)
+        val json =
+            transport.getJson(
+                url = url,
+                headers = playerInfoHeaders(url),
+                noCookies = true,
+            )
+        checkApiCode(json)
+        return json
+    }
+
+    private suspend fun requestPlayerInfoPlain(params: Map<String, String>): JSONObject {
+        val url = transport.withQuery("https://api.bilibili.com/x/player/v2", params)
+        val json =
+            transport.getJson(
+                url = url,
+                headers = playerInfoHeaders(url),
+                noCookies = true,
+            )
+        checkApiCode(json)
+        return json
+    }
+
+    private fun playerInfoHeaders(targetUrl: String): Map<String, String> =
+        transport.webHeaders(targetUrl = targetUrl, includeCookie = true).toMutableMap().apply {
+            // Player info is a Web CORS API; without Origin it may 412 or return subtitle entries with empty URLs.
+            this["Origin"] = PLAYER_INFO_ORIGIN
+        }
 
     override suspend fun onlineStatus(request: VideoOnlineStatusRequest): VideoOnlineStatus {
         val url =
@@ -476,5 +535,6 @@ internal class WebVideoApi(
 
     companion object {
         private const val TAG = "WebVideoApi"
+        private const val PLAYER_INFO_ORIGIN = "https://www.bilibili.com"
     }
 }

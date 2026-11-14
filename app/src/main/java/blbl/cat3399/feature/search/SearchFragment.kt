@@ -125,6 +125,10 @@ class SearchFragment : Fragment(), BackPressHandler, RefreshKeyHandler {
         interactor?.onKeywordClicked(keyword)
     }
 
+    internal fun removeSearchHistoryAndRestoreFocus(keyword: String, position: Int) {
+        interactor?.removeHistory(keyword, position)
+    }
+
     internal fun openSearchVideoAt(position: Int) {
         renderer?.openVideoAt(position)
     }

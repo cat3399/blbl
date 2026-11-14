@@ -3,6 +3,12 @@ package blbl.cat3399.core.log
 import android.content.Context
 import android.net.Uri
 import blbl.cat3399.core.io.DocumentExporter
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.withContext
+import org.json.JSONArray
+import org.json.JSONObject
 import java.io.File
 import java.io.FileInputStream
 import java.io.IOException
@@ -14,116 +20,124 @@ import java.util.zip.ZipOutputStream
 
 object LogExporter {
     const val ZIP_MIME = "application/zip"
+    const val METADATA_SCHEMA = 2
 
     private data class ExportInput(
         val appContext: Context,
         val fileName: String,
-        val logFiles: List<File>,
-        val crashFile: File?,
+        val snapshot: FileLogWriter.Snapshot,
+        val crashes: List<CrashFileStore.Exported>,
     )
 
-    data class ZipExtra(
-        /**
-         * Path inside the zip, e.g. `meta.json` or `logs/extra.txt`.
-         */
-        val path: String,
-        val bytes: ByteArray,
-    )
+    data class ZipExtra(val path: String, val bytes: ByteArray)
+    data class ExportResult(val fileName: String, val uri: Uri, val includedFiles: Int)
+    data class LocalExportResult(val fileName: String, val file: File, val includedFiles: Int)
 
-    data class ExportResult(
-        val fileName: String,
-        val uri: Uri,
-        val includedFiles: Int,
-    )
-
-    data class LocalExportResult(
-        val fileName: String,
-        val file: File,
-        val includedFiles: Int,
-    )
-
-    fun exportToUri(
+    suspend fun exportToUri(
         context: Context,
         uri: Uri,
         nowMs: Long = System.currentTimeMillis(),
         fileNameOverride: String? = null,
-        extras: List<ZipExtra> = emptyList(),
-    ): ExportResult {
-        val input = buildExportInput(context = context, nowMs = nowMs, fileNameOverride = fileNameOverride)
-        val result =
-            DocumentExporter.exportToUri(
-                context = input.appContext,
-                uri = uri,
-                fileName = input.fileName,
-            ) { out ->
-                ZipOutputStream(out).use { zip ->
-                    writeZip(zip = zip, extras = extras, logFiles = input.logFiles, crashFile = input.crashFile)
-                }
+        extras: () -> List<ZipExtra> = { emptyList() },
+    ): ExportResult = withContext(Dispatchers.IO) {
+        val input = buildExportInput(context, nowMs, fileNameOverride)
+        input.snapshot.use {
+            val metadata = buildExtras(input, extras())
+            currentCoroutineContext().ensureActive()
+            val result = DocumentExporter.exportToUri(input.appContext, uri, input.fileName) { out ->
+                ZipOutputStream(out).use { zip -> writeZip(zip, input, metadata) }
             }
-
-        return ExportResult(fileName = result.fileName, uri = result.uri, includedFiles = result.value)
+            ExportResult(result.fileName, result.uri, result.value)
+        }
     }
 
-    fun exportToLocalFile(
+    suspend fun exportToLocalFile(
         context: Context,
         nowMs: Long = System.currentTimeMillis(),
         fileNameOverride: String? = null,
-        extras: List<ZipExtra> = emptyList(),
-    ): LocalExportResult {
-        val input = buildExportInput(context = context, nowMs = nowMs, fileNameOverride = fileNameOverride)
-        val result =
-            DocumentExporter.exportToLocalFile(
-                context = input.appContext,
-                fileName = input.fileName,
-                subDir = "exports",
-            ) { out ->
-                ZipOutputStream(out).use { zip ->
-                    writeZip(zip = zip, extras = extras, logFiles = input.logFiles, crashFile = input.crashFile)
-                }
+        extras: () -> List<ZipExtra> = { emptyList() },
+    ): LocalExportResult = withContext(Dispatchers.IO) {
+        val input = buildExportInput(context, nowMs, fileNameOverride)
+        input.snapshot.use {
+            val metadata = buildExtras(input, extras())
+            currentCoroutineContext().ensureActive()
+            val result = DocumentExporter.exportToLocalFile(input.appContext, input.fileName, subDir = "exports") { out ->
+                ZipOutputStream(out).use { zip -> writeZip(zip, input, metadata) }
             }
-
-        return LocalExportResult(fileName = result.fileName, file = result.file, includedFiles = result.value)
+            LocalExportResult(result.fileName, result.file, result.value)
+        }
     }
 
-    private fun buildExportFileName(nowMs: Long): String {
-        val sdf = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US)
-        val ts = runCatching { sdf.format(Date(nowMs)) }.getOrNull() ?: nowMs.toString()
-        return "blbl_logs_${ts}.zip"
+    private suspend fun buildExportInput(context: Context, nowMs: Long, fileNameOverride: String?): ExportInput {
+        val appContext = context.applicationContext
+        val snapshot = AppLog.snapshot(appContext)
+        try {
+            currentCoroutineContext().ensureActive()
+            val crashes = CrashTracker.snapshotTo(appContext, snapshot.directory)
+            if (snapshot.files.isEmpty() && crashes.isEmpty()) throw IOException("没有可导出的日志文件")
+            return ExportInput(appContext, resolveExportFileName(nowMs, fileNameOverride), snapshot, crashes)
+        } catch (error: Throwable) {
+            snapshot.close()
+            throw error
+        }
     }
 
-    private fun writeZip(
-        zip: ZipOutputStream,
-        extras: List<ZipExtra>,
-        logFiles: List<File>,
-        crashFile: File?,
-    ): Int {
+    private fun buildExtras(input: ExportInput, extras: List<ZipExtra>): List<ZipExtra> {
+        val metadataExtras = extras.filter { it.path == "meta.json" }
+        require(metadataExtras.size <= 1) { "重复的日志元数据" }
+        val metadata = metadataExtras.firstOrNull()?.let { JSONObject(it.bytes.toString(Charsets.UTF_8)) } ?: JSONObject()
+        val health = input.snapshot.health
+        metadata.put("schema", METADATA_SCHEMA)
+        metadata.put("log_health", JSONObject()
+            .put("file_logging_active", health.active)
+            .put("queue_dropped_lines", health.droppedLines)
+            .put("write_failed_lines", health.failedLines)
+            .put("truncated_lines", health.truncatedLines)
+            .put("last_error", health.lastError ?: JSONObject.NULL))
+        val crashes = JSONArray()
+        input.crashes.forEach { entry ->
+            val item = JSONObject().put("path", "logs/${entry.file.name}")
+            val crash = entry.record
+            if (crash == null) {
+                item.put("parse_error", true)
+            } else {
+                item.put("event_id", crash.id ?: JSONObject.NULL)
+                    .put("crash_at_ms", crash.crashAtMs)
+                    .put("thread", crash.threadName)
+                    .put("version_name", crash.versionName ?: JSONObject.NULL)
+                    .put("version_code", crash.versionCode ?: JSONObject.NULL)
+                    .put("build_type", crash.buildType ?: JSONObject.NULL)
+                    .put("truncated", crash.truncated)
+                    .put("legacy", crash.id == null)
+            }
+            crashes.put(item)
+        }
+        metadata.put("crashes", crashes)
+        val result = extras.filter { it.path != "meta.json" } + ZipExtra("meta.json", metadata.toString(2).toByteArray(Charsets.UTF_8))
+        result.forEach { require(sanitizeZipPath(it.path) != null) { "无效的日志附加文件路径" } }
+        return result
+    }
+
+    private fun writeZip(zip: ZipOutputStream, input: ExportInput, extras: List<ZipExtra>): Int {
         var included = 0
         for (extra in extras) {
-            val path = sanitizeZipPath(extra.path) ?: continue
-            val bytes = extra.bytes
-            zip.putNextEntry(ZipEntry(path))
-            zip.write(bytes)
+            zip.putNextEntry(ZipEntry(requireNotNull(sanitizeZipPath(extra.path))))
+            zip.write(extra.bytes)
             zip.closeEntry()
             included++
         }
-        for (f in logFiles) {
-            if (!f.exists() || !f.isFile) continue
-            zip.putNextEntry(ZipEntry("logs/${f.name}"))
-            FileInputStream(f).use { input ->
-                input.copyTo(zip, bufferSize = 32 * 1024)
-            }
-            zip.closeEntry()
-            included++
-        }
-        if (crashFile != null) {
-            zip.putNextEntry(ZipEntry("logs/${crashFile.name}"))
-            FileInputStream(crashFile).use { input ->
-                input.copyTo(zip, bufferSize = 32 * 1024)
-            }
+        for (file in input.snapshot.files + input.crashes.map { it.file }) {
+            zip.putNextEntry(ZipEntry("logs/${file.name}"))
+            FileInputStream(file).use { it.copyTo(zip, bufferSize = 32 * 1024) }
             zip.closeEntry()
             included++
         }
         return included
+    }
+
+    private fun buildExportFileName(nowMs: Long): String {
+        val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date(nowMs))
+        return "blbl_logs_$timestamp.zip"
     }
 
     private fun resolveExportFileName(
@@ -141,29 +155,6 @@ object LogExporter {
         nowMs: Long = System.currentTimeMillis(),
         fileNameOverride: String? = null,
     ): String = resolveExportFileName(nowMs = nowMs, fileNameOverride = fileNameOverride)
-
-    private fun buildExportInput(
-        context: Context,
-        nowMs: Long,
-        fileNameOverride: String?,
-    ): ExportInput {
-        val appContext = context.applicationContext
-        val logFiles =
-            AppLog.logDir(appContext)
-                .listFiles()?.asSequence()
-                ?.filter { it.isFile && it.name.endsWith(".log") }
-                ?.sortedBy { it.lastModified() }
-                ?.toList()
-                ?: emptyList()
-        val crashFile = CrashTracker.crashFile(appContext).takeIf { it.exists() && it.isFile }
-        if (logFiles.isEmpty() && crashFile == null) throw IOException("没有可导出的日志文件")
-        return ExportInput(
-            appContext = appContext,
-            fileName = resolveExportFileName(nowMs = nowMs, fileNameOverride = fileNameOverride),
-            logFiles = logFiles,
-            crashFile = crashFile,
-        )
-    }
 
     private fun sanitizeFileName(name: String): String {
         val trimmed = name.trim()

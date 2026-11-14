@@ -32,6 +32,7 @@ class VideoDetailHeaderAdapter(
     private val onCoinClick: () -> Unit,
     private val onFavClick: () -> Unit,
     private val onSecondaryClick: () -> Unit,
+    private val onCommentsClick: (() -> Unit)? = null,
     private val onUpCardFocused: (() -> Unit)? = null,
     private val onPrimaryActionFocused: (() -> Unit)? = null,
     private val onSecondaryActionFocused: (() -> Unit)? = null,
@@ -61,6 +62,7 @@ class VideoDetailHeaderAdapter(
     private var actionLiked: Boolean = false
     private var actionCoinCount: Int = 0
     private var actionFavored: Boolean = false
+    private var showCommentsAction: Boolean = false
 
     private var partsHeaderText: String? = null
     private var partsCards: List<VideoCard> = emptyList()
@@ -119,6 +121,7 @@ class VideoDetailHeaderAdapter(
         actionLiked: Boolean = false,
         actionCoinCount: Int = 0,
         actionFavored: Boolean = false,
+        showCommentsAction: Boolean = showActions,
         partsHeaderText: String?,
         partsCards: List<VideoCard>,
         partsSelectedKey: String?,
@@ -156,6 +159,7 @@ class VideoDetailHeaderAdapter(
         this.actionLiked = actionLiked
         this.actionCoinCount = actionCoinCount
         this.actionFavored = actionFavored
+        this.showCommentsAction = showCommentsAction
 
         this.partsHeaderText = partsHeaderText
         this.partsCards = partsCards
@@ -192,6 +196,7 @@ class VideoDetailHeaderAdapter(
             onLikeLongPress = onLikeLongPress,
             onCoinClick = onCoinClick,
             onFavClick = onFavClick,
+            onCommentsClick = onCommentsClick,
             onSecondaryClick = onSecondaryClick,
             onUpCardFocused = onUpCardFocused,
             onPrimaryActionFocused = onPrimaryActionFocused,
@@ -230,6 +235,7 @@ class VideoDetailHeaderAdapter(
             actionLiked = actionLiked,
             actionCoinCount = actionCoinCount,
             actionFavored = actionFavored,
+            showCommentsAction = showCommentsAction,
             partsHeaderText = partsHeaderText,
             partsCards = partsCards,
             partsSelectedKey = partsSelectedKey,
@@ -268,6 +274,7 @@ class VideoDetailHeaderAdapter(
         private val onLikeLongPress: () -> Unit,
         private val onCoinClick: () -> Unit,
         private val onFavClick: () -> Unit,
+        private val onCommentsClick: (() -> Unit)?,
         private val onSecondaryClick: () -> Unit,
         private val onUpCardFocused: (() -> Unit)?,
         private val onPrimaryActionFocused: (() -> Unit)?,
@@ -342,6 +349,7 @@ class VideoDetailHeaderAdapter(
             binding.btnLike.setOnClickListener { onLikeClick() }
             binding.btnCoin.setOnClickListener { onCoinClick() }
             binding.btnFav.setOnClickListener { onFavClick() }
+            binding.btnComments.setOnClickListener { onCommentsClick?.invoke() }
             binding.btnSecondary.setOnClickListener { onSecondaryClick() }
 
             binding.btnPartsOrder.setOnClickListener { onPartsOrderClick() }
@@ -376,6 +384,7 @@ class VideoDetailHeaderAdapter(
             actionLiked: Boolean,
             actionCoinCount: Int,
             actionFavored: Boolean,
+            showCommentsAction: Boolean,
             partsHeaderText: String?,
             partsCards: List<VideoCard>,
             partsSelectedKey: String?,
@@ -444,12 +453,14 @@ class VideoDetailHeaderAdapter(
             binding.btnLike.isVisible = showActions
             binding.btnCoin.isVisible = showActions
             binding.btnFav.isVisible = showActions
+            binding.btnComments.isVisible = showCommentsAction && onCommentsClick != null
             if (showActions) {
                 val activeColor = ContextCompat.getColorStateList(binding.root.context, blbl.cat3399.R.color.blbl_blue)
                 val inactiveColor = ContextCompat.getColorStateList(binding.root.context, blbl.cat3399.R.color.blbl_text_secondary)
                 ImageViewCompat.setImageTintList(binding.ivLike, if (actionLiked) activeColor else inactiveColor)
                 ImageViewCompat.setImageTintList(binding.ivCoin, if (actionCoinCount > 0) activeColor else inactiveColor)
                 ImageViewCompat.setImageTintList(binding.ivFav, if (actionFavored) activeColor else inactiveColor)
+                ImageViewCompat.setImageTintList(binding.ivComments, inactiveColor)
             } else {
                 likeHoldController.cancel(resetTriggered = true)
             }

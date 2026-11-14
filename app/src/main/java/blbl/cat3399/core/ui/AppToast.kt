@@ -15,6 +15,7 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.TextView
 import android.widget.Toast
+import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import blbl.cat3399.R
@@ -61,7 +62,7 @@ object AppToast {
 
         view.findViewById<ImageView>(R.id.iv_app_icon).setImageDrawable(
             runCatching { root.context.applicationInfo.loadIcon(root.context.packageManager) }
-                .getOrElse { root.context.getDrawable(R.mipmap.ic_launcher) },
+                .getOrElse { ContextCompat.getDrawable(root.context, R.mipmap.ic_launcher) },
         )
 
         val tvText = view.findViewById<TextView>(R.id.tv_text)

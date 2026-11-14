@@ -16,12 +16,27 @@ android {
         return null
     }
 
+    val releaseStoreFile = rootProject.file("keystore/release.keystore")
+    val releaseStorePassword = propOrEnv("RELEASE_STORE_PASSWORD")
+    val releaseKeyAlias = propOrEnv("RELEASE_KEY_ALIAS")
+    val releaseKeyPassword = propOrEnv("RELEASE_KEY_PASSWORD")
+    val hasReleaseSigning =
+        releaseStoreFile.isFile &&
+            !releaseStorePassword.isNullOrBlank() &&
+            !releaseKeyAlias.isNullOrBlank() &&
+            !releaseKeyPassword.isNullOrBlank()
+    val appVersionName = project.findProperty("versionName") as String? ?: "0.1.0"
+    val semanticVersion = Regex("""^v?(\d+)\.(\d+)\.(\d+)""").find(appVersionName)
+    val semanticVersionCode = semanticVersion?.groupValues?.let { groups ->
+        groups[1].toInt() * 1_000_000 + groups[2].toInt() * 1_000 + groups[3].toInt()
+    } ?: 1
+
     defaultConfig {
         applicationId = "blbl.cat3399"
         minSdk = 19
         targetSdk = 36
-        versionCode = (project.findProperty("versionCode") as String?)?.toInt() ?: 1
-        versionName = project.findProperty("versionName") as String? ?: "0.1.0"
+        versionCode = (project.findProperty("versionCode") as String?)?.toInt() ?: semanticVersionCode
+        versionName = appVersionName
 
         vectorDrawables {
             useSupportLibrary = true
@@ -32,10 +47,12 @@ android {
 
     signingConfigs {
         create("release") {
-            storeFile = rootProject.file("keystore/release.keystore")
-            storePassword = propOrEnv("RELEASE_STORE_PASSWORD")
-            keyAlias = propOrEnv("RELEASE_KEY_ALIAS")
-            keyPassword = propOrEnv("RELEASE_KEY_PASSWORD")
+            if (hasReleaseSigning) {
+                storeFile = releaseStoreFile
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
         }
     }
 
@@ -46,7 +63,7 @@ android {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
-            signingConfig = signingConfigs.getByName("release")
+            signingConfig = if (hasReleaseSigning) signingConfigs.getByName("release") else null
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
@@ -91,11 +108,6 @@ android {
                 "META-INF/*.kotlin_module",
             )
         }
-        jniLibs {
-            // libijkplayer.so is excluded by default (downloaded on demand).
-            // The kitkat flavor will override this via androidComponents.onVariants.
-            excludes += setOf("**/libijkplayer.so")
-        }
     }
 
     // Configure per-variant packaging for kitkat flavor
@@ -108,6 +120,10 @@ android {
                     "**/x86/**",
                     "**/x86_64/**",
                 ))
+                // The API19-specific ARM32 library intentionally overrides the
+                // same ABI entry bundled in the IJK AAR. Keep one deterministic
+                // entry in the APK and avoid AGP's duplicate native library warning.
+                variant.packaging.jniLibs.pickFirsts.add("**/armeabi-v7a/libijkplayer.so")
             }
         }
     }
@@ -160,11 +176,13 @@ dependencies {
     "lollipopplusImplementation"("com.squareup.okhttp3:okhttp:4.12.0")
 
     "kitkatImplementation"("androidx.media3:media3-exoplayer:1.4.1")
+    "kitkatImplementation"("androidx.media3:media3-exoplayer-dash:1.4.1")
     "kitkatImplementation"("androidx.media3:media3-exoplayer-hls:1.4.1")
     "kitkatImplementation"("androidx.media3:media3-ui:1.4.1")
     "kitkatImplementation"("androidx.media3:media3-datasource:1.4.1")
 
     "lollipopplusImplementation"("androidx.media3:media3-exoplayer:1.8.0")
+    "lollipopplusImplementation"("androidx.media3:media3-exoplayer-dash:1.8.0")
     "lollipopplusImplementation"("androidx.media3:media3-exoplayer-hls:1.8.0")
     "lollipopplusImplementation"("androidx.media3:media3-ui:1.8.0")
     "lollipopplusImplementation"("androidx.media3:media3-datasource:1.8.0")

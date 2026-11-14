@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="utf-8"?>
+<merge xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+
+        <androidx.constraintlayout.widget.Guideline
+            android:id="@+id/guideline_comment_image_left"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            app:layout_constraintGuide_percent="0.125" />
+
+        <androidx.constraintlayout.widget.Guideline
+            android:id="@+id/guideline_comment_image_right"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            app:layout_constraintGuide_percent="0.875" />
+
+        <androidx.constraintlayout.widget.Guideline
+            android:id="@+id/guideline_comment_image_top"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            app:layout_constraintGuide_percent="0.125" />
+
+        <androidx.constraintlayout.widget.Guideline
+            android:id="@+id/guideline_comment_image_bottom"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            app:layout_constraintGuide_percent="0.875" />
+
+        <blbl.cat3399.feature.video.comment.VideoCommentImageView
+            android:id="@+id/iv_comment_image"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:clickable="true"
+            android:contentDescription="@string/app_name"
+            app:layout_constraintBottom_toBottomOf="@id/guideline_comment_image_bottom"
+            app:layout_constraintEnd_toEndOf="@id/guideline_comment_image_right"
+            app:layout_constraintStart_toStartOf="@id/guideline_comment_image_left"
+            app:layout_constraintTop_toTopOf="@id/guideline_comment_image_top" />
+
+        <ImageView
+            android:id="@+id/iv_comment_image_prev"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_marginEnd="24dp"
+            android:alpha="0.7"
+            android:clickable="true"
+            android:contentDescription="@string/app_name"
+            app:srcCompat="@drawable/ic_chevron_left"
+            android:visibility="gone"
+            app:layout_constraintBottom_toBottomOf="@id/iv_comment_image"
+            app:layout_constraintEnd_toStartOf="@id/iv_comment_image"
+            app:layout_constraintTop_toTopOf="@id/iv_comment_image" />
+
+        <ImageView
+            android:id="@+id/iv_comment_image_next"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_marginStart="24dp"
+            android:alpha="0.7"
+            android:clickable="true"
+            android:contentDescription="@string/app_name"
+            app:srcCompat="@drawable/ic_chevron_right"
+            android:visibility="gone"
+            app:layout_constraintBottom_toBottomOf="@id/iv_comment_image"
+            app:layout_constraintStart_toEndOf="@id/iv_comment_image"
+            app:layout_constraintTop_toTopOf="@id/iv_comment_image" />
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
+</merge>

@@ -10,21 +10,20 @@ import android.os.SystemClock
 import android.util.DisplayMetrics
 import android.util.TypedValue
 import android.view.KeyEvent
-import android.view.LayoutInflater
 import android.graphics.SurfaceTexture
 import android.view.Surface
 import android.view.SurfaceHolder
 import android.view.SurfaceView
 import android.view.TextureView
 import android.view.View
-import android.view.ViewGroup
+import android.view.ViewConfiguration
 import android.view.ViewGroup.MarginLayoutParams
 import android.widget.FrameLayout
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.LifecycleCoroutineScope
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.widget.ImageViewCompat
-import androidx.lifecycle.LifecycleCoroutineScope
 import androidx.lifecycle.lifecycleScope
 import androidx.media3.common.C
 import androidx.media3.common.Format
@@ -36,30 +35,34 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.analytics.AnalyticsListener.EventTime
 import androidx.media3.ui.AspectRatioFrameLayout
+import blbl.cat3399.BuildConfig
 import blbl.cat3399.R
 import blbl.cat3399.core.api.BiliApi
 import blbl.cat3399.core.api.BiliApiException
 import blbl.cat3399.core.log.AppLog
 import blbl.cat3399.core.model.Danmaku
+import blbl.cat3399.core.model.LiveSuperChat
 import blbl.cat3399.core.net.BiliClient
 import blbl.cat3399.core.prefs.AppPrefs
 import blbl.cat3399.core.prefs.PlayerCustomShortcutAction
+import blbl.cat3399.core.prefs.PlayerCustomShortcutTrigger
 import blbl.cat3399.core.prefs.PlayerCustomShortcutsStore
 import blbl.cat3399.core.ui.AppToast
 import blbl.cat3399.core.ui.BaseActivity
-import blbl.cat3399.core.ui.CompatThemedBackgrounds
 import blbl.cat3399.core.ui.DoubleBackToExitHandler
 import blbl.cat3399.core.ui.FocusReturn
 import blbl.cat3399.core.ui.Immersive
 import blbl.cat3399.core.ui.popup.AppPopup
-import blbl.cat3399.core.ui.popup.PopupAction
-import blbl.cat3399.core.ui.popup.PopupActionRole
 import blbl.cat3399.core.ui.popup.PopupHost
 import blbl.cat3399.databinding.ActivityPlayerBinding
-import blbl.cat3399.databinding.DialogLiveChatBinding
+import blbl.cat3399.databinding.ViewLiveSuperChatOverlayBinding
 import blbl.cat3399.feature.player.AudioBalanceLevel
 import blbl.cat3399.feature.player.PlayerBufferingOverlayController
+import blbl.cat3399.feature.player.PlayerCustomShortcutBindings
+import blbl.cat3399.feature.player.PlayerCustomShortcutDispatchResult
 import blbl.cat3399.feature.player.PlayerCustomShortcutInputPolicy
+import blbl.cat3399.feature.player.PlayerCustomShortcutPressController
+import blbl.cat3399.feature.player.PlayerDefaultShortPressDispatcher
 import blbl.cat3399.feature.player.PlayerDebugMetrics
 import blbl.cat3399.feature.player.PlayerOsdSizing
 import blbl.cat3399.feature.player.PlayerSettingsAdapter
@@ -67,6 +70,7 @@ import blbl.cat3399.feature.player.PlayerTouchController
 import blbl.cat3399.feature.player.PlayerTouchGestureHost
 import blbl.cat3399.feature.player.PlayerUpQuickCardController
 import blbl.cat3399.feature.player.PlayerUiMode
+import blbl.cat3399.feature.player.opacityText
 import blbl.cat3399.feature.player.areaText
 import blbl.cat3399.feature.player.danmaku.DanmakuSessionSettings
 import blbl.cat3399.feature.player.danmaku.DanmakuFontWeight
@@ -80,6 +84,7 @@ import blbl.cat3399.feature.player.engine.LiveHlsDebugInfo
 import blbl.cat3399.feature.player.engine.PlayerEngineKind
 import blbl.cat3399.feature.player.engine.PlaybackSource
 import blbl.cat3399.feature.player.requirePlayerTouchOverlayBinding
+import blbl.cat3399.feature.player.videoCommentsPanelContent
 import kotlinx.coroutines.CancellationException
 import org.json.JSONObject
 import kotlinx.coroutines.Job
@@ -118,18 +123,53 @@ class LivePlayerActivity : BaseActivity() {
 
     private lateinit var binding: ActivityPlayerBinding
     private lateinit var upQuickCard: PlayerUpQuickCardController
+    private lateinit var superChatOverlay: LiveSuperChatOverlayController
 
     private var player: BlblPlayerEngine? = null
     private var ijkRenderView: View? = null
     private var ijkTextureSurface: Surface? = null
     private val settingsPanelReturnFocus = FocusReturn()
+    private val osdFocusReturn = FocusReturn()
     private var autoHideJob: Job? = null
     private var seekHintJob: Job? = null
+    private var superChatLoadJob: Job? = null
     private var touchController: PlayerTouchController? = null
     private val shortcutPrevDanmakuOpacityByKey = HashMap<Int, Float>()
     private val shortcutPrevDanmakuTextSizeByKey = HashMap<Int, Float>()
     private val shortcutPrevDanmakuSpeedLevelByKey = HashMap<Int, Int>()
     private val shortcutPrevDanmakuAreaByKey = HashMap<Int, Float>()
+    private val shortcutPressController by lazy {
+        PlayerCustomShortcutPressController<PlayerCustomShortcutAction, KeyEvent>(
+            scope = lifecycleScope,
+            longPressTimeoutMillis = ViewConfiguration.getLongPressTimeout().toLong(),
+            isEligibleKey = { keyCode ->
+                keyCode > 0 &&
+                    keyCode != KeyEvent.KEYCODE_UNKNOWN &&
+                    !PlayerCustomShortcutsStore.isForbiddenKeyCode(keyCode)
+            },
+            bindingsForKey = { keyCode ->
+                val bindings = BiliClient.prefs.playerCustomShortcuts.filter { it.keyCode == keyCode }
+                PlayerCustomShortcutBindings(
+                    shortAction =
+                        bindings.firstOrNull { it.trigger == PlayerCustomShortcutTrigger.SHORT_PRESS }
+                            ?.action
+                            ?.takeIf(::isLiveCustomShortcutActionSupported),
+                    longAction =
+                        bindings.firstOrNull { it.trigger == PlayerCustomShortcutTrigger.LONG_PRESS }
+                            ?.action
+                            ?.takeIf(::isLiveCustomShortcutActionSupported),
+                )
+            },
+            canDispatch = ::canDispatchLiveCustomShortcut,
+            copyEventToken = { source -> KeyEvent(source) },
+            executeAction = { keyCode, trigger, action ->
+                applyLiveCustomShortcut(
+                    keyCode = shortcutMemoryKey(keyCode, trigger),
+                    action = action,
+                )
+            },
+        )
+    }
     private var debugJob: Job? = null
     private var autoFailoverJob: Job? = null
     private var liveEntryReportedRoomId: Long = 0L
@@ -174,12 +214,10 @@ class LivePlayerActivity : BaseActivity() {
     private var lastLiveStatus: Int = 0
     private var transientPlaybackResumeRequested: Boolean? = null
 
-    private val chatItems = ArrayDeque<LiveChatAdapter.Item>()
-    private val chatMax = 200
-
     private var messageClient: LiveMessageClient? = null
     private var liveDanmakuBaseUptimeMs: Long = 0L
     private var liveDanmakuLastAppendMs: Int = Int.MIN_VALUE
+    private var temporarySuperChatPreviewStarted = false
     private var topBarBasePadding = ViewPaddingState(0, 0, 0, 0)
     private var bottomBarBasePadding = ViewPaddingState(0, 0, 0, 0)
     private var settingsPanelBaseMargins = ViewMarginState(0, 0, 0, 0)
@@ -245,6 +283,13 @@ class LivePlayerActivity : BaseActivity() {
         if (sessionOverrideJson != null) {
             session = session.restoreFromEngineSwitchJsonString(sessionOverrideJson)
         }
+        superChatOverlay =
+            LiveSuperChatOverlayController(
+                binding = ViewLiveSuperChatOverlayBinding.bind(binding.liveSuperChatStub.inflate()),
+                scope = lifecycleScope,
+            ).also {
+                it.setEnabled(session.danmaku.enabled)
+            }
 
         // Live: no seek bar.
         binding.seekProgress.visibility = View.GONE
@@ -260,28 +305,43 @@ class LivePlayerActivity : BaseActivity() {
         binding.btnCoin.visibility = View.GONE
         binding.btnFav.visibility = View.GONE
         binding.btnListPanel.visibility = View.GONE
-        binding.btnComments.visibility = View.VISIBLE
+        binding.btnClosePlayer.visibility = View.GONE
+        binding.btnComments.visibility = View.GONE
 
         setupUpQuickCard()
         binding.btnBack.setOnClickListener { finish() }
 
         val desiredEngineKind = session.engineKind
         val engineKind =
-            if (desiredEngineKind == PlayerEngineKind.IjkPlayer && !IjkPlayerPlugin.isInstalled(this)) {
-                val status = IjkPlayerPlugin.status(this)
-                val text =
-                    if (status == IjkPlayerPlugin.InstallStatus.NeedsUpdate) {
-                        "IjkPlayer 插件需要更新，已临时使用 ExoPlayer"
-                    } else {
-                        "IjkPlayer 插件未安装，已临时使用 ExoPlayer"
-                    }
-                AppToast.showLong(this, text)
-                IjkPlayerPluginUi.ensureInstalled(this) {
-                    if (!isFinishing && !isDestroyed) recreate()
+            when {
+                Build.VERSION.SDK_INT < 21 && desiredEngineKind == PlayerEngineKind.ExoPlayer -> {
+                    AppLog.i("LivePlayerActivity", "ExoPlayer requires API 21+, falling back to IjkPlayer")
+                    PlayerEngineKind.IjkPlayer
                 }
-                PlayerEngineKind.ExoPlayer
-            } else {
-                desiredEngineKind
+                Build.VERSION.SDK_INT < 21 &&
+                    desiredEngineKind == PlayerEngineKind.IjkPlayer &&
+                    !IjkPlayerPlugin.isInstalled(this) -> {
+                    AppToast.showLong(this, "IjkPlayer 插件未安装，无法在 Android 4.4 播放")
+                    IjkPlayerPluginUi.ensureInstalled(this) {
+                        if (!isFinishing && !isDestroyed) recreate()
+                    }
+                    PlayerEngineKind.IjkPlayer
+                }
+                desiredEngineKind == PlayerEngineKind.IjkPlayer && !IjkPlayerPlugin.isInstalled(this) -> {
+                    val status = IjkPlayerPlugin.status(this)
+                    val text =
+                        if (status == IjkPlayerPlugin.InstallStatus.NeedsUpdate) {
+                            "IjkPlayer 插件需要更新，已临时使用 ExoPlayer"
+                        } else {
+                            "IjkPlayer 插件未安装，已临时使用 ExoPlayer"
+                        }
+                    AppToast.showLong(this, text)
+                    IjkPlayerPluginUi.ensureInstalled(this) {
+                        if (!isFinishing && !isDestroyed) recreate()
+                    }
+                    PlayerEngineKind.ExoPlayer
+                }
+                else -> desiredEngineKind
             }
         if (session.engineKind != engineKind) {
             session = session.copy(engineKind = engineKind)
@@ -426,11 +486,8 @@ class LivePlayerActivity : BaseActivity() {
         binding.btnDanmaku.setOnClickListener {
             session = session.copy(danmaku = session.danmaku.copy(enabled = !session.danmaku.enabled))
             binding.danmakuView.invalidate()
+            superChatOverlay.setEnabled(session.danmaku.enabled)
             updateDanmakuButton()
-            setControlsVisible(true)
-        }
-        binding.btnComments.setOnClickListener {
-            showChatDialog()
             setControlsVisible(true)
         }
 
@@ -479,14 +536,14 @@ class LivePlayerActivity : BaseActivity() {
         super.onResume()
         PlayerOsdSizing.applyTheme(this)
         PlayerUiMode.applyLive(this, binding)
-        initTouchGestures()
-        consumeTransientPlaybackResumeIfNeeded()
         captureSystemBarAvoidanceBaseState()
         if (Build.VERSION.SDK_INT < 21) {
             applyLegacySystemBarAvoidance()
         } else {
             ViewCompat.requestApplyInsets(binding.root)
         }
+        initTouchGestures()
+        consumeTransientPlaybackResumeIfNeeded()
     }
 
     private fun captureSystemBarAvoidanceBaseState() {
@@ -697,7 +754,6 @@ class LivePlayerActivity : BaseActivity() {
         listOf(
             binding.btnPlayPause,
             binding.btnDanmaku,
-            binding.btnComments,
             binding.btnAdvanced,
         ).forEach { it.nextFocusUpId = R.id.btn_up_quick_profile }
         upQuickCard.setupActions()
@@ -723,6 +779,7 @@ class LivePlayerActivity : BaseActivity() {
 
     override fun onStop() {
         touchController?.onStop()
+        clearLiveCustomShortcutPending()
         super.onStop()
     }
 
@@ -732,6 +789,8 @@ class LivePlayerActivity : BaseActivity() {
         transientPlaybackResumeRequested = null
         messageClient?.close()
         messageClient = null
+        superChatLoadJob?.cancel()
+        if (::superChatOverlay.isInitialized) superChatOverlay.release()
         releaseTouchGestures()
         seekHintJob?.cancel()
         debugJob?.cancel()
@@ -884,6 +943,33 @@ class LivePlayerActivity : BaseActivity() {
             }
         }
 
+        if (event.action == KeyEvent.ACTION_DOWN && isInteractionKey(keyCode)) noteUserInteraction()
+
+        when (val shortcutResult = dispatchLiveCustomShortcutIfNeeded(event)) {
+            PlayerCustomShortcutDispatchResult.NotHandled -> Unit
+            PlayerCustomShortcutDispatchResult.Consumed -> return true
+            is PlayerCustomShortcutDispatchResult.RunDefaultShortPress -> {
+                return dispatchDefaultLiveShortPress(
+                    downEvent = shortcutResult.downEvent,
+                    upEvent = shortcutResult.upEvent,
+                )
+            }
+        }
+
+        return dispatchLiveKeyEventWithoutCustomShortcut(event)
+    }
+
+    private fun dispatchDefaultLiveShortPress(downEvent: KeyEvent, upEvent: KeyEvent): Boolean {
+        return PlayerDefaultShortPressDispatcher.dispatchAndConsume(
+            context = this,
+            downEvent = downEvent,
+            upEvent = upEvent,
+            dispatchDefaultEvent = ::dispatchLiveKeyEventWithoutCustomShortcut,
+        )
+    }
+
+    private fun dispatchLiveKeyEventWithoutCustomShortcut(event: KeyEvent): Boolean {
+        val keyCode = event.keyCode
         if (event.action == KeyEvent.ACTION_UP) {
             if (isExitKey(keyCode)) {
                 if (finishOnBackKeyUp) {
@@ -897,10 +983,6 @@ class LivePlayerActivity : BaseActivity() {
 
         if (event.action != KeyEvent.ACTION_DOWN) return super.dispatchKeyEvent(event)
 
-        if (isInteractionKey(keyCode)) noteUserInteraction()
-
-        if (dispatchLiveCustomShortcutIfNeeded(event)) return true
-
         when (keyCode) {
             KeyEvent.KEYCODE_MENU,
             KeyEvent.KEYCODE_SETTINGS,
@@ -909,7 +991,7 @@ class LivePlayerActivity : BaseActivity() {
             -> {
                 if (binding.settingsPanel.visibility == View.VISIBLE) return true
                 setControlsVisible(true)
-                focusFirstControl()
+                focusLastOsdControlOrFirst()
                 return true
             }
 
@@ -928,7 +1010,7 @@ class LivePlayerActivity : BaseActivity() {
                 if (binding.settingsPanel.visibility == View.VISIBLE) return super.dispatchKeyEvent(event)
                 setControlsVisible(true)
                 if (!hasControlsFocus()) {
-                    focusFirstControl()
+                    focusLastOsdControlOrFirst()
                     return true
                 }
             }
@@ -939,12 +1021,12 @@ class LivePlayerActivity : BaseActivity() {
             -> {
                 if (binding.settingsPanel.visibility != View.VISIBLE && !hasControlsFocus()) {
                     setControlsVisible(true)
-                    focusFirstControl()
+                    focusLastOsdControlOrFirst()
                     return true
                 }
                 if (!controlsVisible && binding.settingsPanel.visibility != View.VISIBLE) {
                     setControlsVisible(true)
-                    focusFirstControl()
+                    focusLastOsdControlOrFirst()
                     return true
                 }
             }
@@ -964,11 +1046,11 @@ class LivePlayerActivity : BaseActivity() {
                 if (!controlsVisible) {
                     setControlsVisible(true)
                     // Align with UP/DOWN/CENTER behavior: show OSD and move focus to controls in one press.
-                    focusFirstControl()
+                    focusLastOsdControlOrFirst()
                     return true
                 }
                 if (!hasControlsFocus()) {
-                    focusFirstControl()
+                    focusLastOsdControlOrFirst()
                     return true
                 }
             }
@@ -992,35 +1074,51 @@ class LivePlayerActivity : BaseActivity() {
         return super.dispatchKeyEvent(event)
     }
 
-    private fun dispatchLiveCustomShortcutIfNeeded(event: KeyEvent): Boolean {
-        if (event.action != KeyEvent.ACTION_DOWN) return false
-        if (event.repeatCount != 0) return false
+    private fun dispatchLiveCustomShortcutIfNeeded(
+        event: KeyEvent,
+    ): PlayerCustomShortcutDispatchResult<KeyEvent> {
+        return when (event.action) {
+            KeyEvent.ACTION_DOWN -> shortcutPressController.onKeyDown(event.keyCode, event.repeatCount, event)
+            KeyEvent.ACTION_UP -> shortcutPressController.onKeyUp(event.keyCode, event)
+            else -> PlayerCustomShortcutDispatchResult.NotHandled
+        }
+    }
 
-        val keyCode = event.keyCode
-        if (keyCode <= 0 || keyCode == KeyEvent.KEYCODE_UNKNOWN) return false
-        if (PlayerCustomShortcutsStore.isForbiddenKeyCode(keyCode)) return false
-        if (
-            !PlayerCustomShortcutInputPolicy.canDispatchInLive(
-                hasInteractiveOsd = controlsVisible,
-                hasSettingsPanel = binding.settingsPanel.visibility == View.VISIBLE,
-            )
-        ) {
-            return false
+    private fun canDispatchLiveCustomShortcut(): Boolean =
+        PlayerCustomShortcutInputPolicy.canDispatchInLive(
+            hasInteractiveOsd = controlsVisible,
+            hasSettingsPanel = binding.settingsPanel.visibility == View.VISIBLE,
+        )
+
+    private fun clearLiveCustomShortcutPending() {
+        shortcutPressController.clear()
+    }
+
+    private fun shortcutMemoryKey(keyCode: Int, trigger: PlayerCustomShortcutTrigger): Int =
+        if (trigger == PlayerCustomShortcutTrigger.SHORT_PRESS) keyCode else keyCode xor Int.MIN_VALUE
+
+    private fun isLiveCustomShortcutActionSupported(action: PlayerCustomShortcutAction): Boolean =
+        when (action) {
+            PlayerCustomShortcutAction.ShowOsd,
+            PlayerCustomShortcutAction.OpenSettings,
+            PlayerCustomShortcutAction.TogglePlayPause,
+            PlayerCustomShortcutAction.ToggleDanmaku,
+            is PlayerCustomShortcutAction.SetDanmakuOpacity,
+            is PlayerCustomShortcutAction.SetDanmakuTextSize,
+            is PlayerCustomShortcutAction.SetDanmakuSpeed,
+            is PlayerCustomShortcutAction.SetDanmakuArea,
+            PlayerCustomShortcutAction.ToggleDebugOverlay,
+            -> true
+
+            else -> false
         }
 
-        val binding = BiliClient.prefs.playerCustomShortcuts.firstOrNull { it.keyCode == keyCode } ?: return false
-
-        when (val action = binding.action) {
+    private fun applyLiveCustomShortcut(keyCode: Int, action: PlayerCustomShortcutAction): Boolean {
+        when (action) {
             PlayerCustomShortcutAction.ShowOsd -> {
                 noteUserInteraction()
                 setControlsVisible(true)
-                focusFirstControl()
-                return true
-            }
-
-            PlayerCustomShortcutAction.OpenComments -> {
-                noteUserInteraction()
-                showChatDialog()
+                focusLastOsdControlOrFirst()
                 return true
             }
 
@@ -1049,6 +1147,7 @@ class LivePlayerActivity : BaseActivity() {
                 noteUserInteraction()
                 session = session.copy(danmaku = session.danmaku.copy(enabled = !session.danmaku.enabled))
                 this.binding.danmakuView.invalidate()
+                superChatOverlay.setEnabled(session.danmaku.enabled)
                 updateDanmakuButton()
                 val state = if (session.danmaku.enabled) "开" else "关"
                 showShortcutHint("弹幕：$state")
@@ -1068,7 +1167,7 @@ class LivePlayerActivity : BaseActivity() {
                     }
                 session = session.copy(danmaku = session.danmaku.copy(opacity = next))
                 this.binding.danmakuView.invalidate()
-                showShortcutHint("弹幕透明度：${String.format(Locale.US, "%.2f", next)}")
+                showShortcutHint("弹幕不透明度：${opacityText(next)}")
                 return true
             }
 
@@ -1221,6 +1320,10 @@ class LivePlayerActivity : BaseActivity() {
     }
 
     private fun showAudioBalanceDialog() {
+        if (player !is ExoPlayerEngine) {
+            AppToast.show(this, "当前播放器内核不支持音量均衡")
+            return
+        }
         val prefs = BiliClient.prefs
         val options = AudioBalanceLevel.ordered
         val labels = options.map { it.label }
@@ -1229,19 +1332,18 @@ class LivePlayerActivity : BaseActivity() {
 
         AppPopup.singleChoice(
             context = this,
-            title = "音频平衡",
+            title = "音量均衡",
             items = labels,
             checkedIndex = checked,
         ) { which, _ ->
+            val engine = player as? ExoPlayerEngine
+            if (engine == null) {
+                AppToast.show(this, "当前播放器内核不支持音量均衡")
+                return@singleChoice
+            }
             val picked = options.getOrNull(which) ?: AudioBalanceLevel.Off
             prefs.playerAudioBalanceLevel = picked.prefValue
-            val engine = player
-            if (engine is ExoPlayerEngine) {
-                engine.setAudioBalanceLevel(picked)
-                AppToast.show(this, "音频平衡：${picked.label}")
-            } else {
-                AppToast.show(this, "当前播放器内核不支持音频平衡")
-            }
+            engine.setAudioBalanceLevel(picked)
             refreshSettings()
         }
     }
@@ -1264,14 +1366,14 @@ class LivePlayerActivity : BaseActivity() {
         val balanceLabel = AudioBalanceLevel.fromPrefValue(prefs.playerAudioBalanceLevel).label
         val list =
             listOf(
-                PlayerSettingsAdapter.SettingItem(key = LivePlayerSettingKeys.QUALITY, title = "清晰度", subtitle = qLabel),
+                PlayerSettingsAdapter.SettingItem(key = LivePlayerSettingKeys.QUALITY, title = "画质", subtitle = qLabel),
                 PlayerSettingsAdapter.SettingItem(key = LivePlayerSettingKeys.LINE, title = "线路选择", subtitle = lineLabel),
                 PlayerSettingsAdapter.SettingItem(
                     key = LivePlayerSettingKeys.HIGH_BITRATE,
                     title = "提高直播码率",
                     subtitle = if (session.highBitrateEnabled) "开" else "关",
                 ),
-                PlayerSettingsAdapter.SettingItem(key = LivePlayerSettingKeys.AUDIO_BALANCE, title = "音频平衡", subtitle = balanceLabel),
+                PlayerSettingsAdapter.SettingItem(key = LivePlayerSettingKeys.AUDIO_BALANCE, title = "音量均衡", subtitle = balanceLabel),
                 PlayerSettingsAdapter.SettingItem(key = LivePlayerSettingKeys.PLAYER_ENGINE, title = "播放器内核", subtitle = engineLabel),
                 PlayerSettingsAdapter.SettingItem(key = LivePlayerSettingKeys.DEBUG_INFO, title = "调试信息", subtitle = if (session.debugEnabled) "开" else "关"),
             )
@@ -1283,7 +1385,6 @@ class LivePlayerActivity : BaseActivity() {
         session = session.copy(highBitrateEnabled = enabled, lineOrder = 1, originFailCount = 0)
         resetPlaybackRecoveryState()
         refreshSettings()
-        AppToast.show(this, "提高直播码率：${if (enabled) "开" else "关"}")
         lifecycleScope.launch { loadAndPlay(initial = false) }
     }
 
@@ -1343,8 +1444,10 @@ class LivePlayerActivity : BaseActivity() {
 
     private fun setControlsVisible(visible: Boolean) {
         val hadControlsFocus = hasControlsFocus()
-        controlsVisible = visible && !isTouchLocked()
-        val show = controlsVisible || binding.settingsPanel.visibility == View.VISIBLE
+        val nextControlsVisible = visible && !isTouchLocked()
+        val show = nextControlsVisible || binding.settingsPanel.visibility == View.VISIBLE
+        if (!show && controlsVisible) rememberOsdFocusBeforeHide()
+        controlsVisible = nextControlsVisible
         binding.topBar.visibility = if (show) View.VISIBLE else View.GONE
         binding.bottomBar.visibility = if (show) View.VISIBLE else View.GONE
         upQuickCard.updateUi()
@@ -1367,6 +1470,21 @@ class LivePlayerActivity : BaseActivity() {
                 if (binding.settingsPanel.visibility == View.VISIBLE) return@launch
                 if (controlsVisible) setControlsVisible(false)
             }
+    }
+
+    private fun rememberOsdFocusBeforeHide() {
+        val focused = currentFocus ?: return
+        val focusIsInOsd =
+            binding.topBar.hasFocus() ||
+                binding.cardUpQuick.hasFocus() ||
+                binding.bottomBar.hasFocus()
+        if (focusIsInOsd) osdFocusReturn.capture(focused)
+    }
+
+    private fun focusLastOsdControlOrFirst() {
+        binding.root.post {
+            if (!osdFocusReturn.restoreAndClear(postOnFail = false)) focusFirstControl()
+        }
     }
 
     private fun focusFirstControl(): Boolean {
@@ -1768,7 +1886,11 @@ class LivePlayerActivity : BaseActivity() {
             engine.playWhenReady = true
             reportLiveRoomEntry(realRoomId)
 
-            if (initial) connectDanmaku()
+            if (initial) {
+                connectDanmaku()
+                startTemporarySuperChatPreview()
+                loadInitialSuperChats(realRoomId)
+            }
         } catch (t: Throwable) {
             if (t is CancellationException) throw t
             resetBufferingOverlayState()
@@ -1810,8 +1932,14 @@ class LivePlayerActivity : BaseActivity() {
                 onSuperChat = { ev ->
                     runOnUiThread(
                         Runnable {
-                            val title = "SC ¥${ev.price} · ${ev.user.ifBlank { "匿名" }}"
-                            pushChatItem(LiveChatAdapter.Item(title = title, body = ev.message))
+                            superChatOverlay.submit(ev)
+                        },
+                    )
+                },
+                onSuperChatDelete = { ids ->
+                    runOnUiThread(
+                        Runnable {
+                            superChatOverlay.delete(ids)
                         },
                     )
                 },
@@ -1819,7 +1947,6 @@ class LivePlayerActivity : BaseActivity() {
                     runOnUiThread(
                         Runnable {
                             AppLog.d("LiveWs", msg)
-                            pushChatItem(LiveChatAdapter.Item(title = "系统", body = msg))
                         },
                     )
                 },
@@ -1862,22 +1989,123 @@ class LivePlayerActivity : BaseActivity() {
                 attr = 0,
             )
         binding.danmakuView.appendDanmakus(listOf(d), maxItems = 2000, alreadySorted = true)
-        pushChatItem(LiveChatAdapter.Item(title = "弹幕", body = ev.text))
     }
 
-    private fun pushChatItem(item: LiveChatAdapter.Item) {
-        chatItems.addLast(item)
-        while (chatItems.size > chatMax) chatItems.removeFirst()
+    private fun loadInitialSuperChats(roomId: Long) {
+        superChatLoadJob?.cancel()
+        superChatLoadJob =
+            lifecycleScope.launch {
+                try {
+                    val items =
+                        BiliApi.liveSuperChats(roomId)
+                            .sortedBy { it.startTimeSeconds ?: Long.MAX_VALUE }
+                    items.forEach(superChatOverlay::submit)
+                    AppLog.i("LiveSuperChat", "initial room=$roomId count=${items.size}")
+                } catch (t: Throwable) {
+                    if (t is CancellationException) throw t
+                    AppLog.w("LiveSuperChat", "initial fetch failed room=$roomId", t)
+                }
+            }
+    }
+
+    private fun startTemporarySuperChatPreview() {
+        if (!BuildConfig.DEBUG || !TEMPORARY_SUPER_CHAT_PREVIEW_ENABLED) return
+        if (temporarySuperChatPreviewStarted) return
+        temporarySuperChatPreviewStarted = true
+
+        val nowSeconds = System.currentTimeMillis() / 1_000L
+        temporarySuperChatPreviewItems(nowSeconds).forEach(superChatOverlay::submit)
+        AppLog.i(
+            "LiveSuperChat",
+            "temporary preview queued count=5 danmakuEnabled=${session.danmaku.enabled}",
+        )
+    }
+
+    private fun temporarySuperChatPreviewItems(nowSeconds: Long): List<LiveSuperChat> {
+        fun preview(
+            id: Long,
+            user: String,
+            price: Long,
+            message: String,
+            headerColor: String,
+            bodyColor: String,
+            priceColor: String,
+            messageColor: String = "#FFFFFF",
+        ) = LiveSuperChat(
+            id = id,
+            uid = 0L,
+            userName = user,
+            userFaceUrl = roomFace,
+            userNameColor = "#4A4A4A",
+            price = price,
+            message = message,
+            backgroundImageUrl = null,
+            backgroundColor = headerColor,
+            backgroundBottomColor = bodyColor,
+            backgroundPriceColor = priceColor,
+            messageFontColor = messageColor,
+            startTimeSeconds = nowSeconds,
+            endTimeSeconds = nowSeconds + TEMPORARY_SUPER_CHAT_EXPIRY_SECONDS,
+            durationSeconds = TEMPORARY_SUPER_CHAT_DURATION_SECONDS,
+        )
+
+        return listOf(
+            preview(
+                id = -1L,
+                user = "SC 预览 · 1/5",
+                price = 30L,
+                message = "第一条：短文本与基础蓝色样式。",
+                headerColor = "#EDF5FF",
+                bodyColor = "#2A60B2",
+                priceColor = "#7497CD",
+            ),
+            preview(
+                id = -2L,
+                user = "SC 预览 · 2/5",
+                price = 50L,
+                message = "第二条：稍长一些的醒目留言，用来观察两行正文的间距和换行效果。",
+                headerColor = "#E1F7FF",
+                bodyColor = "#287D9B",
+                priceColor = "#5B9CB5",
+            ),
+            preview(
+                id = -3L,
+                user = "SC 预览 · 3/5",
+                price = 100L,
+                message = "第三条：测试暖黄色价格档位，以及浅色头部中的昵称、金额对比度。",
+                headerColor = "#FFF4D6",
+                bodyColor = "#C88A1A",
+                priceColor = "#B97B12",
+            ),
+            preview(
+                id = -4L,
+                user = "SC 预览 · 4/5",
+                price = 500L,
+                message = "第四条：这是更长的橙色 SC。它会继续走正式队列，验证卡片切换、正文最多四行以及底部 OSD 出现时的避让位置。",
+                headerColor = "#FFE8D5",
+                bodyColor = "#D75A24",
+                priceColor = "#C65324",
+            ),
+            preview(
+                id = -5L,
+                user = "SC 预览 · 5/5",
+                price = 1_000L,
+                message = "第五条：高金额红色样式，预览结束后会自动淡出。",
+                headerColor = "#FFE1E6",
+                bodyColor = "#A9233D",
+                priceColor = "#C54C63",
+            ),
+        )
     }
 
     private fun showQualityDialog() {
         val play = lastPlay ?: run {
-            AppToast.show(this, "暂无可用清晰度")
+            AppToast.show(this, "暂无可用画质")
             return
         }
         val available = play.acceptQn.ifEmpty { play.qnDesc.keys.sortedDescending() }.distinct()
         if (available.isEmpty()) {
-            AppToast.show(this, "暂无可用清晰度")
+            AppToast.show(this, "暂无可用画质")
             return
         }
         val optionsAvailable = available.sortedWith(compareBy({ it != LIVE_QN_ORIGINAL }, { -it }))
@@ -1889,7 +2117,7 @@ class LivePlayerActivity : BaseActivity() {
                 ?: 0
         AppPopup.singleChoice(
             context = this,
-            title = "清晰度",
+            title = "画质",
             items = options,
             checkedIndex = checked,
         ) { which, _ ->
@@ -1932,39 +2160,6 @@ class LivePlayerActivity : BaseActivity() {
             lifecycleScope.launch { loadAndPlay(initial = false) }
         }
     }
-
-    private fun showChatDialog() {
-        AppPopup.custom(
-            context = this,
-            title = "弹幕 / SC",
-            cancelable = true,
-            actions = listOf(PopupAction(role = PopupActionRole.POSITIVE, text = "关闭")),
-            preferredActionRole = PopupActionRole.POSITIVE,
-            content = { dialogContext ->
-                val dialogBinding = DialogLiveChatBinding.inflate(LayoutInflater.from(dialogContext))
-                val adapter = LiveChatAdapter()
-                dialogBinding.recycler.adapter = adapter
-                dialogBinding.recycler.layoutManager = androidx.recyclerview.widget.LinearLayoutManager(dialogContext)
-                adapter.submit(chatItems.toList().asReversed())
-
-                val dm = dialogContext.resources.displayMetrics
-                val maxHeightPx =
-                    (dm.heightPixels * 0.60f)
-                        .toInt()
-                        .coerceAtLeast(dp(dialogContext, 220f))
-                        .coerceAtMost(dp(dialogContext, 520f))
-                dialogBinding.recycler.layoutParams =
-                    dialogBinding.recycler.layoutParams
-                        ?: ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-                dialogBinding.recycler.layoutParams.height = maxHeightPx
-
-                dialogBinding.root
-            },
-        )
-    }
-
-    private fun dp(context: android.content.Context, value: Float): Int =
-        TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, value, context.resources.displayMetrics).toInt()
 
     private fun updatePlayPauseIcon(isPlaying: Boolean) {
         val icon = if (isPlaying) blbl.cat3399.R.drawable.ic_player_pause else blbl.cat3399.R.drawable.ic_player_play
@@ -2388,8 +2583,6 @@ class LivePlayerActivity : BaseActivity() {
     )
 
     private fun applyPostInflateCompatUi() {
-        binding.btnUpQuickProfile.background = CompatThemedBackgrounds.playerUpQuickChip(this)
-        binding.btnUpQuickFollow.background = CompatThemedBackgrounds.playerUpQuickFollow(this)
         if (Build.VERSION.SDK_INT >= 21) {
             val tint = ContextCompat.getColorStateList(this, R.color.blbl_text)
             binding.progressBuffering.indeterminateTintList = tint
@@ -2402,8 +2595,9 @@ class LivePlayerActivity : BaseActivity() {
             binding.tabPageList.stateListAnimator = android.animation.AnimatorInflater.loadStateListAnimator(this, R.animator.blbl_focus_scale)
             binding.tabPartsList.stateListAnimator = android.animation.AnimatorInflater.loadStateListAnimator(this, R.animator.blbl_focus_scale)
             binding.tabRecommendList.stateListAnimator = android.animation.AnimatorInflater.loadStateListAnimator(this, R.animator.blbl_focus_scale)
-            binding.chipCommentSortHot.stateListAnimator = android.animation.AnimatorInflater.loadStateListAnimator(this, R.animator.blbl_focus_scale)
-            binding.chipCommentSortNew.stateListAnimator = android.animation.AnimatorInflater.loadStateListAnimator(this, R.animator.blbl_focus_scale)
+            val commentViews = binding.videoCommentsPanelContent()
+            commentViews.chipCommentSortHot.stateListAnimator = android.animation.AnimatorInflater.loadStateListAnimator(this, R.animator.blbl_focus_scale)
+            commentViews.chipCommentSortNew.stateListAnimator = android.animation.AnimatorInflater.loadStateListAnimator(this, R.animator.blbl_focus_scale)
         }
         if (Build.VERSION.SDK_INT >= 26) {
             binding.root.defaultFocusHighlightEnabled = false
@@ -2421,6 +2615,10 @@ class LivePlayerActivity : BaseActivity() {
 
         private const val AUTO_HIDE_MS = 4_000L
         private const val SEEK_HINT_HIDE_DELAY_MS = 900L
+        // Temporary visual review hook. Remove after the SuperChat design is approved.
+        private const val TEMPORARY_SUPER_CHAT_PREVIEW_ENABLED = false
+        private const val TEMPORARY_SUPER_CHAT_DURATION_SECONDS = 5L
+        private const val TEMPORARY_SUPER_CHAT_EXPIRY_SECONDS = 5 * 60L
         private const val BACK_DOUBLE_PRESS_WINDOW_MS = 2_500L
         private const val AUTO_FAILOVER_WINDOW_MS = 12_000L
         private const val AUTO_FAILOVER_MIN_INTERVAL_MS = 1_200L

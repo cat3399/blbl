@@ -421,6 +421,7 @@ class BangumiDetailActivity : BaseActivity() {
                     AppToast.show(this@BangumiDetailActivity, res.toast ?: fallbackToast)
                 } catch (t: Throwable) {
                     if (t is CancellationException) return@launch
+                    AppLog.w("VideoAction", "pgc follow failed seasonId=$seasonId wasFollowed=$followed", t)
                     AppToast.show(this@BangumiDetailActivity, t.message ?: "操作失败")
                 } finally {
                     followActionJob = null

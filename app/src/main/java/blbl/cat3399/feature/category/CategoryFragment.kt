@@ -61,7 +61,7 @@ class CategoryFragment : Fragment(), VideoGridTabSwitchFocusHost, BackPressHandl
                     val zone = zones.getOrNull(position)
                     AppLog.d(
                         "Category",
-                        "page selected pos=$position title=${zone?.title} tid=${zone?.tid} t=${SystemClock.uptimeMillis()}",
+                        "page selected pos=$position title=${zone?.title} rid=${zone?.rid} t=${SystemClock.uptimeMillis()}",
                     )
                     if (pendingFocusFirstCardFromBackToTab0) {
                         maybeRequestTab0FocusFromBackToTab0()
@@ -115,7 +115,7 @@ class CategoryFragment : Fragment(), VideoGridTabSwitchFocusHost, BackPressHandl
                 val zone = zones.getOrNull(position)
                 AppLog.d(
                     "Category",
-                    "tab focus pos=$position title=${zone?.title} tid=${zone?.tid} t=${SystemClock.uptimeMillis()}",
+                    "tab focus pos=$position title=${zone?.title} rid=${zone?.rid} t=${SystemClock.uptimeMillis()}",
                 )
             }
             val tabStrip = tabLayout.getChildAt(0) as? ViewGroup ?: return@postIfAlive

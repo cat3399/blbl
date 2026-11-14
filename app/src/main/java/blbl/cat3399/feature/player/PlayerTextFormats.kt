@@ -79,6 +79,8 @@ internal fun subtitleBottomPaddingText(fraction: Float): String = SettingsText.s
 
 internal fun subtitleBackgroundOpacityText(opacity: Float): String = SettingsText.subtitleBackgroundOpacityText(opacity)
 
+internal fun opacityText(opacity: Float): String = SettingsText.opacityText(opacity)
+
 internal fun danmakuLaneDensityText(value: DanmakuLaneDensity): String = SettingsText.danmakuLaneDensityText(value.prefValue)
 
 internal fun danmakuFontWeightText(value: DanmakuFontWeight): String = SettingsText.danmakuFontWeightText(value.prefValue)

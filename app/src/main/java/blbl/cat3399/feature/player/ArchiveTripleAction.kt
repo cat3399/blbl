@@ -1,6 +1,7 @@
 package blbl.cat3399.feature.player
 
 import blbl.cat3399.core.api.BiliApi
+import blbl.cat3399.core.log.AppLog
 import blbl.cat3399.core.api.BiliApiException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -77,6 +78,7 @@ suspend fun executeArchiveTripleAction(
                 ensureStillValid()
                 coinCount = coinCount.coerceAtLeast(2)
             } else {
+                AppLog.w("VideoAction", "triple coin failed bvid=$bvid aid=$aid", t)
                 warnings += "投币失败：${t.userMessage(defaultMessage = "操作失败")}"
             }
         }
@@ -97,6 +99,7 @@ suspend fun executeArchiveTripleAction(
                 ensureStillValid()
                 liked = true
             } else {
+                AppLog.w("VideoAction", "triple like failed bvid=$bvid aid=$aid", t)
                 warnings += "点赞失败：${t.userMessage(defaultMessage = "操作失败")}"
             }
         }
@@ -114,6 +117,7 @@ suspend fun executeArchiveTripleAction(
                         }
                     } catch (t: Throwable) {
                         if (t is CancellationException) throw t
+                        AppLog.w("VideoAction", "triple load favorites failed bvid=$bvid aid=$aid", t)
                         warnings += "收藏失败：${t.userMessage(defaultMessage = "加载收藏夹失败")}"
                         null
                     }
@@ -141,6 +145,7 @@ suspend fun executeArchiveTripleAction(
                             changedParts += "收藏"
                         } catch (t: Throwable) {
                             if (t is CancellationException) throw t
+                            AppLog.w("VideoAction", "triple favorite failed bvid=$bvid aid=$aid", t)
                             warnings += "收藏失败：${t.userMessage(defaultMessage = "操作失败")}"
                         }
                     }
@@ -169,5 +174,5 @@ fun pickTripleActionFavFolder(
 
 fun Throwable.userMessage(defaultMessage: String): String {
     val apiError = this as? BiliApiException
-    return apiError?.apiMessage?.takeIf { it.isNotBlank() } ?: (message ?: defaultMessage)
+    return apiError?.apiMessage?.takeIf { it.isNotBlank() } ?: (message?.takeIf { it.isNotBlank() } ?: defaultMessage)
 }

@@ -86,3 +86,6 @@ interface VideoCardActionDelegate {
         action: VideoCardQuickAction,
     )
 }
+
+internal fun VideoCard.hasVideoDetailIdentity(): Boolean =
+    bvid.isNotBlank() || (aid ?: 0L) > 0L

@@ -71,7 +71,7 @@ class VideoCardActionController(
         card: VideoCard,
         position: Int,
     ) {
-        if (card.bvid.isBlank()) {
+        if (!card.hasVideoDetailIdentity()) {
             AppToast.show(context, context.getString(R.string.video_card_action_open_detail_unsupported))
             return
         }
@@ -99,6 +99,7 @@ class VideoCardActionController(
                 AppToast.show(context, context.getString(R.string.video_card_action_watch_later_done))
             } catch (t: Throwable) {
                 if (t is CancellationException) throw t
+                AppLog.w("VideoCardAction", "watch later failed bvid=$safeBvid aid=$safeAid", t)
                 AppToast.show(context, errorMessage(t))
             } finally {
                 clearInFlight(actionKey)
@@ -162,6 +163,7 @@ class VideoCardActionController(
                         AppToast.show(context, context.getString(R.string.video_card_action_delete_done))
                     } catch (t: Throwable) {
                         if (t is CancellationException) throw t
+                        AppLog.w("VideoCardAction", "delete failed key=${card.stableKey()} behavior=$dismissBehavior", t)
                         AppToast.show(context, errorMessage(t))
                     } finally {
                         clearInFlight(actionKey)

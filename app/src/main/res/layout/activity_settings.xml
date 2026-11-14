@@ -51,16 +51,15 @@
         android:layout_width="0dp"
         android:layout_height="0dp"
         android:layout_marginStart="16dp"
-        android:layout_marginTop="12dp"
-        android:clipChildren="false"
+        android:clipChildren="true"
         android:clipToPadding="false"
         android:paddingStart="@dimen/settings_content_padding_h"
-        android:paddingTop="@dimen/settings_content_padding_v"
+        android:paddingTop="@dimen/settings_right_content_padding_top"
         android:paddingEnd="@dimen/settings_content_padding_h"
         android:paddingBottom="@dimen/settings_content_padding_v"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toEndOf="@id/recycler_left"
-        app:layout_constraintTop_toBottomOf="@id/btn_back" />
+        app:layout_constraintTop_toTopOf="parent" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>

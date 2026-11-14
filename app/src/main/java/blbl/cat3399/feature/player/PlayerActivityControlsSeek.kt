@@ -7,6 +7,7 @@ import android.view.ViewConfiguration
 import androidx.constraintlayout.widget.ConstraintSet
 import androidx.lifecycle.lifecycleScope
 import blbl.cat3399.R
+import blbl.cat3399.core.log.AppLog
 import blbl.cat3399.core.net.BiliClient
 import blbl.cat3399.core.ui.Immersive
 import blbl.cat3399.core.prefs.AppPrefs
@@ -14,9 +15,16 @@ import blbl.cat3399.feature.player.engine.BlblPlayerEngine
 import blbl.cat3399.feature.player.engine.PlayerEngineKind
 import java.util.Locale
 import kotlin.math.roundToInt
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+
+internal fun shouldShowPlayerOsd(
+    requestedVisible: Boolean,
+    hasOverlayPanel: Boolean,
+    touchLocked: Boolean,
+): Boolean = requestedVisible && !hasOverlayPanel && !touchLocked
 
 internal fun PlayerActivity.seekRelative(deltaMs: Long) {
     seekRelative(deltaMs, danmakuImmediate = true)
@@ -51,7 +59,15 @@ internal fun PlayerActivity.toggleControls() {
 }
 
 internal fun PlayerActivity.setControlsVisible(visible: Boolean) {
-    val show = (visible || isSidePanelVisible() || isSponsorSubmitPanelVisible()) && !isTouchLocked()
+    val show =
+        shouldShowPlayerOsd(
+            requestedVisible = visible,
+            hasOverlayPanel = isOverlayPanelVisible(),
+            touchLocked = isTouchLocked(),
+        )
+    if (!show && osdMode == PlayerActivity.OsdMode.Full) {
+        rememberOsdFocusBeforeHide()
+    }
     seekOsdHideJob?.cancel()
     seekOsdHideJob = null
     seekOsdToken = 0L
@@ -66,13 +82,12 @@ internal fun PlayerActivity.setControlsVisible(visible: Boolean) {
     if (show) {
         applyBottomBarFullLayout()
     } else {
-        binding.videoShotPreview.visibility = View.GONE
-        videoShotFetchJob?.cancel()
+        hideVideoShotPreviewNow()
     }
     syncPlayerInfoPanelVisibility()
     updatePersistentBottomProgressBarVisibility()
     onTouchOverlayStateChanged()
-    if (visible) noteUserInteraction() else autoHideJob?.cancel()
+    if (show) noteUserInteraction() else autoHideJob?.cancel()
     if (!show) Immersive.apply(this, BiliClient.prefs.fullscreenEnabled, playerScreen = true)
 }
 
@@ -98,7 +113,7 @@ internal fun PlayerActivity.updateTopBarUi() {
 }
 
 internal fun PlayerActivity.showSeekOsd() {
-    if (isSidePanelVisible() || isSponsorSubmitPanelVisible()) return
+    if (isOverlayPanelVisible()) return
     if (osdMode == PlayerActivity.OsdMode.Full) {
         // Full OSD already has the progress bar; keep it alive.
         noteUserInteraction()
@@ -120,7 +135,7 @@ internal fun PlayerActivity.showSeekOsd() {
 }
 
 internal fun PlayerActivity.showSeekOsd(posMs: Long, durationMs: Long, bufferedPosMs: Long) {
-    if (isSidePanelVisible() || isSponsorSubmitPanelVisible()) return
+    if (isOverlayPanelVisible()) return
     val duration = durationMs.coerceAtLeast(0L)
     val pos = posMs.coerceAtLeast(0L)
     val bufPos = bufferedPosMs.coerceAtLeast(0L)
@@ -145,8 +160,7 @@ internal fun PlayerActivity.showSeekOsd(posMs: Long, durationMs: Long, bufferedP
 
             // === 新增：在 Full 模式下更新并显示缩略图，跟随主进度条 ===
             if (hasVideoShot) {
-                binding.videoShotPreview.visibility = View.VISIBLE
-                updateVideoShotPreview(pNow, PlayerActivity.SEEK_MAX, pos, binding.seekProgress)
+                showVideoShotPreviewForSeek(pNow, PlayerActivity.SEEK_MAX, pos, binding.seekProgress)
             }
         }
         noteUserInteraction()
@@ -168,13 +182,12 @@ internal fun PlayerActivity.showSeekOsd(posMs: Long, durationMs: Long, bufferedP
 
         // === 新增：在瞬时 OSD 模式下更新并显示缩略图，跟随瞬时进度条 ===
         if (hasVideoShot) {
-            binding.videoShotPreview.visibility = View.VISIBLE
-            updateVideoShotPreview(pNow, PlayerActivity.SEEK_MAX, pos, binding.progressSeekOsd)
+            showVideoShotPreviewForSeek(pNow, PlayerActivity.SEEK_MAX, pos, binding.progressSeekOsd)
         }
     } else {
         binding.progressSeekOsd.secondaryProgress = 0
         binding.progressSeekOsd.progress = 0
-        binding.videoShotPreview.visibility = View.GONE
+        hideVideoShotPreviewNow()
     }
 
     transientSeekOsdVisible = true
@@ -207,16 +220,49 @@ internal fun PlayerActivity.scheduleHideSeekOsd() {
             if (seekOsdToken != token) return@launch
             transientSeekOsdVisible = false
 
-            binding.videoShotPreview.visibility = View.GONE
-            videoShotFetchJob?.cancel() // 及时取消异步请求
+            hideVideoShotPreviewNow()
 
             updatePersistentBottomProgressBarVisibility()
         }
 }
 
+internal fun PlayerActivity.cancelVideoShotPreviewHide() {
+    videoShotPreviewHideJob?.cancel()
+    videoShotPreviewHideJob = null
+}
+
+internal fun PlayerActivity.hideVideoShotPreviewNow() {
+    cancelVideoShotPreviewHide()
+    videoShotPreviewRequestId += 1L
+    binding.videoShotPreview.visibility = View.GONE
+    videoShotFetchJob?.cancel()
+}
+
+internal fun PlayerActivity.scheduleHideVideoShotPreviewAfterSeek() {
+    videoShotPreviewHideJob?.cancel()
+    videoShotPreviewHideJob =
+        lifecycleScope.launch {
+            delay(PlayerActivity.VIDEOSHOT_PREVIEW_HIDE_AFTER_SEEK_MS)
+            videoShotPreviewRequestId += 1L
+            binding.videoShotPreview.visibility = View.GONE
+            videoShotFetchJob?.cancel()
+            videoShotPreviewHideJob = null
+        }
+}
+
+internal fun PlayerActivity.showVideoShotPreviewForSeek(
+    progress: Int,
+    max: Int,
+    positionMs: Long,
+    trackView: View,
+) {
+    cancelVideoShotPreviewHide()
+    updateVideoShotPreview(progress, max, positionMs, trackView)
+}
+
 internal fun PlayerActivity.updatePersistentBottomProgressBarVisibility() {
     val enabled = session.persistentBottomProgressEnabled
-    val showControls = osdMode != PlayerActivity.OsdMode.Hidden || isSidePanelVisible() || isSponsorSubmitPanelVisible()
+    val showControls = osdMode != PlayerActivity.OsdMode.Hidden || isOverlayPanelVisible()
     val persistentV = if (enabled && !showControls && !transientSeekOsdVisible) View.VISIBLE else View.GONE
     if (binding.progressPersistentBottom.visibility != persistentV) binding.progressPersistentBottom.visibility = persistentV
 
@@ -229,8 +275,7 @@ internal fun PlayerActivity.restartAutoHideTimer() {
     val exo = player ?: return
     if (isTouchLocked()) return
     if (osdMode != PlayerActivity.OsdMode.Full) return
-    if (isSidePanelVisible()) return
-    if (isSponsorSubmitPanelVisible()) return
+    if (isOverlayPanelVisible()) return
     if (scrubbing) return
     if (!exo.isPlaying) return
     val token = lastInteractionAtMs
@@ -272,6 +317,7 @@ private fun PlayerActivity.commitDeferredKeySeekPreview() {
         val duration = engine.duration.takeIf { it > 0 } ?: currentViewDurationMs ?: 0L
         if (duration > 0L) {
             showSeekOsd(posMs = pendingSeekTo, durationMs = duration, bufferedPosMs = engine.bufferedPosition)
+            scheduleHideVideoShotPreviewAfterSeek()
         }
     }
 
@@ -302,6 +348,21 @@ internal fun PlayerActivity.hasControlsFocusOutsideSeekBar(): Boolean {
     return binding.topBar.hasFocus() ||
         binding.cardUpQuick.hasFocus() ||
         (binding.bottomBar.hasFocus() && !binding.seekProgress.isFocused)
+}
+
+private fun PlayerActivity.rememberOsdFocusBeforeHide() {
+    val focused = currentFocus ?: return
+    val focusIsInOsd =
+        binding.topBar.hasFocus() ||
+            binding.cardUpQuick.hasFocus() ||
+            binding.bottomBar.hasFocus()
+    if (focusIsInOsd) osdFocusReturn.capture(focused)
+}
+
+internal fun PlayerActivity.restoreLastOsdFocusOr(fallback: () -> Unit) {
+    binding.root.post {
+        if (!osdFocusReturn.restoreAndClear(postOnFail = false)) fallback()
+    }
 }
 
 internal fun PlayerActivity.focusFirstControl() {
@@ -336,6 +397,7 @@ internal fun PlayerActivity.focusDownKeyOsdTargetControl() {
         }
 
     binding.controlsRow.post {
+        if (osdFocusReturn.restoreAndClear(postOnFail = false)) return@post
         if (requestFocusControlNow(target)) return@post
         if (requestFocusControlNow(binding.btnPlayPause)) return@post
         focusFirstControl()
@@ -414,6 +476,10 @@ internal fun PlayerActivity.beginKeySeekPending(keyCode: Int, direction: Int, sh
             if (holdSeekJob != null) return@launch
             if (direction < 0) {
                 // Long-press LEFT: always use preview-scrub rewind (independent of hold-seek mode setting).
+                startHoldScrub(direction = direction, showControls = showControls)
+            } else if (binding.seekProgress.isFocused) {
+                // The focused timeline owns LEFT/RIGHT hold semantics and must not inherit the
+                // fullscreen hold-to-speed preference.
                 startHoldScrub(direction = direction, showControls = showControls)
             } else {
                 startHoldSeek(direction = direction, showControls = showControls)
@@ -611,7 +677,10 @@ internal fun PlayerActivity.stopHoldSeek() {
         if (scrubTarget != null) {
             engine.seekTo(scrubTarget)
             val duration = engine.duration.takeIf { it > 0 } ?: currentViewDurationMs ?: 0L
-            if (duration > 0L) showSeekOsd(posMs = scrubTarget, durationMs = duration, bufferedPosMs = engine.bufferedPosition)
+            if (duration > 0L) {
+                showSeekOsd(posMs = scrubTarget, durationMs = duration, bufferedPosMs = engine.bufferedPosition)
+                scheduleHideVideoShotPreviewAfterSeek()
+            }
         }
         engine.playWhenReady = holdPrevPlayWhenReady
         val pos = (scrubTarget ?: engine.currentPosition).coerceAtLeast(0L)
@@ -773,35 +842,69 @@ internal fun PlayerActivity.updateVideoShotPreview(
     trackView: View // 传入当前正在使用的进度条控件
 ) {
     if (BiliClient.prefs.playerVideoShotPreviewSize == AppPrefs.PLAYER_VIDEOSHOT_PREVIEW_SIZE_OFF) {
-        binding.videoShotPreview.visibility = View.GONE
-        videoShotFetchJob?.cancel()
+        hideVideoShotPreviewNow()
         return
     }
 
     val previewView = binding.videoShotPreview
-    val shot = currentVideoShot ?: return
-    val cache = videoShotImageCache ?: return
+    val shot = currentVideoShot
+    val cache = videoShotImageCache
+    if (shot == null || cache == null) {
+        hideVideoShotPreviewNow()
+        return
+    }
     previewView.setContentAspectRatio(
         width = currentVideoContentWidth ?: shot.fallbackAspectWidth,
         height = currentVideoContentHeight ?: shot.fallbackAspectHeight,
     )
+    previewView.onFrameDrawFailure = { t ->
+        disableVideoShotPreviewForCurrentVideo(reason = "draw", throwable = t)
+    }
 
+    val requestId = videoShotPreviewRequestId + 1L
+    videoShotPreviewRequestId = requestId
     videoShotFetchJob?.cancel()
+    previewView.visibility = if (previewView.spriteFrame == null) View.INVISIBLE else View.VISIBLE
     videoShotFetchJob = lifecycleScope.launch {
         delay(16) // 16ms 防抖
         val frame =
-            runCatching { shot.getSpriteFrame((positionMs / 1000).toInt(), cache) }
-                .getOrNull()
-                ?: return@launch
+            try {
+                shot.getSpriteFrame((positionMs / 1000).toInt(), cache)
+            } catch (t: Throwable) {
+                if (t is CancellationException) throw t
+                disableVideoShotPreviewForCurrentVideo(reason = "decode", throwable = t)
+                return@launch
+            }
+
+        if (
+            videoShotPreviewRequestId != requestId ||
+            currentVideoShot !== shot ||
+            videoShotImageCache !== cache
+        ) {
+            return@launch
+        }
 
         previewView.spriteFrame = frame
         positionVideoShotPreviewX(previewView, trackView, progress, max)
+        previewView.visibility = View.VISIBLE
         previewView.post {
-            if (previewView.spriteFrame === frame) {
+            if (videoShotPreviewRequestId == requestId && previewView.spriteFrame === frame) {
                 positionVideoShotPreviewX(previewView, trackView, progress, max)
             }
         }
     }
+}
+
+internal fun PlayerActivity.disableVideoShotPreviewForCurrentVideo(reason: String, throwable: Throwable? = null) {
+    AppLog.w("Player", "disable videoShot preview reason=$reason bvid=$currentBvid cid=$currentCid", throwable)
+    videoShotPreviewRequestId += 1L
+    videoShotFetchJob?.cancel()
+    videoShotFetchJob = null
+    videoShotImageCache?.clear()
+    videoShotImageCache = null
+    currentVideoShot = null
+    binding.videoShotPreview.spriteFrame = null
+    binding.videoShotPreview.visibility = View.GONE
 }
 
 private fun positionVideoShotPreviewX(
