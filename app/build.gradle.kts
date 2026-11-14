@@ -25,13 +25,18 @@ android {
             !releaseStorePassword.isNullOrBlank() &&
             !releaseKeyAlias.isNullOrBlank() &&
             !releaseKeyPassword.isNullOrBlank()
+    val appVersionName = project.findProperty("versionName") as String? ?: "0.1.0"
+    val semanticVersion = Regex("""^v?(\d+)\.(\d+)\.(\d+)""").find(appVersionName)
+    val semanticVersionCode = semanticVersion?.groupValues?.let { groups ->
+        groups[1].toInt() * 1_000_000 + groups[2].toInt() * 1_000 + groups[3].toInt()
+    } ?: 1
 
     defaultConfig {
         applicationId = "blbl.cat3399"
         minSdk = 19
         targetSdk = 36
-        versionCode = (project.findProperty("versionCode") as String?)?.toInt() ?: 1
-        versionName = project.findProperty("versionName") as String? ?: "0.1.0"
+        versionCode = (project.findProperty("versionCode") as String?)?.toInt() ?: semanticVersionCode
+        versionName = appVersionName
 
         vectorDrawables {
             useSupportLibrary = true

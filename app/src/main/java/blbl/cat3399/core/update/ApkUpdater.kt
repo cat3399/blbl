@@ -32,11 +32,13 @@ import kotlin.math.roundToInt
 object ApkUpdater {
     private const val DEBUG_APK_URL = "https://cat3399.top/blbl/blbl-latest-debug.apk"
     private const val RELEASE_APK_URL = "https://cat3399.top/blbl/blbl-latest-release.apk"
+    private const val API19_RELEASE_APK_URL = "https://github.com/MTGA-Legacy/blbl/releases/latest/download/blbl-latest-api19-release.apk"
     private const val CHANGELOG_URL = "https://cat3399.top/blbl/CHANGELOG.md"
+    private const val API19_CHANGELOG_URL = "https://raw.githubusercontent.com/MTGA-Legacy/blbl/mtga-api19-main/CHANGELOG.md"
     val TEST_APK_URL: String
-        get() = if (BuildConfig.DEBUG) DEBUG_APK_URL else RELEASE_APK_URL
+        get() = if (isApi19Flavor) API19_RELEASE_APK_URL else if (BuildConfig.DEBUG) DEBUG_APK_URL else RELEASE_APK_URL
     val TEST_CHANGELOG_URL: String
-        get() = CHANGELOG_URL
+        get() = if (isApi19Flavor) API19_CHANGELOG_URL else CHANGELOG_URL
 
     private const val COOLDOWN_MS = 5_000L
 
@@ -182,9 +184,16 @@ object ApkUpdater {
 
     fun apkUrlFor(versionName: String): String {
         val cleanVersion = versionName.trim().removePrefix("v")
-        val channel = if (BuildConfig.DEBUG) "debug" else "release"
-        return "https://cat3399.top/blbl/blbl-$cleanVersion-$channel.apk"
+        return if (isApi19Flavor) {
+            "https://github.com/MTGA-Legacy/blbl/releases/download/v$cleanVersion-api19/blbl-android-$cleanVersion-api19-release.apk"
+        } else {
+            val channel = if (BuildConfig.DEBUG) "debug" else "release"
+            "https://cat3399.top/blbl/blbl-$cleanVersion-$channel.apk"
+        }
     }
+
+    private val isApi19Flavor: Boolean
+        get() = BuildConfig.FLAVOR == "kitkat"
 
     private data class VersionHeading(
         val level: Int,
@@ -203,7 +212,8 @@ object ApkUpdater {
 
     fun isRemoteNewer(remoteVersionName: String, currentVersionName: String = BuildConfig.VERSION_NAME): Boolean {
         val remote = parseVersion(remoteVersionName) ?: return false
-        val current = parseVersion(currentVersionName) ?: return remoteVersionName.trim() != currentVersionName.trim()
+        // Unknown local versions are not comparable and must not trigger an update prompt.
+        val current = parseVersion(currentVersionName) ?: return false
         return compareVersion(remote, current) > 0
     }
 

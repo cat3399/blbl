@@ -9,7 +9,7 @@ on:
       version_name:
         description: "Version name used in the APK metadata"
         required: false
-        default: "ci"
+        default: ""
 
 permissions:
   contents: read
@@ -63,12 +63,19 @@ jobs:
           set -euo pipefail
           chmod +x ./gradlew
           version_name="${INPUT_VERSION_NAME:-}"
-          if [[ -z "$version_name" ]]; then
-            version_name="ci-${GITHUB_SHA::7}"
+          if [[ -z "$version_name" || "$version_name" == "ci" ]]; then
+            version_name="$(sed -nE 's/^##[[:space:]]+v?([0-9]+\.[0-9]+\.[0-9]+).*/\1/p' CHANGELOG.md | head -n 1)"
+            if [[ -z "$version_name" ]]; then
+              echo "Unable to determine the current version from CHANGELOG.md" >&2
+              exit 1
+            fi
+          fi
+          version_name="${version_name#v}"
+          if [[ "$version_name" != *-api19 ]]; then
+            version_name="${version_name}-api19"
           fi
           ./gradlew :app:assembleKitkatRelease \
-            -PversionName="$version_name" \
-            -PversionCode="$GITHUB_RUN_NUMBER"
+            -PversionName="$version_name"
 
       - name: Inspect APK
         run: |
