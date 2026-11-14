@@ -12,7 +12,11 @@ on:
         default: ""
 
 permissions:
-  contents: read
+  contents: write
+
+concurrency:
+  group: api19-public-build-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   build-api19:
@@ -130,3 +134,37 @@ jobs:
           name: blbl-api19-kitkat-release-${{ github.sha }}
           path: app/build/outputs/apk/**/*.apk
           if-no-files-found: error
+
+      - name: Publish public rolling APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          apk="$(find app/build/outputs/apk -type f -name '*.apk' | sort | tail -n 1)"
+          test -s "$apk"
+
+          release_tag="api19-latest"
+          asset_name="blbl-api19-kitkat-latest.apk"
+          asset_path="$RUNNER_TEMP/$asset_name"
+          cp "$apk" "$asset_path"
+
+          if gh release view "$release_tag" >/dev/null 2>&1; then
+            gh release edit "$release_tag" \
+              --title "Blbl API19 最新构建" \
+              --notes "由 mtga-api19-main 的 GitHub Actions 自动更新。此滚动构建用于公开下载。" \
+              --target "$GITHUB_SHA"
+          else
+            gh release create "$release_tag" \
+              --title "Blbl API19 最新构建" \
+              --notes "由 mtga-api19-main 的 GitHub Actions 自动更新。此滚动构建用于公开下载。" \
+              --prerelease \
+              --target "$GITHUB_SHA"
+          fi
+
+          gh release upload "$release_tag" "$asset_path" --clobber
+          {
+            echo "## Public APK"
+            echo
+            echo "- Download: https://github.com/${GITHUB_REPOSITORY}/releases/download/${release_tag}/${asset_name}"
+            echo "- Release: https://github.com/${GITHUB_REPOSITORY}/releases/tag/${release_tag}"
+          } >> "$GITHUB_STEP_SUMMARY"

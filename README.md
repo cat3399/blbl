@@ -72,6 +72,7 @@
 - API19 更新检查读取 `MTGA-Legacy/blbl` 的 `mtga-api19-main/CHANGELOG.md`。
 - `Android API19 Release` 手动输入基础版本（例如 `0.1.30`），发布 tag `v0.1.30-api19`，并附带版本 APK 与 `blbl-latest-api19-release.apk`。
 - API19 Release 必须配置签名 Secrets，且签名证书必须与设备上已安装的 APK 一致；工作流会拒绝发布未签名 APK。
+- `Android API19 Build` 还会更新公开预发布 `api19-latest`，可直接下载 `blbl-api19-kitkat-latest.apk`；普通 Actions artifact 仍用于构建归档，下载可能需要登录 GitHub。
 
 ## GitHub Actions
 
