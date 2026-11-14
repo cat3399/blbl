@@ -19,7 +19,9 @@ import blbl.cat3399.core.ui.AppToast
 import blbl.cat3399.core.ui.TabContentSwitchFocusHost
 import blbl.cat3399.core.ui.DpadGridController
 import blbl.cat3399.core.ui.FocusTreeUtils
+import blbl.cat3399.core.ui.GridViewportFillMonitor
 import blbl.cat3399.core.ui.TabSwitchFocusTarget
+import blbl.cat3399.core.ui.installGridViewportFillMonitor
 import blbl.cat3399.core.ui.postIfAlive
 import blbl.cat3399.core.ui.postIfAttached
 import blbl.cat3399.core.ui.requestFocusAdapterPositionReliable
@@ -118,6 +120,7 @@ class PgcRecommendGridFragment : Fragment(), RefreshKeyHandler, TabSwitchFocusTa
     private var pendingFocusFirstCardFromBackToTab0: Boolean = false
     private var lastFocusedAdapterPosition: Int? = null
     private var dpadGridController: DpadGridController? = null
+    private var viewportFillMonitor: GridViewportFillMonitor? = null
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         _binding = FragmentVideoGridBinding.inflate(inflater, container, false)
@@ -168,6 +171,13 @@ class PgcRecommendGridFragment : Fragment(), RefreshKeyHandler, TabSwitchFocusTa
                         isEnabled = { _binding != null && isResumed },
                     ),
             ).also { it.install() }
+        viewportFillMonitor?.release()
+        viewportFillMonitor =
+            binding.recycler.installGridViewportFillMonitor(
+                isEnabled = { _binding != null && isResumed },
+                canLoadMore = { !isLoadingMore && hasNext },
+                loadMore = { loadNextPage() },
+            )
         binding.recycler.addOnScrollListener(
             object : RecyclerView.OnScrollListener() {
                 override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
@@ -188,6 +198,7 @@ class PgcRecommendGridFragment : Fragment(), RefreshKeyHandler, TabSwitchFocusTa
     override fun onResume() {
         super.onResume()
         (binding.recycler.layoutManager as? GridLayoutManager)?.spanCount = spanCountForPgc()
+        viewportFillMonitor?.scheduleCheck()
         maybeTriggerInitialLoad()
         restoreFocusIfNeeded()
         maybeConsumePendingFocusFirstCard()
@@ -357,6 +368,11 @@ class PgcRecommendGridFragment : Fragment(), RefreshKeyHandler, TabSwitchFocusTa
 
                 val filtered = fetched.items.filter { loadedSeasonIds.add(it.seasonId) }
                 if (isRefresh) adapter.submit(filtered) else adapter.append(filtered)
+                if (!isRefresh && filtered.isEmpty()) {
+                    // The endpoint may advance its cursor while returning the same modules again.
+                    // Stop at the first page that contributes no new seasons.
+                    hasNext = false
+                }
 
                 _binding?.let { b ->
                     b.recycler.postIfAlive(isAlive = { _binding === b && isResumed }) {
@@ -377,10 +393,12 @@ class PgcRecommendGridFragment : Fragment(), RefreshKeyHandler, TabSwitchFocusTa
                                     dpadGridController?.unparkFocusAfterDataSetReset()
                                 },
                             )
+                            viewportFillMonitor?.scheduleCheck()
                             return@postIfAlive
                         }
                         maybeConsumePendingFocusFirstCard()
                         dpadGridController?.consumePendingFocusAfterLoadMore()
+                        viewportFillMonitor?.scheduleCheck()
                     }
                 }
                 restoreFocusIfNeeded()
@@ -468,6 +486,8 @@ class PgcRecommendGridFragment : Fragment(), RefreshKeyHandler, TabSwitchFocusTa
         pendingFocusFirstCardFromContentSwitch = false
         dpadGridController?.release()
         dpadGridController = null
+        viewportFillMonitor?.release()
+        viewportFillMonitor = null
         _binding = null
         super.onDestroyView()
     }

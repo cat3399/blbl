@@ -1233,8 +1233,6 @@ object BiliApi {
                 val seen = HashSet<Long>(256)
                 for (i in 0 until modules.length()) {
                     val module = modules.optJSONObject(i) ?: continue
-                    val moduleTitle = module.optString("title", "").trim()
-                    if (!moduleTitle.contains("猜你喜欢")) continue
                     val list = module.optJSONArray("items") ?: continue
                     for (j in 0 until list.length()) {
                         val obj = list.optJSONObject(j) ?: continue
