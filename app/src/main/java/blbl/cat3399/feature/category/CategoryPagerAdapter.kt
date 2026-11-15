@@ -17,12 +17,12 @@ class CategoryPagerAdapter(
         val zone = zones[position]
         AppLog.d(
             "Category",
-            "createFragment pos=$position title=${zone.title} tid=${zone.tid} t=${SystemClock.uptimeMillis()}",
+            "createFragment pos=$position title=${zone.title} rid=${zone.rid} t=${SystemClock.uptimeMillis()}",
         )
-        return if (zone.tid == null) {
+        return if (zone.rid == null) {
             VideoGridFragment.newPopular()
         } else {
-            VideoGridFragment.newRegion(zone.tid)
+            VideoGridFragment.newRegion(zone.rid)
         }
     }
 

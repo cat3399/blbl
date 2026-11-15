@@ -2,8 +2,8 @@ package blbl.cat3399.core.image
 
 import blbl.cat3399.core.net.BiliClient
 import blbl.cat3399.core.net.parseHttpUrl
-import blbl.cat3399.core.net.urlHost
 import blbl.cat3399.core.net.urlEncodedPath
+import blbl.cat3399.core.net.urlHost
 
 object ImageUrl {
     private fun imageQuality(): String = runCatching { BiliClient.prefs.imageQuality }.getOrDefault("medium")

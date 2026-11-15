@@ -1,5 +1,6 @@
 package blbl.cat3399.feature.my
 
+import blbl.cat3399.R
 import android.content.Intent
 import android.os.Bundle
 import android.view.LayoutInflater
@@ -257,7 +258,7 @@ class MyLikeFragment : Fragment(), MyTabSwitchFocusTarget, RefreshKeyHandler {
                     }
                 }
                 context?.let {
-                    AppToast.show(it, if (isPrivate) "点赞列表未公开" else "加载失败，可查看 Logcat(标签 BLBL)")
+                    AppToast.show(it, if (isPrivate) "点赞列表未公开" else getString(R.string.error_load_retry))
                 }
             } finally {
                 if (token == requestToken) _binding?.swipeRefresh?.isRefreshing = false

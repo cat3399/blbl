@@ -35,6 +35,16 @@ data class PlayerPlaylistItem(
 )
 
 internal sealed interface Playable {
+    data class DashVideoRepresentation(
+        val videoUrl: String,
+        val videoUrlCandidates: List<String>,
+        val videoMediaRequestProfile: VideoMediaRequestProfile,
+        val videoTrackInfo: DashTrackInfo,
+        val qn: Int,
+        val codecid: Int,
+        val isDolbyVision: Boolean,
+    )
+
     data class Dash(
         val videoUrl: String,
         val audioUrl: String,
@@ -49,6 +59,7 @@ internal sealed interface Playable {
         val audioId: Int,
         val audioKind: DashAudioKind,
         val isDolbyVision: Boolean,
+        val videoRepresentations: List<DashVideoRepresentation> = emptyList(),
     ) : Playable
 
     data class VideoOnly(
@@ -128,6 +139,7 @@ internal data class PendingAutoSkip(
 internal data class PlayerSessionSettings(
     val playbackSpeed: Float,
     val preferCodec: String,
+    val seamlessQualitySwitchEnabled: Boolean,
     val preferAudioId: Int,
     val targetAudioId: Int = 0,
     val actualAudioId: Int = 0,
@@ -153,6 +165,7 @@ internal fun PlayerSessionSettings.toEngineSwitchJsonString(): String {
             put("v", 1)
             put("playbackSpeed", playbackSpeed.toDouble())
             put("preferCodec", preferCodec)
+            put("seamlessQualitySwitchEnabled", seamlessQualitySwitchEnabled)
             put("preferAudioId", preferAudioId)
             put("targetAudioId", targetAudioId)
             put("preferredQn", preferredQn)
@@ -210,6 +223,7 @@ internal fun PlayerSessionSettings.restoreFromEngineSwitchJsonString(raw: String
 
     val speed = optFloat("playbackSpeed", playbackSpeed).coerceIn(0.25f, 4.0f)
     val codec = obj.optString("preferCodec", preferCodec).trim().ifBlank { preferCodec }
+    val seamlessQualitySwitchEnabled = obj.optBoolean("seamlessQualitySwitchEnabled", seamlessQualitySwitchEnabled)
     val preferAudio = optInt("preferAudioId", preferAudioId).takeIf { it > 0 } ?: preferAudioId
     val tAudio = optInt("targetAudioId", targetAudioId).takeIf { it >= 0 } ?: targetAudioId
     val pQn = optInt("preferredQn", preferredQn).takeIf { it > 0 } ?: preferredQn
@@ -242,6 +256,7 @@ internal fun PlayerSessionSettings.restoreFromEngineSwitchJsonString(raw: String
     return copy(
         playbackSpeed = speed,
         preferCodec = codec,
+        seamlessQualitySwitchEnabled = seamlessQualitySwitchEnabled,
         preferAudioId = preferAudio,
         targetAudioId = tAudio,
         preferredQn = pQn,

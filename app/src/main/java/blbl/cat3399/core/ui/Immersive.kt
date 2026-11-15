@@ -35,7 +35,6 @@ object Immersive {
             }
         } else {
             WindowDisplayPolicy.applyWindow(activity, fullscreen = enabled)
-            WindowCompat.setDecorFitsSystemWindows(window, !enabled)
             val controller = WindowInsetsControllerCompat(window, window.decorView)
             if (enabled) {
                 controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
@@ -44,6 +43,7 @@ object Immersive {
                 controller.show(WindowInsetsCompat.Type.systemBars())
             }
         }
+        WindowDisplayPolicy.requestApplyInsets(activity)
     }
 
     /**
@@ -81,6 +81,5 @@ object Immersive {
                 ViewCompat.onApplyWindowInsets(view, insets)
             }
         }
-        WindowDisplayPolicy.requestApplyInsets(activity)
     }
 }

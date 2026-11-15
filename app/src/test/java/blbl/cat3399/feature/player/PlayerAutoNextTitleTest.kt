@@ -10,8 +10,8 @@ class PlayerAutoNextTitleTest {
     }
 
     @Test
-    fun truncatesTitlesToTwelveCharactersBeforeEllipsis() {
-        assertEquals("123456789012...", formatAutoNextHintTitle("12345678901234567890", fallbackTitle = "推荐视频"))
+    fun truncatesTitlesToEighteenCharactersBeforeEllipsis() {
+        assertEquals("123456789012345678...", formatAutoNextHintTitle("12345678901234567890", fallbackTitle = "推荐视频"))
     }
 
     @Test

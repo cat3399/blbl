@@ -8,8 +8,9 @@ import kotlin.math.ceil
 
 /**
  * Detects when a grid RecyclerView does not have enough items to fill every row that is visible in
- * the current viewport. The page still owns pagination state and loading; this class only decides
- * when the existing load-more path should be asked for more data.
+ * the current viewport, including the exact-fill case where no scroll gesture can be generated.
+ * The page still owns pagination state and loading; this class only decides when the existing
+ * load-more path should be asked for more data.
  */
 internal class GridViewportFillMonitor(
     private val recyclerView: RecyclerView,
@@ -99,7 +100,7 @@ internal class GridViewportFillMonitor(
         if (!callbacks.canLoadMore()) return
         val requiredItemCount = requiredItemCountForViewport() ?: return
         val itemCount = recyclerView.adapter?.itemCount ?: return
-        if (itemCount in 1 until requiredItemCount) {
+        if (itemCount in 1..requiredItemCount) {
             callbacks.loadMore()
         }
     }

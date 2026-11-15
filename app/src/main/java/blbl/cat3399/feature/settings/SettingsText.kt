@@ -6,6 +6,7 @@ import android.content.res.Resources
 import android.media.MediaCodecInfo
 import android.media.MediaCodecList
 import android.os.Build
+import blbl.cat3399.core.api.SponsorBlockCategories
 import blbl.cat3399.core.prefs.AppPrefs
 import blbl.cat3399.core.prefs.CustomPageConfig
 import blbl.cat3399.core.prefs.PlayerPlaybackModes
@@ -19,6 +20,32 @@ import java.util.Locale
 import kotlin.math.roundToInt
 
 object SettingsText {
+    val playerAutoSkipSegmentCategoryOptions: List<Pair<String, String>> =
+        listOf(
+            SponsorBlockCategories.SPONSOR to "赞助/广告",
+            SponsorBlockCategories.SELF_PROMO to "自我推广",
+            SponsorBlockCategories.EXCLUSIVE_ACCESS to "品牌合作",
+            SponsorBlockCategories.INTERACTION to "三连提醒",
+            SponsorBlockCategories.INTRO to "片头",
+            SponsorBlockCategories.OUTRO to "片尾",
+            SponsorBlockCategories.PREVIEW to "预览",
+            SponsorBlockCategories.FILLER to "离题/填充",
+            SponsorBlockCategories.MUSIC_OFF_TOPIC to "非音乐内容",
+            SponsorBlockCategories.OTHER to "其他片段",
+        )
+
+    fun playerAutoSkipSegmentCategoriesText(categories: List<String>): String {
+        val normalized = SponsorBlockCategories.normalizeSelectedAutoSkipCategories(categories)
+        if (normalized.size == SponsorBlockCategories.AUTO_SKIP_KEYS.size) return "全部"
+        val labels =
+            playerAutoSkipSegmentCategoryOptions
+                .filter { (key, _) -> key in normalized }
+                .map { (_, label) -> label }
+        if (labels.isEmpty()) return "无"
+        if (labels.size <= 3) return labels.joinToString(" / ")
+        return labels.take(2).joinToString(" / ") + " 等${labels.size}项"
+    }
+
     fun audioText(id: Int): String =
         when (id) {
             30251 -> "Hi-Res 无损"
@@ -48,7 +75,12 @@ object SettingsText {
 
     fun subtitleBackgroundOpacityText(opacity: Float): String {
         val v = opacity.takeIf { it.isFinite() } ?: (34f / 255f)
-        return String.format(Locale.US, "%.2f", v.coerceIn(0f, 1.0f))
+        return opacityText(v)
+    }
+
+    fun opacityText(opacity: Float): String {
+        val value = opacity.takeIf { it.isFinite() } ?: 1f
+        return "${(value.coerceIn(0f, 1f) * 100f).roundToInt()}%"
     }
 
     fun areaText(area: Float): String = "${(AppPrefs.normalizeDanmakuArea(area) * 100f).roundToInt()}%"
@@ -221,7 +253,7 @@ object SettingsText {
             blbl.cat3399.core.prefs.AppPrefs.PLAYER_DOWN_KEY_OSD_FOCUS_COIN -> "投币"
             blbl.cat3399.core.prefs.AppPrefs.PLAYER_DOWN_KEY_OSD_FOCUS_FAV -> "收藏"
             blbl.cat3399.core.prefs.AppPrefs.PLAYER_DOWN_KEY_OSD_FOCUS_LIST_PANEL -> "列表面板"
-            blbl.cat3399.core.prefs.AppPrefs.PLAYER_DOWN_KEY_OSD_FOCUS_SPONSOR_SUBMIT -> "上传广告片段"
+            blbl.cat3399.core.prefs.AppPrefs.PLAYER_DOWN_KEY_OSD_FOCUS_SPONSOR_SUBMIT -> "提交空降片段"
             blbl.cat3399.core.prefs.AppPrefs.PLAYER_DOWN_KEY_OSD_FOCUS_ADVANCED -> "更多设置"
             else -> "播放/暂停"
         }
@@ -242,8 +274,9 @@ object SettingsText {
                 if (enabled.contains(blbl.cat3399.core.prefs.AppPrefs.PLAYER_OSD_BTN_COIN)) add("投币")
                 if (enabled.contains(blbl.cat3399.core.prefs.AppPrefs.PLAYER_OSD_BTN_FAV)) add("收藏")
                 if (enabled.contains(blbl.cat3399.core.prefs.AppPrefs.PLAYER_OSD_BTN_LIST_PANEL)) add("列表")
-                if (enabled.contains(blbl.cat3399.core.prefs.AppPrefs.PLAYER_OSD_BTN_SPONSOR_SUBMIT)) add("上传广告片段")
+                if (enabled.contains(blbl.cat3399.core.prefs.AppPrefs.PLAYER_OSD_BTN_SPONSOR_SUBMIT)) add("提交空降片段")
                 if (enabled.contains(blbl.cat3399.core.prefs.AppPrefs.PLAYER_OSD_BTN_ADVANCED)) add("更多设置")
+                if (enabled.contains(blbl.cat3399.core.prefs.AppPrefs.PLAYER_OSD_BTN_CLOSE_PLAYER)) add("关闭播放器")
             }
         if (labels.isEmpty()) return "无"
         if (labels.size <= 4) return labels.joinToString(separator = " / ")

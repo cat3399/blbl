@@ -1,6 +1,5 @@
 package blbl.cat3399
 
-import android.app.Application
 import android.os.Build
 import androidx.multidex.MultiDexApplication
 import blbl.cat3399.core.log.AppLog

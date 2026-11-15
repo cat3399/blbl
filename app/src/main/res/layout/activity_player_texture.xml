@@ -43,6 +43,17 @@
         app:layout_constraintTop_toTopOf="@id/player_view" />
 
     <ViewStub
+        android:id="@+id/live_super_chat_stub"
+        android:layout_width="@dimen/live_super_chat_width"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="@dimen/live_super_chat_margin_start"
+        android:layout_marginTop="@dimen/live_super_chat_margin_top"
+        android:inflatedId="@+id/live_super_chat_overlay"
+        android:layout="@layout/view_live_super_chat_overlay"
+        app:layout_constraintStart_toStartOf="@id/player_view"
+        app:layout_constraintTop_toBottomOf="@id/barrier_live_super_chat_top" />
+
+    <ViewStub
         android:id="@+id/player_touch_overlay_stub"
         android:layout_width="0dp"
         android:layout_height="0dp"
@@ -289,8 +300,7 @@
             android:nextFocusDown="@id/seek_progress"
             android:orientation="horizontal"
             android:paddingStart="@dimen/player_up_quick_profile_padding_start"
-            android:paddingEnd="@dimen/player_up_quick_profile_padding_end"
-            android:stateListAnimator="@animator/blbl_focus_scale">
+            android:paddingEnd="@dimen/player_up_quick_profile_padding_end">
 
             <com.google.android.material.imageview.ShapeableImageView
                 android:id="@+id/iv_up_quick_avatar"
@@ -330,7 +340,6 @@
             android:nextFocusDown="@id/seek_progress"
             android:paddingStart="@dimen/player_up_quick_follow_padding_start"
             android:paddingEnd="@dimen/player_up_quick_follow_padding_end"
-            android:stateListAnimator="@animator/blbl_focus_scale"
             android:text="@string/player_up_quick_follow"
             android:textColor="?attr/colorOnSurface"
             android:textSize="@dimen/player_up_quick_follow_text_size" />
@@ -353,7 +362,8 @@
             android:layout_width="0dp"
             android:layout_height="@dimen/player_seekbar_touch_height"
             android:background="?attr/blblFocusBgRound"
-            android:layout_marginHorizontal="0dp"
+            android:layout_marginStart="0dp"
+            android:layout_marginEnd="0dp"
             android:layout_marginBottom="@dimen/player_seekbar_margin_bottom"
             android:nextFocusUp="@id/btn_up_quick_profile"
             android:paddingStart="0dp"
@@ -559,6 +569,7 @@
                 android:id="@+id/btn_advanced"
                 android:layout_width="?attr/playerOsdButtonTargetSize"
                 android:layout_height="?attr/playerOsdButtonTargetSize"
+                android:layout_marginEnd="?attr/playerOsdGap"
                 android:background="?attr/blblFocusBgRound"
                 android:contentDescription="@string/app_name"
                 android:focusable="true"
@@ -566,6 +577,19 @@
             android:scaleType="fitCenter"
             app:srcCompat="@drawable/ic_settings"
             app:tint="@color/player_button_tint" />
+
+            <ImageButton
+                android:id="@+id/btn_close_player"
+                android:layout_width="?attr/playerOsdButtonTargetSize"
+                android:layout_height="?attr/playerOsdButtonTargetSize"
+                android:background="?attr/blblFocusBgRound"
+                android:contentDescription="@string/player_btn_close_player"
+                android:focusable="true"
+                android:padding="?attr/playerOsdPadSmall"
+                android:scaleType="fitCenter"
+                app:srcCompat="@drawable/ic_player_close"
+                android:visibility="gone"
+                app:tint="@color/player_button_tint" />
         </LinearLayout>
 
         <TextView
@@ -684,6 +708,14 @@
         app:layout_constraintEnd_toEndOf="@id/player_view"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@id/top_bar" />
+
+    <androidx.constraintlayout.widget.Barrier
+        android:id="@+id/barrier_live_super_chat_top"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        app:barrierAllowsGoneWidgets="true"
+        app:barrierDirection="bottom"
+        app:constraint_referenced_ids="top_bar,card_up_quick,tv_debug" />
 
     <TextView
         android:id="@+id/tv_seek_hint"
@@ -1378,9 +1410,9 @@
         android:id="@+id/comments_panel"
         android:layout_width="@dimen/player_comments_panel_width"
         android:layout_height="0dp"
-        android:layout_margin="@dimen/player_side_panel_margin"
+        android:layout_marginEnd="@dimen/player_comments_panel_margin_end"
         android:layout_marginTop="@dimen/player_side_panel_margin_top"
-        android:layout_marginBottom="@dimen/player_side_panel_margin_bottom"
+        android:layout_marginBottom="@dimen/player_comments_panel_margin_bottom"
         android:clipChildren="false"
         android:clipToPadding="false"
         android:visibility="gone"
@@ -1396,113 +1428,9 @@
             android:layout_height="match_parent"
             android:clipChildren="false"
             android:clipToPadding="false"
-            android:padding="@dimen/player_side_panel_padding">
+            android:padding="@dimen/player_comments_panel_padding">
 
-            <LinearLayout
-                android:id="@+id/row_comment_sort"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:clipChildren="false"
-                android:clipToPadding="false"
-                android:gravity="center_vertical"
-                android:orientation="horizontal"
-                app:layout_constraintEnd_toEndOf="parent"
-                app:layout_constraintStart_toStartOf="parent"
-                app:layout_constraintTop_toTopOf="parent">
-
-                <TextView
-                    android:id="@+id/tv_comment_sort_label"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="@string/player_comment_sort"
-                    android:textColor="?android:attr/textColorSecondary"
-                    android:textSize="@dimen/player_comment_sort_label_text_size" />
-
-                <TextView
-                    android:id="@+id/chip_comment_sort_hot"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginStart="@dimen/player_comment_sort_chip_margin_start"
-                    android:background="@drawable/bg_player_sort_chip"
-                    android:clickable="true"
-                    android:focusable="true"
-                    android:nextFocusUp="@id/chip_comment_sort_hot"
-                    android:nextFocusRight="@id/chip_comment_sort_new"
-                    android:paddingStart="@dimen/player_comment_sort_chip_padding_h"
-                    android:paddingEnd="@dimen/player_comment_sort_chip_padding_h"
-                    android:paddingTop="@dimen/player_comment_sort_chip_padding_v"
-                    android:paddingBottom="@dimen/player_comment_sort_chip_padding_v"
-                    android:text="@string/player_comment_sort_hot"
-                    android:textColor="?attr/colorOnSurface"
-                    android:textSize="@dimen/player_comment_sort_chip_text_size" />
-
-                <TextView
-                    android:id="@+id/chip_comment_sort_new"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginStart="@dimen/player_comment_sort_chip_margin_start"
-                    android:background="@drawable/bg_player_sort_chip"
-                    android:clickable="true"
-                    android:focusable="true"
-                    android:nextFocusLeft="@id/chip_comment_sort_hot"
-                    android:nextFocusUp="@id/chip_comment_sort_new"
-                    android:nextFocusRight="@id/chip_comment_sort_new"
-                    android:paddingStart="@dimen/player_comment_sort_chip_padding_h"
-                    android:paddingEnd="@dimen/player_comment_sort_chip_padding_h"
-                    android:paddingTop="@dimen/player_comment_sort_chip_padding_v"
-                    android:paddingBottom="@dimen/player_comment_sort_chip_padding_v"
-                    android:text="@string/player_comment_sort_new"
-                    android:textColor="?attr/colorOnSurface"
-                    android:textSize="@dimen/player_comment_sort_chip_text_size" />
-            </LinearLayout>
-
-            <FrameLayout
-                android:id="@+id/comments_content"
-                android:layout_width="0dp"
-                android:layout_height="0dp"
-                android:layout_marginTop="@dimen/player_side_panel_content_margin_top"
-                android:clipChildren="false"
-                android:clipToPadding="false"
-                app:layout_constraintBottom_toBottomOf="parent"
-                app:layout_constraintEnd_toEndOf="parent"
-                app:layout_constraintStart_toStartOf="parent"
-                app:layout_constraintTop_toBottomOf="@id/row_comment_sort">
-
-                <androidx.recyclerview.widget.RecyclerView
-                    android:id="@+id/recycler_comments"
-                    android:layout_width="match_parent"
-                    android:layout_height="match_parent"
-                    android:clipChildren="false"
-                    android:clipToPadding="false"
-                    android:paddingStart="@dimen/player_comments_recycler_padding_h"
-                    android:paddingTop="@dimen/focus_safe_padding_v"
-                    android:paddingEnd="@dimen/player_comments_recycler_padding_h"
-                    android:paddingBottom="@dimen/focus_safe_padding_v" />
-
-                <androidx.recyclerview.widget.RecyclerView
-                    android:id="@+id/recycler_comment_thread"
-                    android:layout_width="match_parent"
-                    android:layout_height="match_parent"
-                    android:clipChildren="false"
-                    android:clipToPadding="false"
-                    android:paddingStart="@dimen/player_comments_recycler_padding_h"
-                    android:paddingTop="@dimen/focus_safe_padding_v"
-                    android:paddingEnd="@dimen/player_comments_recycler_padding_h"
-                    android:paddingBottom="@dimen/focus_safe_padding_v"
-                    android:visibility="gone" />
-
-                <TextView
-                    android:id="@+id/tv_comments_hint"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:gravity="center"
-                    android:padding="@dimen/player_comments_hint_padding"
-                    android:text="@string/player_comment_loading"
-                    android:textColor="?android:attr/textColorSecondary"
-                    android:textSize="@dimen/player_comments_hint_text_size"
-                    android:visibility="gone" />
-
-            </FrameLayout>
+            <include layout="@layout/include_video_comments_panel_content" />
 
         </androidx.constraintlayout.widget.ConstraintLayout>
     </com.google.android.material.card.MaterialCardView>
@@ -1520,78 +1448,7 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent">
 
-        <androidx.constraintlayout.widget.ConstraintLayout
-            android:layout_width="match_parent"
-            android:layout_height="match_parent">
-
-            <androidx.constraintlayout.widget.Guideline
-                android:id="@+id/guideline_comment_image_left"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                app:layout_constraintGuide_percent="0.125" />
-
-            <androidx.constraintlayout.widget.Guideline
-                android:id="@+id/guideline_comment_image_right"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                app:layout_constraintGuide_percent="0.875" />
-
-            <androidx.constraintlayout.widget.Guideline
-                android:id="@+id/guideline_comment_image_top"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                app:layout_constraintGuide_percent="0.125" />
-
-            <androidx.constraintlayout.widget.Guideline
-                android:id="@+id/guideline_comment_image_bottom"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                app:layout_constraintGuide_percent="0.875" />
-
-            <blbl.cat3399.feature.player.PlayerCommentImageView
-                android:id="@+id/iv_comment_image"
-                android:layout_width="0dp"
-                android:layout_height="0dp"
-                android:clickable="true"
-                android:contentDescription="@string/app_name"
-                app:layout_constraintBottom_toBottomOf="@id/guideline_comment_image_bottom"
-                app:layout_constraintEnd_toEndOf="@id/guideline_comment_image_right"
-                app:layout_constraintStart_toStartOf="@id/guideline_comment_image_left"
-                app:layout_constraintTop_toTopOf="@id/guideline_comment_image_top" />
-
-            <ImageView
-                android:id="@+id/iv_comment_image_prev"
-                android:layout_width="48dp"
-                android:layout_height="48dp"
-                android:layout_marginEnd="24dp"
-                android:alpha="0.7"
-                android:clickable="true"
-                android:contentDescription="@string/app_name"
-                app:srcCompat="@drawable/ic_chevron_left"
-                android:visibility="gone"
-                app:layout_constraintBottom_toBottomOf="@id/iv_comment_image"
-                app:layout_constraintEnd_toStartOf="@id/iv_comment_image"
-                app:layout_constraintTop_toTopOf="@id/iv_comment_image" />
-
-            <ImageView
-                android:id="@+id/iv_comment_image_next"
-                android:layout_width="48dp"
-                android:layout_height="48dp"
-                android:layout_marginStart="24dp"
-                android:alpha="0.7"
-                android:clickable="true"
-                android:contentDescription="@string/app_name"
-                app:srcCompat="@drawable/ic_chevron_right"
-                android:visibility="gone"
-                app:layout_constraintBottom_toBottomOf="@id/iv_comment_image"
-                app:layout_constraintStart_toEndOf="@id/iv_comment_image"
-                app:layout_constraintTop_toTopOf="@id/iv_comment_image" />
-
-        </androidx.constraintlayout.widget.ConstraintLayout>
+        <include layout="@layout/include_video_comment_image_viewer_content" />
     </FrameLayout>
 
 </androidx.constraintlayout.widget.ConstraintLayout>

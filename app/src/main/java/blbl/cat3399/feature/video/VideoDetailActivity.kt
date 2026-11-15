@@ -4,6 +4,7 @@ import android.content.Intent
 import android.os.Bundle
 import android.view.Gravity
 import android.view.KeyEvent
+import android.view.LayoutInflater
 import android.view.View
 import android.widget.FrameLayout
 import android.widget.ProgressBar
@@ -31,7 +32,12 @@ import blbl.cat3399.core.ui.smoothScrollToPositionStart
 import blbl.cat3399.core.util.parseBangumiRedirectUrl
 import blbl.cat3399.core.util.Format
 import blbl.cat3399.core.ui.popup.AppPopup
+import blbl.cat3399.core.ui.popup.PopupHandle
+import blbl.cat3399.core.ui.popup.PopupModalSizing
 import blbl.cat3399.databinding.ActivityVideoDetailBinding
+import blbl.cat3399.databinding.IncludeVideoCommentImageViewerContentBinding
+import blbl.cat3399.databinding.IncludeVideoCommentsPanelContentBinding
+import blbl.cat3399.databinding.ViewVideoCommentsPopupBinding
 import blbl.cat3399.feature.following.UpDetailActivity
 import blbl.cat3399.feature.my.BangumiDetailActivity
 import blbl.cat3399.feature.player.ArchiveTripleActionState
@@ -47,6 +53,10 @@ import blbl.cat3399.feature.player.parseVideoCardsToPlaylistParsed
 import blbl.cat3399.feature.player.parseUgcSeasonPlaylistFromDetailWithUiCards
 import blbl.cat3399.feature.player.userMessage
 import blbl.cat3399.feature.tag.TagDetailActivity
+import blbl.cat3399.feature.video.comment.VideoCommentImageViewerController
+import blbl.cat3399.feature.video.comment.VideoCommentImageViewerViews
+import blbl.cat3399.feature.video.comment.VideoCommentsPanelController
+import blbl.cat3399.feature.video.comment.VideoCommentsPanelViews
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -104,6 +114,9 @@ class VideoDetailActivity : BaseActivity() {
     private var tripleActionJob: Job? = null
     private var socialStateFetchJob: Job? = null
     private var socialStateFetchToken: Int = 0
+    private var commentsPopupHandle: PopupHandle? = null
+    private var commentsPopupController: VideoCommentsPanelController? = null
+    private var commentsPopupImageViewerController: VideoCommentImageViewerController? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -177,6 +190,11 @@ class VideoDetailActivity : BaseActivity() {
     }
 
     override fun onDestroy() {
+        commentsPopupHandle?.dismiss()
+        commentsPopupController?.release()
+        commentsPopupHandle = null
+        commentsPopupController = null
+        commentsPopupImageViewerController = null
         ActivityStackLimiter.unregister(group = ACTIVITY_STACK_GROUP, activity = this)
         super.onDestroy()
     }
@@ -219,6 +237,7 @@ class VideoDetailActivity : BaseActivity() {
                 onLikeLongPress = { onLikeButtonLongPressed() },
                 onCoinClick = { onCoinButtonClicked() },
                 onFavClick = { onFavButtonClicked() },
+                onCommentsClick = { openCommentsPopup() },
                 onSecondaryClick = { /* video detail has no secondary action yet */ },
                 onUpCardFocused = { smoothScrollHeaderToTop() },
                 onPartsOrderClick = {
@@ -312,6 +331,7 @@ class VideoDetailActivity : BaseActivity() {
             actionLiked = actionLiked,
             actionCoinCount = actionCoinCount,
             actionFavored = actionFavored,
+            showCommentsAction = aid?.takeIf { it > 0L } != null,
             partsHeaderText = buildPartsHeaderText(cardsCount = currentPartsUiCards.size),
             partsCards = partsCardsForDisplay(),
             partsSelectedKey = resolvePartsSelectedKey(),
@@ -650,19 +670,11 @@ class VideoDetailActivity : BaseActivity() {
     }
 
     private fun onVideoTagClick(tag: VideoTag) {
-        val safeRid = tabId?.takeIf { it > 0 }
-        if (safeRid == null) {
-            AppToast.show(this, "未获取到分区信息")
-            return
-        }
-        val safeTagId = tag.tagId.takeIf { it > 0L }
         val safeTagName = tag.tagName.trim().takeIf { it.isNotBlank() }
-        if (safeTagId == null || safeTagName == null) return
+        if (safeTagName == null) return
 
         startActivity(
             Intent(this, TagDetailActivity::class.java)
-                .putExtra(TagDetailActivity.EXTRA_RID, safeRid)
-                .putExtra(TagDetailActivity.EXTRA_TAG_ID, safeTagId)
                 .putExtra(TagDetailActivity.EXTRA_TAG_NAME, safeTagName),
         )
     }
@@ -710,6 +722,7 @@ class VideoDetailActivity : BaseActivity() {
             actionLiked = actionLiked,
             actionCoinCount = actionCoinCount,
             actionFavored = actionFavored,
+            showCommentsAction = aid?.takeIf { it > 0L } != null,
             partsHeaderText = buildPartsHeaderText(cardsCount = currentPartsUiCards.size),
             partsCards = partsCardsForDisplay(),
             partsSelectedKey = resolvePartsSelectedKey(),
@@ -794,6 +807,164 @@ class VideoDetailActivity : BaseActivity() {
                 .putExtra(RegionDetailActivity.EXTRA_RID, safeRid)
                 .putExtra(RegionDetailActivity.EXTRA_TITLE, safeTab),
         )
+    }
+
+    private fun openCommentsPopup() {
+        if (commentsPopupHandle?.isShowing == true) {
+            commentsPopupController?.focusRoot()
+            return
+        }
+
+        val requestAid = aid?.takeIf { it > 0L }
+        if (requestAid == null) {
+            AppToast.show(this, getString(R.string.player_comment_no_aid))
+            return
+        }
+
+        var popupBinding: ViewVideoCommentsPopupBinding?
+        var imageViewer: VideoCommentImageViewerController? = null
+        var controller: VideoCommentsPanelController? = null
+        var handle: PopupHandle? = null
+        var popupAttached = false
+
+        handle =
+            AppPopup.custom(
+                context = this,
+                title = getString(R.string.player_btn_comments),
+                cancelable = true,
+                actions = emptyList(),
+                preferredActionRole = null,
+                autoFocus = false,
+                modalSizing =
+                    PopupModalSizing(
+                        widthRatio = 0.86f,
+                        maxWidthDp = 1120f,
+                        maxHeightRatio = 0.90f,
+                    ),
+                onModalAttached = {
+                    popupAttached = true
+                    controller?.showRoot()
+                    controller?.ensureLoaded()
+                    controller?.focusRoot()
+                },
+                onDismiss = {
+                    popupAttached = false
+                    controller?.release()
+                    if (commentsPopupController === controller) commentsPopupController = null
+                    if (commentsPopupImageViewerController === imageViewer) commentsPopupImageViewerController = null
+                    if (commentsPopupHandle === handle) commentsPopupHandle = null
+                    popupBinding = null
+                },
+                onBackPressed = {
+                    controller?.handleBack() == true
+                },
+                content = { dialogContext ->
+                    val b = ViewVideoCommentsPopupBinding.inflate(LayoutInflater.from(dialogContext))
+                    val commentViews = IncludeVideoCommentsPanelContentBinding.bind(b.commentsPopupContent)
+                    val imageViews = IncludeVideoCommentImageViewerContentBinding.bind(b.commentImageViewer)
+                    // The popup card has a tighter width than the player side panel. Reserve
+                    // extra horizontal focus-safe space for the shared 1.02x comment-card scale.
+                    val focusSafeH = b.root.resources.getDimensionPixelSize(R.dimen.player_comments_recycler_padding_h)
+                    listOf(commentViews.recyclerComments, commentViews.recyclerCommentThread).forEach { recycler ->
+                        recycler.setPadding(
+                            focusSafeH * 2,
+                            recycler.paddingTop,
+                            focusSafeH * 2,
+                            recycler.paddingBottom + focusSafeH * 8,
+                        )
+                        recycler.addOnChildAttachStateChangeListener(
+                            object : androidx.recyclerview.widget.RecyclerView.OnChildAttachStateChangeListener {
+                                override fun onChildViewAttachedToWindow(child: View) {
+                                    child.setOnFocusChangeListener { focusedCard, hasFocus ->
+                                        if (!hasFocus) return@setOnFocusChangeListener
+                                        recycler.post {
+                                            val visible = android.graphics.Rect()
+                                            if (!recycler.getGlobalVisibleRect(visible)) return@post
+                                            val location = IntArray(2)
+                                            focusedCard.getLocationOnScreen(location)
+                                            val cardTop = location[1]
+                                            val cardBottom = cardTop + focusedCard.height
+                                            val safeInset = focusSafeH
+                                            val delta = when {
+                                                cardBottom + safeInset > visible.bottom -> cardBottom + safeInset - visible.bottom
+                                                cardTop - safeInset < visible.top -> cardTop - safeInset - visible.top
+                                                else -> 0
+                                            }
+                                            if (delta != 0) recycler.scrollBy(0, delta)
+                                        }
+                                    }
+                                }
+
+                                override fun onChildViewDetachedFromWindow(child: View) {
+                                    child.setOnFocusChangeListener(null)
+                                }
+                            },
+                        )
+                    }
+                    popupBinding = b
+
+                    imageViewer =
+                        VideoCommentImageViewerController(
+                            views =
+                                VideoCommentImageViewerViews(
+                                    container = b.commentImageViewer,
+                                    image = imageViews.ivCommentImage,
+                                    previous = imageViews.ivCommentImagePrev,
+                                    next = imageViews.ivCommentImageNext,
+                            ),
+                            currentFocusProvider = { window?.decorView?.findFocus() },
+                            fallbackFocusProvider = {
+                                val currentBinding = popupBinding
+                                if (currentBinding == null) {
+                                    null
+                                } else if (commentViews.recyclerCommentThread.visibility == View.VISIBLE) {
+                                    commentViews.recyclerCommentThread
+                                } else {
+                                    commentViews.recyclerComments
+                                }
+                            },
+                        )
+                    b.commentImageViewer.setOnKeyListener { _, _, event ->
+                        imageViewer?.dispatchKeyEvent(event) == true
+                    }
+
+                    controller =
+                        VideoCommentsPanelController(
+                            context = this@VideoDetailActivity,
+                            scope = lifecycleScope,
+                            views =
+                                VideoCommentsPanelViews(
+                                    sortRow = commentViews.rowCommentSort,
+                                    sortHot = commentViews.chipCommentSortHot,
+                                    sortNew = commentViews.chipCommentSortNew,
+                                    comments = commentViews.recyclerComments,
+                                    thread = commentViews.recyclerCommentThread,
+                                    hint = commentViews.tvCommentsHint,
+                                ),
+                            oidProvider = { requestAid },
+                            upMidProvider = { ownerMid ?: 0L },
+                            imageViewer = imageViewer,
+                            isActive = {
+                                popupAttached &&
+                                    !isFinishing &&
+                                    !isDestroyed &&
+                                    (handle == null || handle?.isShowing == true)
+                            },
+                        )
+
+                    b.root
+                },
+            )
+
+        commentsPopupHandle = handle
+        commentsPopupController = controller
+        commentsPopupImageViewerController = imageViewer
+
+        if (handle == null) {
+            controller?.release()
+            commentsPopupController = null
+            commentsPopupImageViewerController = null
+        }
     }
 
     private fun refreshActionButtonStatesFromServer(
@@ -919,6 +1090,7 @@ class VideoDetailActivity : BaseActivity() {
                     AppToast.show(this@VideoDetailActivity, result.toastMessage())
                 } catch (t: Throwable) {
                     if (t is CancellationException) return@launch
+                    AppLog.w("VideoAction", "triple action failed bvid=$requestBvid aid=$requestAid", t)
                     AppToast.show(this@VideoDetailActivity, t.userMessage(defaultMessage = "操作失败"))
                 } finally {
                     tripleActionJob = null
@@ -944,7 +1116,7 @@ class VideoDetailActivity : BaseActivity() {
                     BiliApi.archiveLike(bvid = requestBvid, aid = aid, like = targetLike)
                     if (bvid != requestBvid) return@launch
                     actionLiked = targetLike
-                    AppToast.show(this@VideoDetailActivity, if (targetLike) "点赞成功" else "已取消赞")
+                    AppToast.show(this@VideoDetailActivity, if (targetLike) "点赞成功" else "已取消点赞")
                 } catch (t: Throwable) {
                     if (t is CancellationException) return@launch
                     val e = t as? BiliApiException
@@ -953,6 +1125,7 @@ class VideoDetailActivity : BaseActivity() {
                         actionLiked = true
                         AppToast.show(this@VideoDetailActivity, "已点赞")
                     } else {
+                        AppLog.w("VideoAction", "like failed bvid=$requestBvid wantLike=$targetLike", t)
                         val msg = e?.apiMessage?.takeIf { it.isNotBlank() } ?: (t.message ?: "操作失败")
                         AppToast.show(this@VideoDetailActivity, msg)
                     }
@@ -989,6 +1162,7 @@ class VideoDetailActivity : BaseActivity() {
                         actionCoinCount = 2
                         AppToast.show(this@VideoDetailActivity, "已达到投币上限")
                     } else {
+                        AppLog.w("VideoAction", "coin failed bvid=$requestBvid", t)
                         val msg = e?.apiMessage?.takeIf { it.isNotBlank() } ?: (t.message ?: "操作失败")
                         AppToast.show(this@VideoDetailActivity, msg)
                     }
@@ -1068,6 +1242,7 @@ class VideoDetailActivity : BaseActivity() {
                 } catch (t: Throwable) {
                     if (t is CancellationException) return@launch
                     val e = t as? BiliApiException
+                    AppLog.w("VideoAction", "load favorites failed bvid=$requestBvid aid=$requestAid", t)
                     val msg = e?.apiMessage?.takeIf { it.isNotBlank() } ?: (t.message ?: "加载收藏夹失败")
                     AppToast.show(this@VideoDetailActivity, msg)
                 } finally {
@@ -1097,6 +1272,7 @@ class VideoDetailActivity : BaseActivity() {
                 } catch (t: Throwable) {
                     if (t is CancellationException) return@launch
                     val e = t as? BiliApiException
+                    AppLog.w("VideoAction", "favorite failed aid=$rid add=$add del=$del", t)
                     val msg = e?.apiMessage?.takeIf { it.isNotBlank() } ?: (t.message ?: "操作失败")
                     AppToast.show(this@VideoDetailActivity, msg)
                 } finally {

@@ -3,8 +3,8 @@ package blbl.cat3399.core.prefs
 import android.content.Context
 import android.os.Build
 import android.provider.Settings
+import blbl.cat3399.core.api.SponsorBlockCategories
 import blbl.cat3399.core.tv.isTvDevice
-import blbl.cat3399.core.net.parseHttpUrl
 import blbl.cat3399.core.net.parseHttpUrl
 import blbl.cat3399.core.net.urlFragment
 import blbl.cat3399.core.net.urlQuery
@@ -319,6 +319,13 @@ class AppPrefs(context: Context) {
         get() = prefs.getInt(KEY_PLAYER_PREFERRED_QN, 80)
         set(value) = prefs.edit().putInt(KEY_PLAYER_PREFERRED_QN, value).apply()
 
+    var playerPreferredQnPgc: Int
+        get() {
+            if (!prefs.contains(KEY_PLAYER_PREFERRED_QN_PGC)) return playerPreferredQn
+            return prefs.getInt(KEY_PLAYER_PREFERRED_QN_PGC, playerPreferredQn)
+        }
+        set(value) = prefs.edit().putInt(KEY_PLAYER_PREFERRED_QN_PGC, value).apply()
+
     var playerPreferredQnPortrait: Int
         get() {
             if (!prefs.contains(KEY_PLAYER_PREFERRED_QN_PORTRAIT)) return playerPreferredQn
@@ -329,6 +336,10 @@ class AppPrefs(context: Context) {
     var playerPreferredCodec: String
         get() = prefs.getString(KEY_PLAYER_CODEC, "AVC") ?: "AVC"
         set(value) = prefs.edit().putString(KEY_PLAYER_CODEC, value).apply()
+
+    var playerSeamlessQualitySwitchEnabled: Boolean
+        get() = prefs.getBoolean(KEY_PLAYER_SEAMLESS_QUALITY_SWITCH_ENABLED, true)
+        set(value) = prefs.edit().putBoolean(KEY_PLAYER_SEAMLESS_QUALITY_SWITCH_ENABLED, value).apply()
 
     var playerRenderViewType: String
         get() {
@@ -539,6 +550,22 @@ class AppPrefs(context: Context) {
     var playerAutoSkipSegmentsEnabled: Boolean
         get() = prefs.getBoolean(KEY_PLAYER_AUTO_SKIP_SEGMENTS_ENABLED, false)
         set(value) = prefs.edit().putBoolean(KEY_PLAYER_AUTO_SKIP_SEGMENTS_ENABLED, value).apply()
+
+    var playerAutoSkipSegmentCategories: List<String>
+        get() {
+            if (!prefs.contains(KEY_PLAYER_AUTO_SKIP_SEGMENT_CATEGORIES)) {
+                return SponsorBlockCategories.AUTO_SKIP_KEYS
+            }
+            return SponsorBlockCategories.normalizeSelectedAutoSkipCategories(
+                loadStringList(KEY_PLAYER_AUTO_SKIP_SEGMENT_CATEGORIES),
+            )
+        }
+        set(value) {
+            saveStringList(
+                KEY_PLAYER_AUTO_SKIP_SEGMENT_CATEGORIES,
+                SponsorBlockCategories.normalizeSelectedAutoSkipCategories(value),
+            )
+        }
 
     var playerAutoSkipServerBaseUrl: String
         get() =
@@ -873,6 +900,12 @@ class AppPrefs(context: Context) {
         prefs.edit().remove(KEY_SEARCH_HISTORY).apply()
     }
 
+    fun removeSearchHistory(keyword: String) {
+        val target = keyword.trim()
+        if (target.isBlank()) return
+        searchHistory = searchHistory.filterNot { it.equals(target, ignoreCase = true) }
+    }
+
     fun exportConfigSnapshotJson(): JSONObject =
         SharedPreferencesSnapshot.encode(
             prefs = prefs,
@@ -1063,8 +1096,10 @@ class AppPrefs(context: Context) {
         private const val KEY_DANMAKU_SPEED = "danmaku_speed"
         private const val KEY_DANMAKU_AREA = "danmaku_area"
         private const val KEY_PLAYER_PREFERRED_QN = "player_preferred_qn"
+        private const val KEY_PLAYER_PREFERRED_QN_PGC = "player_preferred_qn_pgc"
         private const val KEY_PLAYER_PREFERRED_QN_PORTRAIT = "player_preferred_qn_portrait"
         private const val KEY_PLAYER_CODEC = "player_codec"
+        private const val KEY_PLAYER_SEAMLESS_QUALITY_SWITCH_ENABLED = "player_seamless_quality_switch_enabled"
         private const val KEY_PLAYER_RENDER_VIEW = "player_render_view"
         private const val KEY_PLAYER_ENGINE_KIND = "player_engine_kind"
         private const val KEY_PLAYER_STYLE = "player_style"
@@ -1084,6 +1119,7 @@ class AppPrefs(context: Context) {
         private const val KEY_PLAYER_HOLD_SCRUB_FIXED_STEP_SECONDS = "player_hold_scrub_fixed_step_seconds"
         private const val KEY_PLAYER_AUTO_RESUME_ENABLED = "player_auto_resume_enabled"
         private const val KEY_PLAYER_AUTO_SKIP_SEGMENTS_ENABLED = "player_auto_skip_segments_enabled"
+        private const val KEY_PLAYER_AUTO_SKIP_SEGMENT_CATEGORIES = "player_auto_skip_segment_categories"
         private const val KEY_PLAYER_AUTO_SKIP_SERVER_BASE_URL = "player_auto_skip_server_base_url"
         private const val KEY_SPONSOR_BLOCK_PRIVATE_USER_ID = "sponsor_block_private_user_id"
         private const val KEY_PLAYER_OPEN_DETAIL_BEFORE_PLAY = "player_open_detail_before_play"
@@ -1264,6 +1300,7 @@ class AppPrefs(context: Context) {
         const val PLAYER_OSD_BTN_LIST_PANEL = "list_panel"
         const val PLAYER_OSD_BTN_SPONSOR_SUBMIT = "sponsor_submit"
         const val PLAYER_OSD_BTN_ADVANCED = "advanced"
+        const val PLAYER_OSD_BTN_CLOSE_PLAYER = "close_player"
 
         val DEFAULT_PLAYER_OSD_BUTTONS: List<String> =
             listOf(
@@ -1277,6 +1314,7 @@ class AppPrefs(context: Context) {
                 PLAYER_OSD_BTN_UP,
                 PLAYER_OSD_BTN_LIST_PANEL,
                 PLAYER_OSD_BTN_ADVANCED,
+                PLAYER_OSD_BTN_CLOSE_PLAYER,
             )
 
         private val PLAYER_OSD_BUTTON_KEYS: Set<String> =
@@ -1295,6 +1333,7 @@ class AppPrefs(context: Context) {
                 PLAYER_OSD_BTN_LIST_PANEL,
                 PLAYER_OSD_BTN_SPONSOR_SUBMIT,
                 PLAYER_OSD_BTN_ADVANCED,
+                PLAYER_OSD_BTN_CLOSE_PLAYER,
             )
 
         const val PLAYER_DOWN_KEY_OSD_FOCUS_PREV = "prev"

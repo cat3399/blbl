@@ -237,8 +237,8 @@ object CustomPageTabRegistry {
             add(CustomPageTabConfig(sourceType = TYPE_CATEGORY_ALL))
             CategoryZones.defaultZones
                 .mapNotNull { zone ->
-                    zone.tid?.let { tid ->
-                        CustomPageTabConfig(sourceType = TYPE_CATEGORY_ZONE, sourceKey = tid.toString())
+                    zone.rid?.let { rid ->
+                        CustomPageTabConfig(sourceType = TYPE_CATEGORY_ZONE, sourceKey = rid.toString())
                     }
                 }.forEach(::add)
             add(CustomPageTabConfig(sourceType = TYPE_DYNAMIC_VIDEO))
@@ -302,21 +302,21 @@ object CustomPageTabRegistry {
                     managerLabel = "分类-${zone.title}",
                     tabTitle = zone.title,
                     groupKey = GROUP_CATEGORY,
-                    itemOrder = categoryOrderForTid(null),
+                    itemOrder = categoryOrderForRid(null),
                     createFragment = { VideoGridFragment.newPopular() },
                 )
             }
 
             TYPE_CATEGORY_ZONE -> {
-                val tid = config.sourceKey?.toIntOrNull()?.takeIf { it > 0 } ?: return null
-                val zone = CategoryZones.findByTid(tid) ?: return null
+                val rid = config.sourceKey?.toIntOrNull()?.takeIf { it > 0 } ?: return null
+                val zone = CategoryZones.findByRid(rid) ?: return null
                 Descriptor(
                     stableKey = stableKeyFor(config),
                     managerLabel = "分类-${zone.title}",
                     tabTitle = zone.title,
                     groupKey = GROUP_CATEGORY,
-                    itemOrder = categoryOrderForTid(tid),
-                    createFragment = { VideoGridFragment.newRegion(tid) },
+                    itemOrder = categoryOrderForRid(rid),
+                    createFragment = { VideoGridFragment.newRegion(rid) },
                 )
             }
 
@@ -464,8 +464,8 @@ object CustomPageTabRegistry {
         return if (index >= 0) 100 + index else Int.MAX_VALUE
     }
 
-    private fun categoryOrderForTid(tid: Int?): Int {
-        val index = CategoryZones.defaultZones.indexOfFirst { it.tid == tid }
+    private fun categoryOrderForRid(rid: Int?): Int {
+        val index = CategoryZones.defaultZones.indexOfFirst { it.rid == rid }
         return if (index >= 0) 100 + index else Int.MAX_VALUE
     }
 

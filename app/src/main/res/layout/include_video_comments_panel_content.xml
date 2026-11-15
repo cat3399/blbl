@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="utf-8"?>
+<merge xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <LinearLayout
+        android:id="@+id/row_comment_sort"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:clipChildren="false"
+        android:clipToPadding="false"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent">
+
+        <TextView
+            android:id="@+id/tv_comment_sort_label"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/player_comment_sort"
+            android:textColor="?android:attr/textColorSecondary"
+            android:textSize="@dimen/player_comment_sort_label_text_size" />
+
+        <TextView
+            android:id="@+id/chip_comment_sort_hot"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="@dimen/player_comment_sort_chip_margin_start"
+            android:background="@drawable/bg_player_sort_chip"
+            android:clickable="true"
+            android:focusable="true"
+            android:nextFocusUp="@id/chip_comment_sort_hot"
+            android:nextFocusRight="@id/chip_comment_sort_new"
+            android:paddingStart="@dimen/player_comment_sort_chip_padding_h"
+            android:paddingEnd="@dimen/player_comment_sort_chip_padding_h"
+            android:paddingTop="@dimen/player_comment_sort_chip_padding_v"
+            android:paddingBottom="@dimen/player_comment_sort_chip_padding_v"
+            android:stateListAnimator="@animator/blbl_focus_scale"
+            android:text="@string/player_comment_sort_hot"
+            android:textColor="?attr/colorOnSurface"
+            android:textSize="@dimen/player_comment_sort_chip_text_size" />
+
+        <TextView
+            android:id="@+id/chip_comment_sort_new"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="@dimen/player_comment_sort_chip_margin_start"
+            android:background="@drawable/bg_player_sort_chip"
+            android:clickable="true"
+            android:focusable="true"
+            android:nextFocusLeft="@id/chip_comment_sort_hot"
+            android:nextFocusUp="@id/chip_comment_sort_new"
+            android:nextFocusRight="@id/chip_comment_sort_new"
+            android:paddingStart="@dimen/player_comment_sort_chip_padding_h"
+            android:paddingEnd="@dimen/player_comment_sort_chip_padding_h"
+            android:paddingTop="@dimen/player_comment_sort_chip_padding_v"
+            android:paddingBottom="@dimen/player_comment_sort_chip_padding_v"
+            android:stateListAnimator="@animator/blbl_focus_scale"
+            android:text="@string/player_comment_sort_new"
+            android:textColor="?attr/colorOnSurface"
+            android:textSize="@dimen/player_comment_sort_chip_text_size" />
+    </LinearLayout>
+
+    <FrameLayout
+        android:id="@+id/comments_content"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:layout_marginTop="@dimen/player_comments_content_margin_top"
+        android:clipChildren="true"
+        android:clipToPadding="true"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/row_comment_sort">
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/recycler_comments"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:clipChildren="false"
+            android:clipToPadding="false"
+            android:paddingStart="@dimen/player_comments_recycler_padding_h"
+            android:paddingTop="@dimen/player_comments_recycler_padding_v"
+            android:paddingEnd="@dimen/player_comments_recycler_padding_h"
+            android:paddingBottom="@dimen/player_comments_recycler_padding_v" />
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/recycler_comment_thread"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:clipChildren="false"
+            android:clipToPadding="false"
+            android:paddingStart="@dimen/player_comments_recycler_padding_h"
+            android:paddingTop="@dimen/player_comments_recycler_padding_v"
+            android:paddingEnd="@dimen/player_comments_recycler_padding_h"
+            android:paddingBottom="@dimen/player_comments_recycler_padding_v"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/tv_comments_hint"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:padding="@dimen/player_comments_hint_padding"
+            android:text="@string/player_comment_loading"
+            android:textColor="?android:attr/textColorSecondary"
+            android:textSize="@dimen/player_comments_hint_text_size"
+            android:visibility="gone" />
+
+    </FrameLayout>
+</merge>

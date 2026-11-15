@@ -6,8 +6,9 @@ import kotlin.math.abs
  * AkDanmaku-style timer:
  * - Uses System.nanoTime() for smooth advancement.
  * - Prioritizes a monotonic local clock while playing for stable motion.
- * - Re-anchors only on explicit playback events (seek/resume/speed change).
- * - Keeps a coarse fallback sync for extreme unreported discontinuities.
+ * - Re-anchors only on explicit seek/discontinuity events.
+ * - Never moves backwards during ordinary playback state or speed changes.
+ * - Keeps a coarse forward-only fallback sync for unreported discontinuities.
  */
 internal class DanmakuTimer {
     @Volatile
@@ -68,16 +69,12 @@ internal class DanmakuTimer {
         lastSeekSerial = seekSerial
 
         if (!isPlaying) {
-            if (lastPlaying || abs(raw - smoothPositionMs) >= IDLE_REANCHOR_THRESHOLD_MS) {
-                smoothPositionMs = raw
-            }
             lastPlaying = false
             lastPlaybackSpeed = speed
             return smoothPositionMs.toLong()
         }
 
-        if (!lastPlaying || abs(speed - lastPlaybackSpeed) >= SPEED_CHANGE_EPSILON) {
-            smoothPositionMs = raw
+        if (!lastPlaying) {
             lastPlaying = true
             lastPlaybackSpeed = speed
             return smoothPositionMs.toLong()
@@ -85,7 +82,9 @@ internal class DanmakuTimer {
 
         if (dtNanos > 0L) {
             val dtMs = dtNanos.toDouble() / 1_000_000.0
-            smoothPositionMs += dtMs * speed
+            // The elapsed interval belongs to the speed active since the previous frame.
+            // Applying the newly reported speed here would create a one-frame time jump.
+            smoothPositionMs += dtMs * lastPlaybackSpeed
         }
 
         // Clamp for safety.
@@ -93,8 +92,8 @@ internal class DanmakuTimer {
             smoothPositionMs = raw
         }
         if (smoothPositionMs < 0.0) smoothPositionMs = 0.0
-        if (abs(raw - smoothPositionMs) >= EXTREME_DRIFT_REANCHOR_THRESHOLD_MS) {
-            // Treat this as an unreported discontinuity instead of gradually bending speed.
+        if (raw - smoothPositionMs >= EXTREME_FORWARD_DRIFT_REANCHOR_THRESHOLD_MS) {
+            // Catch an unreported forward discontinuity, but never pull danmaku backwards.
             smoothPositionMs = raw
         }
         lastPlaying = true
@@ -109,8 +108,6 @@ internal class DanmakuTimer {
             ?: 1.0
 
     private companion object {
-        private const val IDLE_REANCHOR_THRESHOLD_MS = 120.0
-        private const val EXTREME_DRIFT_REANCHOR_THRESHOLD_MS = 2_000.0
-        private const val SPEED_CHANGE_EPSILON = 0.0001
+        private const val EXTREME_FORWARD_DRIFT_REANCHOR_THRESHOLD_MS = 2_000.0
     }
 }

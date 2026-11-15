@@ -25,6 +25,7 @@ import blbl.cat3399.R
 import blbl.cat3399.BuildConfig
 import blbl.cat3399.core.io.CreateDocumentRequest
 import blbl.cat3399.core.io.DocumentExporter
+import blbl.cat3399.core.io.OpenFileContract
 import blbl.cat3399.core.log.AppLog
 import blbl.cat3399.core.log.LogExporter
 import blbl.cat3399.core.log.LogUploadClient
@@ -37,6 +38,7 @@ import blbl.cat3399.core.prefs.CustomPageConfig
 import blbl.cat3399.core.prefs.CustomPageTabConfig
 import blbl.cat3399.core.prefs.PlayerCustomShortcut
 import blbl.cat3399.core.prefs.PlayerCustomShortcutAction
+import blbl.cat3399.core.prefs.PlayerCustomShortcutTrigger
 import blbl.cat3399.core.prefs.PlayerPlaybackModes
 import blbl.cat3399.core.prefs.PlayerCustomShortcutsStore
 import blbl.cat3399.core.ui.AppToast
@@ -81,14 +83,13 @@ class SettingsInteractionHandler(
     private val state: SettingsState,
     private val gaiaVgateLauncher: ActivityResultLauncher<Intent>,
     private val exportDocumentLauncher: ActivityResultLauncher<CreateDocumentRequest>,
-    private val importConfigLauncher: ActivityResultLauncher<Array<String>>,
+    private val importConfigLauncher: ActivityResultLauncher<OpenFileContract.Action>,
 ) {
     lateinit var renderer: SettingsRenderer
 
     private data class PreparedLogsExport(
         val fileName: String,
         val nowMs: Long,
-        val extras: List<LogExporter.ZipExtra>,
     )
 
     private var testUpdateJob: Job? = null
@@ -127,9 +128,18 @@ class SettingsInteractionHandler(
         export(uri)
     }
 
-    fun onImportConfigSelected(uri: Uri?) {
-        if (uri == null) return
-        importConfigFromUri(uri)
+    fun onImportConfigSelected(result: OpenFileContract.Result) {
+        when (result) {
+            OpenFileContract.Result.Cancelled -> AppLog.i("Settings", "import config picker cancelled")
+            OpenFileContract.Result.MissingUri -> {
+                AppLog.w("Settings", "import config picker returned OK without a single file URI")
+                AppToast.showLong(activity, "文件选择器未返回配置文件，请重新选择")
+            }
+            is OpenFileContract.Result.Selected -> {
+                AppLog.i("Settings", "import config selected scheme=${result.uri.scheme} authority=${result.uri.authority}")
+                importConfigFromUri(result.uri)
+            }
+        }
     }
 
     private fun exportLogsToUri(
@@ -148,11 +158,11 @@ class SettingsInteractionHandler(
                         uri = uri,
                         nowMs = prepared.nowMs,
                         fileNameOverride = prepared.fileName,
-                        extras = prepared.extras,
+                        extras = ::buildLogExportExtras,
                     )
                 },
             ) { result ->
-                AppToast.showLong(activity, "已导出：${result.fileName}（${result.includedFiles}个文件）")
+                showFileResultPopup(title = "导出成功", fileName = result.fileName, includedFiles = result.includedFiles)
             }
     }
 
@@ -168,19 +178,18 @@ class SettingsInteractionHandler(
                         context = activity,
                         nowMs = prepared.nowMs,
                         fileNameOverride = prepared.fileName,
-                        extras = prepared.extras,
+                        extras = ::buildLogExportExtras,
                     )
                 },
             ) { result ->
-                val path = result.file.absolutePath
-                AppToast.showLong(activity, "无法打开保存文件，已导出到本地：${result.fileName}（${result.includedFiles}个文件）\n路径：$path")
+                showFileResultPopup(title = "已导出到本地", fileName = result.fileName, path = result.file.absolutePath, includedFiles = result.includedFiles)
             }
     }
 
     private fun showConfigTransferDialog() {
         AppPopup.custom(
             context = activity,
-            title = "导出/入配置",
+            title = "导入/导出配置",
             cancelable = true,
             actions =
                 listOf(
@@ -245,7 +254,7 @@ class SettingsInteractionHandler(
                     }
                 },
             ) { result ->
-                AppToast.showLong(activity, "已导出：${result.fileName}")
+                showFileResultPopup(title = "导出成功", fileName = result.fileName)
             }
     }
 
@@ -265,21 +274,31 @@ class SettingsInteractionHandler(
                     }
                 },
             ) { result ->
-                AppToast.showLong(activity, "无法打开保存文件，已导出到本地：${result.fileName}\n路径：${result.file.absolutePath}")
+                showFileResultPopup(title = "已导出到本地", fileName = result.fileName, path = result.file.absolutePath)
             }
     }
 
     private fun startImportConfig() {
         if (!ensureConfigTransferIdle()) return
-        try {
-            importConfigLauncher.launch(arrayOf(AppConfigBackup.JSON_MIME, "text/plain", "application/octet-stream"))
-        } catch (e: ActivityNotFoundException) {
-            AppLog.w("Settings", "OpenDocument not supported", e)
-            AppToast.showLong(activity, "当前设备不支持导入配置")
-        } catch (t: Throwable) {
-            AppLog.w("Settings", "open import config picker failed", t)
-            AppToast.showLong(activity, "打开导入文件失败")
+        for (action in OpenFileContract.Action.entries) {
+            try {
+                importConfigLauncher.launch(action)
+                AppLog.i("Settings", "import config picker launched action=${action.intentAction}")
+                return
+            } catch (e: ActivityNotFoundException) {
+                AppLog.w("Settings", "import config picker unavailable action=${action.intentAction}", e)
+            } catch (t: Throwable) {
+                AppLog.w("Settings", "open import config picker failed action=${action.intentAction}", t)
+                AppToast.showLong(activity, "打开导入文件失败")
+                return
+            }
         }
+        AppPopup.message(
+            context = activity,
+            title = "未找到文件选择器",
+            message = "请安装支持文件选择的文件管理器（如 Material Files），然后返回此处重新导入配置。",
+            positiveText = "关闭",
+        )
     }
 
     private fun importConfigFromUri(uri: Uri) {
@@ -290,11 +309,8 @@ class SettingsInteractionHandler(
                 failureLogMessage = "import config read failed",
                 failureToastPrefix = "读取配置失败",
                 work = {
-                    val text =
-                        activity.contentResolver.openInputStream(uri)?.use { input ->
-                            input.readBytes().toString(Charsets.UTF_8).removePrefix("\uFEFF")
-                        } ?: error("无法读取配置文件")
-                    AppConfigBackup.parse(text)
+                    activity.contentResolver.openInputStream(uri)?.use(AppConfigBackup::read)
+                        ?: error("无法读取配置文件")
                 },
             ) { parsed ->
                 showImportConfigConfirmDialog(parsed)
@@ -312,7 +328,7 @@ class SettingsInteractionHandler(
             context = activity,
             title = "导入配置",
             message = message,
-            positiveText = "开始导入",
+            positiveText = "导入",
             negativeText = "取消",
             cancelable = true,
             onPositive = {
@@ -401,7 +417,6 @@ class SettingsInteractionHandler(
                     val epochSeconds = (nowMs / 1000L).coerceAtLeast(0L)
                     val deviceId8 = deviceUuid.replace("-", "").take(8).ifBlank { "unknown00" }
                     val fileName = "${epochSeconds}-${deviceId8}.zip"
-                    val metaJson = buildUploadMetaJson(nowMs = nowMs, deviceUuid = deviceUuid)
 
                     popup?.updateProgress(null)
                     popup?.updateStatus("打包中…")
@@ -411,23 +426,16 @@ class SettingsInteractionHandler(
                                 context = activity,
                                 nowMs = nowMs,
                                 fileNameOverride = fileName,
-                                extras =
-                                    listOf(
-                                        LogExporter.ZipExtra(
-                                            path = "meta.json",
-                                            bytes = metaJson.toByteArray(Charsets.UTF_8),
-                                        ),
-                                    ),
-                            )
+                                extras = ::buildLogExportExtras,
+                            ).also { exportedFile = it.file }
                         }
-                    exportedFile = export.file
 
                     currentCoroutineContext().ensureActive()
                     popup?.updateProgress(0)
                     popup?.updateStatus("上传中… 0%")
                     var lastPct = -1
                     var lastUpdateAtMs = 0L
-                    withContext(Dispatchers.IO) {
+                    val receipt = withContext(Dispatchers.IO) {
                         LogUploadClient.uploadZip(
                             file = export.file,
                             fileName = export.fileName,
@@ -445,8 +453,11 @@ class SettingsInteractionHandler(
                         )
                     }
 
+                    AppLog.i("Settings", "upload logs success file=${export.fileName} key=${receipt.key} id=${receipt.id.orEmpty()} size=${receipt.sizeBytes}")
+
                     popup?.dismiss()
-                    showUploadLogsSuccessPopup(
+                    showFileResultPopup(
+                        title = "上传成功",
                         fileName = export.fileName,
                     )
                 } catch (_: CancellationException) {
@@ -464,23 +475,32 @@ class SettingsInteractionHandler(
             }
     }
 
-    private fun showUploadLogsSuccessPopup(
+    private fun showFileResultPopup(
+        title: String,
         fileName: String,
+        path: String? = null,
+        includedFiles: Int? = null,
     ) {
-        val body = "文件：$fileName"
+        val body = buildString {
+            append("文件：").append(fileName)
+            if (includedFiles != null) append("\n包含 ").append(includedFiles).append(" 个文件")
+            if (path != null) append("\n路径：").append(path)
+        }
+        val copyLabel = if (path == null) "文件名" else "路径"
 
         AppPopup.custom(
             context = activity,
-            title = "上传成功",
+            title = title,
             cancelable = true,
             actions =
                 listOf(
                     PopupAction(role = PopupActionRole.NEGATIVE, text = "关闭"),
-                    PopupAction(role = PopupActionRole.NEUTRAL, text = "复制文件名") {
-                        copyToClipboard(label = "日志文件名", text = fileName, toastText = "已复制文件名")
+                    PopupAction(role = PopupActionRole.NEUTRAL, text = "复制$copyLabel") {
+                        copyToClipboard(label = copyLabel, text = path ?: fileName, toastText = "已复制$copyLabel")
                     },
                 ),
             preferredActionRole = PopupActionRole.NEUTRAL,
+            onRestoreFocus = renderer::restorePendingFocus,
             content = { dialogContext ->
                 val tv =
                     android.view.LayoutInflater.from(dialogContext)
@@ -511,7 +531,7 @@ class SettingsInteractionHandler(
 
         val json =
             JSONObject()
-                .put("schema", 1)
+                .put("schema", LogExporter.METADATA_SCHEMA)
                 .put("device_uuid", deviceUuid)
                 .put("export_at_ms", nowMs)
                 .put("export_at", formatUploadTimestamp(nowMs))
@@ -594,12 +614,9 @@ class SettingsInteractionHandler(
     }
 
     private fun prepareLogsExport(nowMs: Long = System.currentTimeMillis()): PreparedLogsExport {
-        val deviceUuid = BiliClient.prefs.deviceUuid
-        val metaJson = buildUploadMetaJson(nowMs = nowMs, deviceUuid = deviceUuid)
         return PreparedLogsExport(
             fileName = LogExporter.suggestExportFileName(nowMs = nowMs),
             nowMs = nowMs,
-            extras = buildLogExportExtras(metaJson),
         )
     }
 
@@ -631,7 +648,8 @@ class SettingsInteractionHandler(
         return true
     }
 
-    private fun buildLogExportExtras(metaJson: String): List<LogExporter.ZipExtra> {
+    private fun buildLogExportExtras(): List<LogExporter.ZipExtra> {
+        val metaJson = buildUploadMetaJson(nowMs = System.currentTimeMillis(), deviceUuid = BiliClient.prefs.deviceUuid)
         return listOf(
             LogExporter.ZipExtra(
                 path = "meta.json",
@@ -675,7 +693,6 @@ class SettingsInteractionHandler(
                         else -> "small"
                     }
                 prefs.imageQuality = next
-                AppToast.show(activity, "图片质量：$next")
                 renderer.refreshSection(entry.id)
             }
 
@@ -696,12 +713,10 @@ class SettingsInteractionHandler(
                             ?: blbl.cat3399.core.prefs.AppPrefs.THEME_PRESET_DEFAULT
 
                     if (prefs.themePreset == key) {
-                        AppToast.show(activity, "主题：$selected")
                         return@showChoiceDialog
                     }
 
                     prefs.themePreset = key
-                    AppToast.show(activity, "主题：$selected（已应用）")
                     restartToMain()
                 }
             }
@@ -726,12 +741,10 @@ class SettingsInteractionHandler(
                         return@showChoiceDialog
                     }
                     if (prefs.apiSource == key) {
-                        AppToast.show(activity, "接口类别：$selected")
                         return@showChoiceDialog
                     }
                     prefs.apiSource = key
                     evictNetworkConnections()
-                    AppToast.show(activity, "接口类别：$selected")
                     renderer.refreshSection(entry.id)
                 }
             }
@@ -739,7 +752,6 @@ class SettingsInteractionHandler(
             SettingId.UserAgent -> showUserAgentDialog(state.currentSectionIndex, entry.id)
             SettingId.Ipv4OnlyEnabled -> {
                 prefs.ipv4OnlyEnabled = !prefs.ipv4OnlyEnabled
-                AppToast.show(activity, "是否只允许使用IPV4：${if (prefs.ipv4OnlyEnabled) "开" else "关"}")
                 evictNetworkConnections()
                 renderer.refreshSection(entry.id)
             }
@@ -763,33 +775,28 @@ class SettingsInteractionHandler(
 
             SettingId.AutoUpdateCheckEnabled -> {
                 prefs.autoUpdateCheckEnabled = !prefs.autoUpdateCheckEnabled
-                AppToast.show(activity, "自动检查更新：${if (prefs.autoUpdateCheckEnabled) "开" else "关"}")
                 renderer.refreshSection(entry.id)
             }
 
             SettingId.FullscreenEnabled -> {
                 prefs.fullscreenEnabled = !prefs.fullscreenEnabled
                 Immersive.apply(activity, prefs.fullscreenEnabled)
-                AppToast.show(activity, "全屏：${if (prefs.fullscreenEnabled) "开" else "关"}")
                 renderer.refreshSection(entry.id)
             }
 
             SettingId.AvoidDisplayCutout -> {
                 prefs.avoidDisplayCutout = !prefs.avoidDisplayCutout
                 activity.reapplyWindowDisplayPolicy()
-                AppToast.show(activity, "避开挖孔/圆角区域：${if (prefs.avoidDisplayCutout) "开" else "关"}")
                 renderer.refreshSection(entry.id)
             }
 
             SettingId.TabSwitchFollowsFocus -> {
                 prefs.tabSwitchFollowsFocus = !prefs.tabSwitchFollowsFocus
-                AppToast.show(activity, "tab跟随焦点切换：${if (prefs.tabSwitchFollowsFocus) "开" else "关"}")
                 renderer.refreshSection(entry.id)
             }
 
             SettingId.MainAutoHideSidebarOnEnterContent -> {
                 prefs.mainAutoHideSidebarOnEnterContent = !prefs.mainAutoHideSidebarOnEnterContent
-                AppToast.show(activity, "进入内容区后关闭侧边栏：${if (prefs.mainAutoHideSidebarOnEnterContent) "开" else "关"}")
                 renderer.refreshSection(entry.id)
             }
 
@@ -808,7 +815,6 @@ class SettingsInteractionHandler(
                     val key = options.firstOrNull { it.second == selected }?.first
                         ?: blbl.cat3399.core.prefs.AppPrefs.MAIN_BACK_FOCUS_SCHEME_A
                     prefs.mainBackFocusScheme = key
-                    AppToast.show(activity, "返回键焦点策略：$selected")
                     renderer.refreshSection(entry.id)
                 }
             }
@@ -829,7 +835,6 @@ class SettingsInteractionHandler(
                 ) { selected ->
                     val value = options.firstOrNull { it.second == selected }?.first ?: AppPrefs.VIDEO_CARD_LONG_PRESS_ACTION_MANUAL
                     prefs.videoCardLongPressAction = value
-                    AppToast.show(activity, "长按视频卡片：$selected")
                     renderer.refreshSection(entry.id)
                 }
             }
@@ -840,7 +845,7 @@ class SettingsInteractionHandler(
                         (spec.startupPageKey ?: AppPrefs.STARTUP_PAGE_HOME) to activity.getString(spec.titleRes)
                     }
                 showChoiceDialog(
-                    title = "启动默认页",
+                    title = "启动页面",
                     items = options.map { it.second },
                     current = SettingsText.startupPageText(activity, prefs.startupPage),
                 ) { selected ->
@@ -848,7 +853,7 @@ class SettingsInteractionHandler(
                         options.firstOrNull { it.second == selected }?.first
                             ?: blbl.cat3399.core.prefs.AppPrefs.STARTUP_PAGE_HOME
                     prefs.startupPage = key
-                    AppToast.show(activity, "启动默认页：$selected（下次启动生效）")
+                    AppToast.show(activity, "启动页面：$selected（下次启动生效）")
                     renderer.refreshSection(entry.id)
                 }
             }
@@ -856,7 +861,6 @@ class SettingsInteractionHandler(
             SettingId.CustomPageEnabled -> {
                 val config = prefs.customPageConfig
                 prefs.customPageConfig = config.copy(enabled = !config.enabled)
-                AppToast.show(activity, "自定义页：${if (prefs.customPageConfig.enabled) "开" else "关"}")
                 renderer.refreshSection(entry.id)
             }
 
@@ -875,7 +879,6 @@ class SettingsInteractionHandler(
                 ) { selected ->
                     val value = options.firstOrNull { it.second == selected }?.first ?: AppPrefs.FOLLOWING_LIST_ORDER_FOLLOW_TIME
                     prefs.followingListOrder = value
-                    AppToast.show(activity, "关注列表排序：$selected")
                     renderer.refreshSection(entry.id)
                 }
             }
@@ -930,7 +933,6 @@ class SettingsInteractionHandler(
                 ) { selected ->
                     val factor = factors.getOrNull(items.indexOf(selected)) ?: prefs.uiScaleFactor
                     prefs.uiScaleFactor = factor
-                    AppToast.show(activity, "界面大小：$selected")
                     // Accept "recreate to apply" to keep UI scale management centralized and reduce per-module sizing code.
                     activity.recreate()
                 }
@@ -944,7 +946,6 @@ class SettingsInteractionHandler(
                     current = SettingsText.gridSpanText(prefs.gridSpanCount),
                 ) { selected ->
                     prefs.gridSpanCount = (selected.toIntOrNull() ?: 4).coerceIn(1, 6)
-                    AppToast.show(activity, "每行卡片：${SettingsText.gridSpanText(prefs.gridSpanCount)}")
                     renderer.refreshSection(entry.id)
                 }
             }
@@ -957,7 +958,6 @@ class SettingsInteractionHandler(
                     current = SettingsText.gridSpanText(prefs.dynamicGridSpanCount),
                 ) { selected ->
                     prefs.dynamicGridSpanCount = (selected.toIntOrNull() ?: 3).coerceIn(1, 6)
-                    AppToast.show(activity, "动态每行：${SettingsText.gridSpanText(prefs.dynamicGridSpanCount)}")
                     renderer.refreshSection(entry.id)
                 }
             }
@@ -970,20 +970,17 @@ class SettingsInteractionHandler(
                     current = SettingsText.gridSpanText(prefs.pgcGridSpanCount),
                 ) { selected ->
                     prefs.pgcGridSpanCount = (selected.toIntOrNull() ?: 6).coerceIn(1, 6)
-                    AppToast.show(activity, "番剧每行：${SettingsText.gridSpanText(prefs.pgcGridSpanCount)}")
                     renderer.refreshSection(entry.id)
                 }
             }
 
             SettingId.DanmakuEnabled -> {
                 prefs.danmakuEnabled = !prefs.danmakuEnabled
-                AppToast.show(activity, "弹幕：${if (prefs.danmakuEnabled) "开" else "关"}")
                 renderer.refreshSection(entry.id)
             }
 
             SettingId.SubtitleEnabledDefault -> {
                 prefs.subtitleEnabledDefault = !prefs.subtitleEnabledDefault
-                AppToast.show(activity, "默认字幕：${if (prefs.subtitleEnabledDefault) "开" else "关"}")
                 renderer.refreshSection(entry.id)
             }
 
@@ -1018,27 +1015,29 @@ class SettingsInteractionHandler(
 
             SettingId.SubtitleBackgroundOpacity -> {
                 val ordered = PlaybackSettingChoices.subtitleBackgroundOpacities
-                val items = ordered.map { String.format(Locale.US, "%.2f", it) }
+                val items = ordered.map(SettingsText::opacityText)
                 val checked = ordered.indices.minByOrNull { kotlin.math.abs(ordered[it] - prefs.subtitleBackgroundOpacity) } ?: 0
-                showChoiceDialog(
-                    title = "字幕背景透明度",
+                AppPopup.singleChoice(
+                    context = activity,
+                    title = "字幕背景不透明度",
                     items = items,
                     checkedIndex = checked,
-                ) { selected ->
-                    val value = selected.toFloatOrNull() ?: ordered.getOrNull(checked) ?: prefs.subtitleBackgroundOpacity
-                    prefs.subtitleBackgroundOpacity = value.coerceIn(0f, 1.0f)
+                ) { index, _ ->
+                    prefs.subtitleBackgroundOpacity = ordered[index]
                     renderer.refreshSection(entry.id)
                 }
             }
 
             SettingId.DanmakuOpacity -> {
                 val options = PlaybackSettingChoices.danmakuOpacities
-                showChoiceDialog(
-                    title = "弹幕透明度",
-                    items = options.map { String.format(Locale.US, "%.2f", it) },
-                    current = String.format(Locale.US, "%.2f", prefs.danmakuOpacity),
-                ) { selected ->
-                    prefs.danmakuOpacity = selected.toFloatOrNull()?.coerceIn(0.05f, 1.0f) ?: prefs.danmakuOpacity
+                val checked = options.indices.minByOrNull { kotlin.math.abs(options[it] - prefs.danmakuOpacity) } ?: 0
+                AppPopup.singleChoice(
+                    context = activity,
+                    title = "弹幕不透明度",
+                    items = options.map(SettingsText::opacityText),
+                    checkedIndex = checked,
+                ) { index, _ ->
+                    prefs.danmakuOpacity = options[index]
                     renderer.refreshSection(entry.id)
                 }
             }
@@ -1192,6 +1191,20 @@ class SettingsInteractionHandler(
                 }
             }
 
+            SettingId.PlayerPreferredQnPgc -> {
+                val options =
+                    PlaybackSettingChoices.resolutionQns.map { it to SettingsText.qnText(it) }
+                showChoiceDialog(
+                    title = "番剧/影视默认画质",
+                    items = options.map { it.second },
+                    current = SettingsText.qnText(prefs.playerPreferredQnPgc),
+                ) { selected ->
+                    val qn = options.firstOrNull { it.second == selected }?.first
+                    if (qn != null) prefs.playerPreferredQnPgc = qn
+                    renderer.refreshSection(entry.id)
+                }
+            }
+
             SettingId.PlayerPreferredQnPortrait -> {
                 val options =
                     PlaybackSettingChoices.resolutionQns.map { it to SettingsText.qnText(it) }
@@ -1210,7 +1223,7 @@ class SettingsInteractionHandler(
                 val options = PlaybackSettingChoices.audioTrackIds
                 val optionLabels = options.map { SettingsText.audioText(it) }
                 showChoiceDialog(
-                    title = "默认音轨",
+                    title = "默认音质",
                     items = optionLabels,
                     current = SettingsText.audioText(prefs.playerPreferredAudioId),
                 ) { selected ->
@@ -1218,6 +1231,11 @@ class SettingsInteractionHandler(
                     if (id != null) prefs.playerPreferredAudioId = id
                     renderer.refreshSection(entry.id)
                 }
+            }
+
+            SettingId.PlayerSeamlessQualitySwitchEnabled -> {
+                prefs.playerSeamlessQualitySwitchEnabled = !prefs.playerSeamlessQualitySwitchEnabled
+                renderer.refreshSection(entry.id)
             }
 
             SettingId.PlayerCdnPreference -> {
@@ -1308,6 +1326,10 @@ class SettingsInteractionHandler(
             SettingId.PlayerAutoSkipSegmentsEnabled -> {
                 prefs.playerAutoSkipSegmentsEnabled = !prefs.playerAutoSkipSegmentsEnabled
                 renderer.refreshSection(entry.id)
+            }
+
+            SettingId.PlayerAutoSkipSegmentCategories -> {
+                showPlayerAutoSkipSegmentCategoriesDialog(state.currentSectionIndex, entry.id)
             }
 
             SettingId.PlayerAutoSkipServerBaseUrl -> {
@@ -1404,17 +1426,15 @@ class SettingsInteractionHandler(
                             "IjkPlayer" -> blbl.cat3399.core.prefs.AppPrefs.PLAYER_ENGINE_IJK
                             else -> blbl.cat3399.core.prefs.AppPrefs.PLAYER_ENGINE_EXO
                         }
+                    if (prefs.playerEngineKind == value &&
+                        (value != AppPrefs.PLAYER_ENGINE_IJK || IjkPlayerPlugin.status(activity) == IjkPlayerPlugin.InstallStatus.Installed)
+                    ) return@showChoiceDialog
                     if (value == blbl.cat3399.core.prefs.AppPrefs.PLAYER_ENGINE_IJK) {
                         IjkPlayerPluginUi.ensureInstalled(activity) {
                             prefs.playerEngineKind = value
                             AppToast.show(activity, "播放器内核：$selected（下次播放生效）")
                             renderer.refreshSection(entry.id)
                         }
-                        return@showChoiceDialog
-                    }
-
-                    if (prefs.playerEngineKind == value) {
-                        AppToast.show(activity, "播放器内核：$selected")
                         return@showChoiceDialog
                     }
 
@@ -1429,7 +1449,7 @@ class SettingsInteractionHandler(
                 val current = AudioBalanceLevel.fromPrefValue(prefs.playerAudioBalanceLevel)
                 val checked = options.indexOf(current).takeIf { it >= 0 } ?: 0
                 showChoiceDialog(
-                    title = "音频平衡",
+                    title = "音量均衡",
                     items = options.map { it.label },
                     checkedIndex = checked,
                 ) { selected ->
@@ -1445,7 +1465,6 @@ class SettingsInteractionHandler(
 
             SettingId.LiveHighBitrateEnabled -> {
                 prefs.liveHighBitrateEnabled = !prefs.liveHighBitrateEnabled
-                AppToast.show(activity, "提高直播码率：${if (prefs.liveHighBitrateEnabled) "开" else "关"}")
                 renderer.refreshSection(entry.id)
             }
 
@@ -1456,7 +1475,6 @@ class SettingsInteractionHandler(
 
             SettingId.DynamicFollowingRecentUpdateDotEnabled -> {
                 prefs.dynamicFollowingRecentUpdateDotEnabled = !prefs.dynamicFollowingRecentUpdateDotEnabled
-                AppToast.show(activity, "动态页小红点：${if (prefs.dynamicFollowingRecentUpdateDotEnabled) "开" else "关"}")
                 renderer.refreshSection(entry.id)
             }
 
@@ -1480,7 +1498,7 @@ class SettingsInteractionHandler(
                         blbl.cat3399.core.prefs.AppPrefs.PLAYER_DOWN_KEY_OSD_FOCUS_COIN to "投币",
                         blbl.cat3399.core.prefs.AppPrefs.PLAYER_DOWN_KEY_OSD_FOCUS_FAV to "收藏",
                         blbl.cat3399.core.prefs.AppPrefs.PLAYER_DOWN_KEY_OSD_FOCUS_LIST_PANEL to "列表面板",
-                        blbl.cat3399.core.prefs.AppPrefs.PLAYER_DOWN_KEY_OSD_FOCUS_SPONSOR_SUBMIT to "上传广告片段",
+                        blbl.cat3399.core.prefs.AppPrefs.PLAYER_DOWN_KEY_OSD_FOCUS_SPONSOR_SUBMIT to "提交空降片段",
                         blbl.cat3399.core.prefs.AppPrefs.PLAYER_DOWN_KEY_OSD_FOCUS_ADVANCED to "更多设置",
                     )
                 showChoiceDialog(
@@ -1513,7 +1531,6 @@ class SettingsInteractionHandler(
 
             SettingId.PlayerTouchGesturesEnabled -> {
                 prefs.playerTouchGesturesEnabled = !prefs.playerTouchGesturesEnabled
-                AppToast.show(activity, "触摸手势：${if (prefs.playerTouchGesturesEnabled) "开" else "关"}")
                 renderer.refreshSection(entry.id)
             }
 
@@ -1694,8 +1711,9 @@ class SettingsInteractionHandler(
                 blbl.cat3399.core.prefs.AppPrefs.PLAYER_OSD_BTN_COIN to "投币",
                 blbl.cat3399.core.prefs.AppPrefs.PLAYER_OSD_BTN_FAV to "收藏",
                 blbl.cat3399.core.prefs.AppPrefs.PLAYER_OSD_BTN_LIST_PANEL to "列表",
-                blbl.cat3399.core.prefs.AppPrefs.PLAYER_OSD_BTN_SPONSOR_SUBMIT to "上传广告片段",
+                blbl.cat3399.core.prefs.AppPrefs.PLAYER_OSD_BTN_SPONSOR_SUBMIT to "提交空降片段",
                 blbl.cat3399.core.prefs.AppPrefs.PLAYER_OSD_BTN_ADVANCED to "更多设置",
+                blbl.cat3399.core.prefs.AppPrefs.PLAYER_OSD_BTN_CLOSE_PLAYER to "关闭播放器",
             )
         val keys = options.map { it.first }
         val labels = options.map { it.second }.toTypedArray()
@@ -1704,7 +1722,7 @@ class SettingsInteractionHandler(
         val checked = BooleanArray(keys.size) { idx -> selected.contains(keys[idx]) }
         AppPopup.multiChoice(
             context = activity,
-            title = "OSD按钮显示",
+            title = "控制栏按钮",
             items = labels.toList(),
             checked = checked,
             onChanged = { finalChecked ->
@@ -1733,8 +1751,14 @@ class SettingsInteractionHandler(
 
         fun actionLabel(action: PlayerCustomShortcutAction): String = PlayerCustomShortcutCatalog.actionLabel(action)
 
+        fun triggerLabel(trigger: PlayerCustomShortcutTrigger): String =
+            when (trigger) {
+                PlayerCustomShortcutTrigger.SHORT_PRESS -> "短按"
+                PlayerCustomShortcutTrigger.LONG_PRESS -> "长按"
+            }
+
         fun bindingLabel(binding: PlayerCustomShortcut): String =
-            "${keyLabel(binding.keyCode)} → ${actionLabel(binding.action)}"
+            "${keyLabel(binding.keyCode)}（${triggerLabel(binding.trigger)}）→ ${actionLabel(binding.action)}"
 
         fun loadShortcuts(): List<PlayerCustomShortcut> = BiliClient.prefs.playerCustomShortcuts
 
@@ -1744,9 +1768,9 @@ class SettingsInteractionHandler(
             renderer.refreshSection(SettingId.PlayerCustomShortcuts)
         }
 
-        fun removeBinding(keyCode: Int) {
+        fun removeBinding(keyCode: Int, trigger: PlayerCustomShortcutTrigger) {
             val prefs = BiliClient.prefs
-            prefs.playerCustomShortcuts = PlayerCustomShortcutsStore.remove(prefs.playerCustomShortcuts, keyCode)
+            prefs.playerCustomShortcuts = PlayerCustomShortcutsStore.remove(prefs.playerCustomShortcuts, keyCode, trigger)
             renderer.refreshSection(SettingId.PlayerCustomShortcuts)
         }
 
@@ -1803,14 +1827,17 @@ class SettingsInteractionHandler(
         }
 
         class Controller {
-            fun showManager(focusKeyCode: Int? = null) {
+            fun showManager(
+                focusKeyCode: Int? = null,
+                focusTrigger: PlayerCustomShortcutTrigger? = null,
+            ) {
                 var replacing = false
                 val items = loadShortcuts()
                 var recyclerForLayout: RecyclerView? = null
                 val focusIndex =
                     if (items.isNotEmpty()) {
                         focusKeyCode?.let { key ->
-                            items.indexOfFirst { it.keyCode == key }.takeIf { it >= 0 }
+                            items.indexOfFirst { it.keyCode == key && (focusTrigger == null || it.trigger == focusTrigger) }.takeIf { it >= 0 }
                         } ?: 0
                     } else {
                         0
@@ -1832,7 +1859,7 @@ class SettingsInteractionHandler(
                                     return@PopupAction
                                 }
                                 replacing = true
-                                showClearConfirm(focusKeyCode = focusKeyCode)
+                                showClearConfirm(focusKeyCode = focusKeyCode, focusTrigger = focusTrigger)
                             },
                             PopupAction(
                                 role = PopupActionRole.NEUTRAL,
@@ -1844,7 +1871,7 @@ class SettingsInteractionHandler(
                                     return@PopupAction
                                 }
                                 replacing = true
-                                showDeletePicker(focusKeyCode = focusKeyCode)
+                                showDeletePicker(focusKeyCode = focusKeyCode, focusTrigger = focusTrigger)
                             },
                             PopupAction(
                                 role = PopupActionRole.NEGATIVE,
@@ -1852,11 +1879,11 @@ class SettingsInteractionHandler(
                             ),
                             PopupAction(
                                 role = PopupActionRole.POSITIVE,
-                                text = "新增",
+                                text = "新建",
                                 dismissOnClick = false,
                             ) {
                                 replacing = true
-                                showKeyCapture()
+                                showTriggerPicker()
                             },
                         ),
                     preferredActionRole = PopupActionRole.POSITIVE,
@@ -1885,7 +1912,7 @@ class SettingsInteractionHandler(
                     recycler.adapter =
                         ShortcutListAdapter(items) { picked ->
                             replacing = true
-                            showActionPicker(keyCode = picked.keyCode, currentAction = picked.action)
+                            showActionPicker(keyCode = picked.keyCode, trigger = picked.trigger, currentAction = picked.action)
                         }
 
                     if (items.isNotEmpty()) {
@@ -1900,7 +1927,25 @@ class SettingsInteractionHandler(
                 }
             }
 
-            private fun showKeyCapture() {
+            private fun showTriggerPicker() {
+                var forward = false
+                val triggers = listOf(PlayerCustomShortcutTrigger.SHORT_PRESS, PlayerCustomShortcutTrigger.LONG_PRESS)
+                AppPopup.singleChoice(
+                    context = activity,
+                    title = "选择触发方式",
+                    items = triggers.map(::triggerLabel),
+                    checkedIndex = 0,
+                    onDismiss = {
+                        if (!forward) showManager()
+                    },
+                ) { which, _ ->
+                    val trigger = triggers.getOrNull(which) ?: return@singleChoice
+                    forward = true
+                    showKeyCapture(trigger)
+                }
+            }
+
+            private fun showKeyCapture(trigger: PlayerCustomShortcutTrigger) {
                 var forward = false
                 var captureView: TextView? = null
                 AppPopup.custom(
@@ -1914,7 +1959,7 @@ class SettingsInteractionHandler(
                         captureView?.post { captureView?.requestFocus() }
                     },
                     onDismiss = {
-                        if (!forward) showManager()
+                        if (!forward) showTriggerPicker()
                     },
                 ) { dialogContext ->
                     val tv =
@@ -1945,16 +1990,20 @@ class SettingsInteractionHandler(
                             return@setOnKeyListener true
                         }
 
-                        val existing = loadShortcuts().firstOrNull { it.keyCode == keyCode }?.action
+                        val existing = loadShortcuts().firstOrNull { it.keyCode == keyCode && it.trigger == trigger }?.action
                         forward = true
-                        showActionPicker(keyCode = keyCode, currentAction = existing)
+                        showActionPicker(keyCode = keyCode, trigger = trigger, currentAction = existing)
                         true
                     }
                     tv
                 }
             }
 
-            private fun showActionPicker(keyCode: Int, currentAction: PlayerCustomShortcutAction?) {
+            private fun showActionPicker(
+                keyCode: Int,
+                trigger: PlayerCustomShortcutTrigger,
+                currentAction: PlayerCustomShortcutAction?,
+            ) {
                 var forward = false
                 val options = PlayerCustomShortcutCatalog.actionOptions()
 
@@ -1964,34 +2013,39 @@ class SettingsInteractionHandler(
 
                 AppPopup.singleChoice(
                     context = activity,
-                    title = "选择动作（${keyLabel(keyCode)}）",
+                    title = "选择动作（${keyLabel(keyCode)} · ${triggerLabel(trigger)}）",
                     items = options.map { it.label },
                     checkedIndex = checked,
                     onDismiss = {
-                        if (!forward) showManager(focusKeyCode = keyCode)
+                        if (!forward) showManager(focusKeyCode = keyCode, focusTrigger = trigger)
                     },
                 ) { which, _ ->
                     val picked = options.getOrNull(which) ?: return@singleChoice
                     if (picked.requiresValue) {
                         forward = true
-                        showValuePicker(keyCode = keyCode, actionType = picked.type, currentAction = currentAction)
+                        showValuePicker(keyCode = keyCode, trigger = trigger, actionType = picked.type, currentAction = currentAction)
                         return@singleChoice
                     }
 
                     val action = PlayerCustomShortcutCatalog.createAction(picked.type) ?: return@singleChoice
 
                     forward = true
-                    upsert(PlayerCustomShortcut(keyCode = keyCode, action = action))
-                    showManager(focusKeyCode = keyCode)
+                    upsert(PlayerCustomShortcut(keyCode = keyCode, trigger = trigger, action = action))
+                    showManager(focusKeyCode = keyCode, focusTrigger = trigger)
                 }
             }
 
-            private fun showValuePicker(keyCode: Int, actionType: String, currentAction: PlayerCustomShortcutAction?) {
+            private fun showValuePicker(
+                keyCode: Int,
+                trigger: PlayerCustomShortcutTrigger,
+                actionType: String,
+                currentAction: PlayerCustomShortcutAction?,
+            ) {
                 var forward = false
-                val title = "${keyLabel(keyCode)} → ${PlayerCustomShortcutCatalog.actionTitle(actionType)}"
+                val title = "${keyLabel(keyCode)}（${triggerLabel(trigger)}）→ ${PlayerCustomShortcutCatalog.actionTitle(actionType)}"
 
                 fun cancelBackToActionPicker() {
-                    if (!forward) showActionPicker(keyCode = keyCode, currentAction = currentAction)
+                    if (!forward) showActionPicker(keyCode = keyCode, trigger = trigger, currentAction = currentAction)
                 }
 
                 val config =
@@ -2000,7 +2054,7 @@ class SettingsInteractionHandler(
                         currentAction = currentAction,
                     ) ?: run {
                         AppToast.show(activity, "未知动作：$actionType")
-                        showActionPicker(keyCode = keyCode, currentAction = currentAction)
+                        showActionPicker(keyCode = keyCode, trigger = trigger, currentAction = currentAction)
                         return
                     }
 
@@ -2013,33 +2067,42 @@ class SettingsInteractionHandler(
                 ) { which, _ ->
                     val action = config.choices.getOrNull(which)?.action ?: return@singleChoice
                     forward = true
-                    upsert(PlayerCustomShortcut(keyCode = keyCode, action = action))
-                    showManager(focusKeyCode = keyCode)
+                    upsert(PlayerCustomShortcut(keyCode = keyCode, trigger = trigger, action = action))
+                    showManager(focusKeyCode = keyCode, focusTrigger = trigger)
                 }
             }
 
-            private fun showDeletePicker(focusKeyCode: Int?) {
+            private fun showDeletePicker(
+                focusKeyCode: Int?,
+                focusTrigger: PlayerCustomShortcutTrigger?,
+            ) {
                 var forward = false
                 val items = loadShortcuts()
                 val labels = items.map { bindingLabel(it) }
-                val checked = focusKeyCode?.let { k -> items.indexOfFirst { it.keyCode == k }.takeIf { it >= 0 } } ?: 0
+                val checked =
+                    focusKeyCode?.let { k ->
+                        items.indexOfFirst { it.keyCode == k && (focusTrigger == null || it.trigger == focusTrigger) }.takeIf { it >= 0 }
+                    } ?: 0
                 AppPopup.singleChoice(
                     context = activity,
                     title = "删除快捷键",
                     items = labels.ifEmpty { listOf("暂无快捷键") },
                     checkedIndex = checked,
                     onDismiss = {
-                        if (!forward) showManager(focusKeyCode = focusKeyCode)
+                        if (!forward) showManager(focusKeyCode = focusKeyCode, focusTrigger = focusTrigger)
                     },
                 ) { which, _ ->
                     val picked = items.getOrNull(which) ?: return@singleChoice
                     forward = true
-                    removeBinding(picked.keyCode)
+                    removeBinding(picked.keyCode, picked.trigger)
                     showManager()
                 }
             }
 
-            private fun showClearConfirm(focusKeyCode: Int?) {
+            private fun showClearConfirm(
+                focusKeyCode: Int?,
+                focusTrigger: PlayerCustomShortcutTrigger?,
+            ) {
                 var forward = false
                 AppPopup.confirm(
                     context = activity,
@@ -2055,10 +2118,10 @@ class SettingsInteractionHandler(
                     },
                     onNegative = {
                         forward = true
-                        showManager(focusKeyCode = focusKeyCode)
+                        showManager(focusKeyCode = focusKeyCode, focusTrigger = focusTrigger)
                     },
                     onDismiss = {
-                        if (!forward) showManager(focusKeyCode = focusKeyCode)
+                        if (!forward) showManager(focusKeyCode = focusKeyCode, focusTrigger = focusTrigger)
                     },
                 )
             }
@@ -2170,7 +2233,7 @@ class SettingsInteractionHandler(
                             PopupAction(role = PopupActionRole.NEGATIVE, text = "关闭"),
                             PopupAction(
                                 role = PopupActionRole.POSITIVE,
-                                text = "新增",
+                                text = "添加",
                                 dismissOnClick = false,
                             ) {
                                 replacing = true
@@ -2196,7 +2259,7 @@ class SettingsInteractionHandler(
                     if (tabs.isEmpty()) {
                         return@custom (LayoutInflater.from(dialogContext)
                             .inflate(blbl.cat3399.R.layout.view_popup_message, null, false) as TextView).apply {
-                            text = "暂无内容，按“新增”添加来源。"
+                            text = "暂无内容，按“添加”选择内容来源。"
                         }
                     }
 
@@ -2437,7 +2500,7 @@ class SettingsInteractionHandler(
             minLines = 3,
             positiveText = "保存",
             negativeText = "取消",
-            neutralText = "重置默认",
+            neutralText = "恢复默认",
             validate = { text ->
                 val ua = text.trim()
                 if (ua.isBlank()) {
@@ -2455,7 +2518,7 @@ class SettingsInteractionHandler(
             },
             onNeutral = {
                 prefs.userAgent = blbl.cat3399.core.prefs.AppPrefs.DEFAULT_UA
-                AppToast.show(activity, "已重置 User-Agent")
+                AppToast.show(activity, "User-Agent 已恢复默认")
                 renderer.showSection(sectionIndex, focusId = focusId)
             },
         )
@@ -2472,7 +2535,7 @@ class SettingsInteractionHandler(
             minLines = 1,
             positiveText = "保存",
             negativeText = "取消",
-            neutralText = "重置默认",
+            neutralText = "恢复默认",
             validate = { text ->
                 val normalized = AppPrefs.normalizePlayerAutoSkipServerBaseUrl(text)
                 if (normalized == null) {
@@ -2492,7 +2555,32 @@ class SettingsInteractionHandler(
             onNeutral = {
                 prefs.playerAutoSkipServerBaseUrl = AppPrefs.DEFAULT_PLAYER_AUTO_SKIP_SERVER_BASE_URL
                 evictNetworkConnections()
-                AppToast.show(activity, "已重置空降助手服务器地址")
+                AppToast.show(activity, "服务器地址已恢复默认")
+                renderer.showSection(sectionIndex, focusId = focusId)
+            },
+        )
+    }
+
+    private fun showPlayerAutoSkipSegmentCategoriesDialog(sectionIndex: Int, focusId: SettingId) {
+        val prefs = BiliClient.prefs
+        val options = SettingsText.playerAutoSkipSegmentCategoryOptions
+        val keys = options.map { it.first }
+        val selected = prefs.playerAutoSkipSegmentCategories.toSet()
+        val checked = BooleanArray(keys.size) { index -> keys[index] in selected }
+
+        AppPopup.multiChoice(
+            context = activity,
+            title = "自动跳过片段类型",
+            items = options.map { it.second },
+            checked = checked,
+            minCheckedCount = 1,
+            onChanged = { finalChecked ->
+                prefs.playerAutoSkipSegmentCategories =
+                    keys.filterIndexed { index, _ ->
+                        index in finalChecked.indices && finalChecked[index]
+                    }
+            },
+            onDismiss = {
                 renderer.showSection(sectionIndex, focusId = focusId)
             },
         )
@@ -2562,10 +2650,10 @@ class SettingsInteractionHandler(
     private fun showClearLoginDialog(sectionIndex: Int, focusId: SettingId) {
         AppPopup.confirm(
             context = activity,
-            title = "清除登录",
-            message = "将清除所有已保存帐号和当前登录状态，需要重新登录。确定继续吗？",
-            positiveText = "确定清除",
-            negativeText = "取消",
+            title = activity.getString(R.string.clear_login_title),
+            message = activity.getString(R.string.clear_login_message),
+            positiveText = activity.getString(R.string.action_clear_all),
+            negativeText = activity.getString(R.string.action_cancel),
             cancelable = true,
             onPositive = {
                 BiliClient.accounts.clearAllAccountsAndCurrentSession(
@@ -2749,10 +2837,10 @@ class SettingsInteractionHandler(
             actions =
                 listOf(
                     PopupAction(role = PopupActionRole.NEGATIVE, text = "关闭"),
-                    PopupAction(role = PopupActionRole.NEUTRAL, text = "复制") {
+                    PopupAction(role = PopupActionRole.NEUTRAL, text = "复制链接") {
                         copyToClipboard(label = "项目地址", text = SettingsConstants.PROJECT_URL, toastText = "已复制项目地址")
                     },
-                    PopupAction(role = PopupActionRole.POSITIVE, text = "打开") { openUrl(SettingsConstants.PROJECT_URL) },
+                    PopupAction(role = PopupActionRole.POSITIVE, text = "打开链接") { openUrl(SettingsConstants.PROJECT_URL) },
                 ),
             preferredActionRole = PopupActionRole.POSITIVE,
             content = { dialogContext ->

@@ -6,8 +6,22 @@ import org.json.JSONObject
 
 internal data class PlayerCustomShortcut(
     val keyCode: Int,
+    val trigger: PlayerCustomShortcutTrigger = PlayerCustomShortcutTrigger.SHORT_PRESS,
     val action: PlayerCustomShortcutAction,
 )
+
+internal enum class PlayerCustomShortcutTrigger(
+    val value: String,
+) {
+    SHORT_PRESS("short"),
+    LONG_PRESS("long"),
+    ;
+
+    companion object {
+        fun fromValueOrNull(raw: String?): PlayerCustomShortcutTrigger? =
+            entries.firstOrNull { it.value == raw?.trim()?.lowercase() }
+    }
+}
 
 internal enum class PlayerCustomShortcutOpenVideoListTarget(
     val value: String,
@@ -143,11 +157,13 @@ internal sealed class PlayerCustomShortcutAction(
 }
 
 internal object PlayerCustomShortcutsStore {
-    private const val JSON_VERSION = 1
+    private const val JSON_VERSION = 2
+    private const val JSON_VERSION_LEGACY_SHORT_PRESS = 1
     private const val KEY_VERSION = "v"
     private const val KEY_ITEMS = "items"
 
     private const val KEY_KEYCODE = "k"
+    private const val KEY_TRIGGER = "t"
     private const val KEY_ACTION = "a"
     private const val KEY_PARAMS = "p"
 
@@ -165,9 +181,11 @@ internal object PlayerCustomShortcutsStore {
         val text = raw?.trim().orEmpty()
         if (text.isBlank()) return emptyList()
 
+        val root = runCatching { JSONObject(text) }.getOrNull()
+        val version = root?.optInt(KEY_VERSION, JSON_VERSION_LEGACY_SHORT_PRESS)
         val arr =
-            runCatching { JSONObject(text) }.getOrNull()
-                ?.takeIf { it.optInt(KEY_VERSION, JSON_VERSION) == JSON_VERSION }
+            root
+                ?.takeIf { version == JSON_VERSION || version == JSON_VERSION_LEGACY_SHORT_PRESS }
                 ?.optJSONArray(KEY_ITEMS)
                 ?: runCatching { JSONArray(text) }.getOrNull()
                 ?: return emptyList()
@@ -178,12 +196,18 @@ internal object PlayerCustomShortcutsStore {
             val keyCode = obj.optInt(KEY_KEYCODE, 0)
             if (keyCode <= 0) continue
             if (isForbiddenKeyCode(keyCode)) continue
+            val trigger =
+                if (version == JSON_VERSION) {
+                    PlayerCustomShortcutTrigger.fromValueOrNull(obj.optString(KEY_TRIGGER)) ?: continue
+                } else {
+                    PlayerCustomShortcutTrigger.SHORT_PRESS
+                }
 
             val actionType = obj.optString(KEY_ACTION, "").trim()
             if (actionType.isBlank()) continue
             val params = obj.optJSONObject(KEY_PARAMS)
             val action = parseAction(type = actionType, params = params) ?: continue
-            out.add(PlayerCustomShortcut(keyCode = keyCode, action = action))
+            out.add(PlayerCustomShortcut(keyCode = keyCode, trigger = trigger, action = action))
         }
 
         return normalize(out)
@@ -195,6 +219,7 @@ internal object PlayerCustomShortcutsStore {
         for (item in normalized) {
             val obj = JSONObject()
             obj.put(KEY_KEYCODE, item.keyCode)
+            obj.put(KEY_TRIGGER, item.trigger.value)
             obj.put(KEY_ACTION, item.action.type)
             val params = buildActionParams(item.action)
             if (params != null) obj.put(KEY_PARAMS, params)
@@ -209,7 +234,7 @@ internal object PlayerCustomShortcutsStore {
     fun upsert(existing: List<PlayerCustomShortcut>, binding: PlayerCustomShortcut): List<PlayerCustomShortcut> {
         if (binding.keyCode <= 0 || isForbiddenKeyCode(binding.keyCode)) return normalize(existing)
         val out = existing.toMutableList()
-        val idx = out.indexOfFirst { it.keyCode == binding.keyCode }
+        val idx = out.indexOfFirst { it.keyCode == binding.keyCode && it.trigger == binding.trigger }
         if (idx >= 0) {
             out[idx] = binding
         } else {
@@ -218,24 +243,28 @@ internal object PlayerCustomShortcutsStore {
         return normalize(out)
     }
 
-    fun remove(existing: List<PlayerCustomShortcut>, keyCode: Int): List<PlayerCustomShortcut> {
+    fun remove(
+        existing: List<PlayerCustomShortcut>,
+        keyCode: Int,
+        trigger: PlayerCustomShortcutTrigger,
+    ): List<PlayerCustomShortcut> {
         if (keyCode <= 0) return normalize(existing)
-        return normalize(existing.filterNot { it.keyCode == keyCode })
+        return normalize(existing.filterNot { it.keyCode == keyCode && it.trigger == trigger })
     }
 
     fun clear(): List<PlayerCustomShortcut> = emptyList()
 
     private fun normalize(items: List<PlayerCustomShortcut>): List<PlayerCustomShortcut> {
         if (items.isEmpty()) return emptyList()
-        val seen = HashSet<Int>(items.size * 2)
+        val seen = HashSet<Pair<Int, PlayerCustomShortcutTrigger>>(items.size * 2)
         val outReversed = ArrayList<PlayerCustomShortcut>(items.size)
         for (i in items.lastIndex downTo 0) {
             val it = items[i]
             if (it.keyCode <= 0) continue
             if (isForbiddenKeyCode(it.keyCode)) continue
-            if (!seen.add(it.keyCode)) continue
+            if (!seen.add(it.keyCode to it.trigger)) continue
             val action = parseAction(type = it.action.type, params = buildActionParams(it.action)) ?: continue
-            outReversed.add(PlayerCustomShortcut(keyCode = it.keyCode, action = action))
+            outReversed.add(PlayerCustomShortcut(keyCode = it.keyCode, trigger = it.trigger, action = action))
         }
         outReversed.reverse()
         return outReversed

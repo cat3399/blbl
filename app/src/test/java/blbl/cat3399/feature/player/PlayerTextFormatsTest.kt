@@ -5,6 +5,16 @@ import org.junit.Test
 
 class PlayerTextFormatsTest {
     @Test
+    fun opacityLabels_render_percentages_and_keep_subtitle_default() {
+        assertEquals("85%", opacityText(0.85f))
+        val subtitleDefault = 34f / 255f
+        assertEquals("13%", subtitleBackgroundOpacityText(subtitleDefault))
+        assertEquals("0%", opacityText(0f))
+        assertEquals("100%", opacityText(1f))
+        assertEquals("13%", subtitleBackgroundOpacityText(Float.NaN))
+    }
+
+    @Test
     fun formatTransferBytes_should_use_kb_for_small_values() {
         assertEquals("1.5KB", formatTransferBytes(1536))
     }

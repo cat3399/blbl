@@ -342,7 +342,7 @@ class DynamicFragment : Fragment(), RefreshKeyHandler, BackPressHandler {
                 if (t is CancellationException) throw t
                 AppLog.e("Dynamic", "load failed", t)
                 _binding?.swipeRefresh?.isRefreshing = false
-                context?.let { AppToast.show(it, "加载失败，可查看 Logcat(标签 BLBL)") }
+                context?.let { AppToast.show(it, getString(R.string.error_load_retry)) }
             } finally {
                 if (!resetFeed) _binding?.swipeRefresh?.isRefreshing = false
             }
@@ -403,7 +403,7 @@ class DynamicFragment : Fragment(), RefreshKeyHandler, BackPressHandler {
         } catch (t: Throwable) {
             if (t is CancellationException) throw t
             AppLog.e("Dynamic", "load followings failed page=$followPage", t)
-            context?.let { AppToast.show(it, "关注列表加载失败，可查看 Logcat(标签 BLBL)") }
+            context?.let { AppToast.show(it, getString(R.string.error_following_load_retry)) }
         } finally {
             if (token == followRequestToken) {
                 followIsLoadingMore = false
@@ -524,7 +524,7 @@ class DynamicFragment : Fragment(), RefreshKeyHandler, BackPressHandler {
             } catch (t: Throwable) {
                 if (t is CancellationException) throw t
                 AppLog.e("Dynamic", "load feed failed mid=$selectedMid", t)
-                context?.let { AppToast.show(it, "加载失败，可查看 Logcat(标签 BLBL)") }
+                context?.let { AppToast.show(it, getString(R.string.error_load_retry)) }
             } finally {
                 if (token == requestToken) _binding?.swipeRefresh?.isRefreshing = false
                 isLoadingMore = false

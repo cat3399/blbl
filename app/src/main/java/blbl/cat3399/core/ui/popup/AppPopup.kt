@@ -17,6 +17,7 @@ import androidx.activity.ComponentActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import blbl.cat3399.R
+import blbl.cat3399.core.ui.AppToast
 import blbl.cat3399.core.ui.userScaledContext
 import com.google.android.material.progressindicator.LinearProgressIndicator
 import kotlin.math.max
@@ -393,8 +394,11 @@ object AppPopup {
         actions: List<PopupAction>,
         preferredActionRole: PopupActionRole? = PopupActionRole.POSITIVE,
         autoFocus: Boolean = true,
+        modalSizing: PopupModalSizing = PopupModalSizing(),
         onModalAttached: ((modalRoot: View) -> Unit)? = null,
         onDismiss: (() -> Unit)? = null,
+        onRestoreFocus: (() -> Boolean)? = null,
+        onBackPressed: (() -> Boolean)? = null,
         content: (dialogContext: Context) -> View,
     ): PopupHandle? {
         return runOnMainOrPost {
@@ -408,8 +412,11 @@ object AppPopup {
                 actions = actions,
                 preferredActionRole = preferredActionRole,
                 autoFocus = autoFocus,
+                modalSizing = modalSizing,
                 onModalAttached = onModalAttached,
                 onDismiss = onDismiss,
+                onRestoreFocus = onRestoreFocus,
+                onBackPressed = onBackPressed,
             )
         }
     }
@@ -616,7 +623,10 @@ object AppPopup {
                 itemCount = items.size,
                 onToggle = {
                     if (position !in checked.indices) return@bind
-                    if (checked[position] && checked.count { it } <= minCheckedCount) return@bind
+                    if (checked[position] && checked.count { it } <= minCheckedCount) {
+                        AppToast.show(holder.itemView.context, holder.itemView.context.getString(R.string.minimum_selection_fmt, minCheckedCount))
+                        return@bind
+                    }
                     checked[position] = !checked[position]
                     notifyItemChanged(position)
                     onChanged?.invoke()

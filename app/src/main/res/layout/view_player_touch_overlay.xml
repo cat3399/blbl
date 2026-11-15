@@ -24,7 +24,7 @@
         android:focusable="false"
         android:padding="@dimen/player_touch_lock_button_padding"
         android:scaleType="fitCenter"
-        android:visibility="gone"
         app:srcCompat="@drawable/ic_player_unlock"
+        android:visibility="gone"
         app:tint="@color/player_button_tint" />
 </FrameLayout>

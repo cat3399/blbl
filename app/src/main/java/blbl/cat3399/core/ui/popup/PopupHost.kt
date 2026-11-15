@@ -25,6 +25,12 @@ import blbl.cat3399.core.ui.userScaledContext
 import java.lang.ref.WeakReference
 import kotlin.math.max
 
+data class PopupModalSizing(
+    val widthRatio: Float = 0.90f,
+    val maxWidthDp: Float = 600f,
+    val maxHeightRatio: Float = 0.90f,
+)
+
 internal class PopupHost private constructor(
     private val activity: ComponentActivity,
     private val contentRoot: FrameLayout,
@@ -67,8 +73,10 @@ internal class PopupHost private constructor(
         val focusReturn: FocusReturn,
         val backCallback: OnBackPressedCallback,
         val focusListener: ViewTreeObserver.OnGlobalFocusChangeListener,
+        val modalSizing: PopupModalSizing,
         val onDismiss: (() -> Unit)?,
         val onRestoreFocus: (() -> Boolean)?,
+        val onBackPressed: (() -> Boolean)?,
         var dismissing: Boolean = false,
     )
 
@@ -183,9 +191,11 @@ internal class PopupHost private constructor(
         actions: List<PopupAction>,
         preferredActionRole: PopupActionRole? = PopupActionRole.POSITIVE,
         autoFocus: Boolean = true,
+        modalSizing: PopupModalSizing = PopupModalSizing(),
         onModalAttached: ((modalRoot: View) -> Unit)? = null,
         onDismiss: (() -> Unit)? = null,
         onRestoreFocus: (() -> Boolean)? = null,
+        onBackPressed: (() -> Boolean)? = null,
     ): PopupHandle {
         checkMainThread()
 
@@ -257,7 +267,9 @@ internal class PopupHost private constructor(
         val backCallback =
             object : OnBackPressedCallback(true) {
                 override fun handleOnBackPressed() {
-                    if (cancelable) dismissModal()
+                    val entry = modalEntry
+                    if (entry?.onBackPressed?.invoke() == true) return
+                    if (entry?.cancelable == true) dismissModal()
                 }
             }
         activity.onBackPressedDispatcher.addCallback(backCallback)
@@ -312,7 +324,7 @@ internal class PopupHost private constructor(
         }
 
         // Width + insets.
-        applyModalSizeAndInsets(dialogContext = dialogContext, modalRoot = overlay, card = card)
+        applyModalSizeAndInsets(dialogContext = dialogContext, modalRoot = overlay, card = card, sizing = modalSizing)
 
         // Focus trap: when a modal is visible, keep focus within it.
         val focusListener =
@@ -378,8 +390,10 @@ internal class PopupHost private constructor(
                 focusReturn = focusReturn,
                 backCallback = backCallback,
                 focusListener = focusListener,
+                modalSizing = modalSizing,
                 onDismiss = onDismiss,
                 onRestoreFocus = onRestoreFocus,
+                onBackPressed = onBackPressed,
             )
         modalEntry = entry
 
@@ -423,19 +437,37 @@ internal class PopupHost private constructor(
         systemBarsInsets = insets.getInsets(WindowInsetsCompat.Type.systemBars())
         imeInsets = insets.getInsets(WindowInsetsCompat.Type.ime())
         modalEntry?.rootView?.let { modalRoot ->
+            val entry = modalEntry ?: return@let
             val card = modalRoot.findViewById<View>(R.id.card) ?: return@let
-            applyModalSizeAndInsets(dialogContext = modalRoot.context, modalRoot = modalRoot, card = card)
+            applyModalSizeAndInsets(
+                dialogContext = modalRoot.context,
+                modalRoot = modalRoot,
+                card = card,
+                sizing = entry.modalSizing,
+            )
         }
     }
 
-    private fun applyModalSizeAndInsets(dialogContext: android.content.Context, modalRoot: View, card: View) {
+    private fun applyModalSizeAndInsets(
+        dialogContext: android.content.Context,
+        modalRoot: View,
+        card: View,
+        sizing: PopupModalSizing,
+    ) {
         val bottom = max(systemBarsInsets.bottom, imeInsets.bottom)
         modalRoot.setPadding(systemBarsInsets.left, systemBarsInsets.top, systemBarsInsets.right, bottom)
 
         val dm = dialogContext.resources.displayMetrics
-        val maxWidthPx = dp(dialogContext, 600f)
-        val targetWidthPx = (dm.widthPixels * 0.90f).toInt().coerceAtMost(maxWidthPx).coerceAtLeast(1)
-        val targetHeightPx = (dm.heightPixels * 0.90f).toInt().coerceAtLeast(1)
+        val maxWidthPx = dp(dialogContext, sizing.maxWidthDp.coerceAtLeast(1f))
+        val targetWidthPx =
+            (dm.widthPixels * sizing.widthRatio.coerceIn(0.10f, 1.0f))
+                .toInt()
+                .coerceAtMost(maxWidthPx)
+                .coerceAtLeast(1)
+        val targetHeightPx =
+            (dm.heightPixels * sizing.maxHeightRatio.coerceIn(0.10f, 1.0f))
+                .toInt()
+                .coerceAtLeast(1)
         (card.layoutParams as? FrameLayout.LayoutParams)?.let { lp ->
             if (lp.width != targetWidthPx) {
                 lp.width = targetWidthPx
@@ -603,6 +635,7 @@ internal class PopupHost private constructor(
         consumeBackLikeKeyUp = true
 
         val entry = modalEntry
+        if (entry?.onBackPressed?.invoke() == true) return true
         if (entry != null && entry.cancelable) dismissModal()
         return true
     }

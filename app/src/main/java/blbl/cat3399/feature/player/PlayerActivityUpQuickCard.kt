@@ -1,5 +1,6 @@
 package blbl.cat3399.feature.player
 
+import blbl.cat3399.core.log.AppLog
 import android.content.Intent
 import android.view.View
 import androidx.lifecycle.lifecycleScope
@@ -155,9 +156,10 @@ internal class PlayerUpQuickCardController(
                     }
                     if (owner.mid != mid) return@launch
                     followed = wantFollow
-                    AppToast.show(activity, if (wantFollow) "已关注" else "已取关")
+                    AppToast.show(activity, if (wantFollow) "已关注" else "已取消关注")
                 } catch (t: Throwable) {
                     if (t is CancellationException) return@launch
+                    AppLog.w("VideoAction", "follow failed mid=$mid wantFollow=$wantFollow", t)
                     val raw = (t as? BiliApiException)?.apiMessage?.takeIf { it.isNotBlank() } ?: t.message.orEmpty()
                     val msg = if (raw == "missing_csrf") "登录态不完整，请重新登录" else raw
                     AppToast.show(activity, if (msg.isBlank()) "操作失败" else msg)

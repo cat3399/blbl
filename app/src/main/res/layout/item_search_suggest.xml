@@ -7,7 +7,6 @@
     android:layout_marginBottom="@dimen/search_suggest_margin_bottom"
     android:clickable="true"
     android:focusable="true"
-    android:nextFocusLeft="@id/recycler_keys"
     android:stateListAnimator="@animator/blbl_focus_scale"
     app:cardBackgroundColor="?attr/colorSurface"
     app:cardCornerRadius="18dp"

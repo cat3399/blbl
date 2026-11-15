@@ -19,7 +19,9 @@ import blbl.cat3399.core.ui.AppToast
 import blbl.cat3399.core.ui.TabContentSwitchFocusHost
 import blbl.cat3399.core.ui.DpadGridController
 import blbl.cat3399.core.ui.FocusTreeUtils
+import blbl.cat3399.core.ui.GridViewportFillMonitor
 import blbl.cat3399.core.ui.TabSwitchFocusTarget
+import blbl.cat3399.core.ui.installGridViewportFillMonitor
 import blbl.cat3399.core.ui.postIfAlive
 import blbl.cat3399.core.ui.postIfAttached
 import blbl.cat3399.core.ui.requestFocusAdapterPositionReliable
@@ -107,6 +109,7 @@ class PgcRecommendGridFragment : Fragment(), RefreshKeyHandler, TabSwitchFocusTa
     private var nextKey: PgcPagingKey = PgcPagingKey()
     private var hasNext: Boolean = true
     private var isLoadingMore: Boolean = false
+    private var consecutiveEmptyPages: Int = 0
     private var requestToken: Int = 0
     private var initialLoadTriggered: Boolean = false
 
@@ -118,6 +121,7 @@ class PgcRecommendGridFragment : Fragment(), RefreshKeyHandler, TabSwitchFocusTa
     private var pendingFocusFirstCardFromBackToTab0: Boolean = false
     private var lastFocusedAdapterPosition: Int? = null
     private var dpadGridController: DpadGridController? = null
+    private var viewportFillMonitor: GridViewportFillMonitor? = null
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         _binding = FragmentVideoGridBinding.inflate(inflater, container, false)
@@ -168,6 +172,13 @@ class PgcRecommendGridFragment : Fragment(), RefreshKeyHandler, TabSwitchFocusTa
                         isEnabled = { _binding != null && isResumed },
                     ),
             ).also { it.install() }
+        viewportFillMonitor?.release()
+        viewportFillMonitor =
+            binding.recycler.installGridViewportFillMonitor(
+                isEnabled = { _binding != null && isResumed },
+                canLoadMore = { !isLoadingMore && hasNext },
+                loadMore = { loadNextPage() },
+            )
         binding.recycler.addOnScrollListener(
             object : RecyclerView.OnScrollListener() {
                 override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
@@ -188,6 +199,7 @@ class PgcRecommendGridFragment : Fragment(), RefreshKeyHandler, TabSwitchFocusTa
     override fun onResume() {
         super.onResume()
         (binding.recycler.layoutManager as? GridLayoutManager)?.spanCount = spanCountForPgc()
+        viewportFillMonitor?.scheduleCheck()
         maybeTriggerInitialLoad()
         restoreFocusIfNeeded()
         maybeConsumePendingFocusFirstCard()
@@ -330,6 +342,7 @@ class PgcRecommendGridFragment : Fragment(), RefreshKeyHandler, TabSwitchFocusTa
         isLoadingMore = false
         nextKey = PgcPagingKey()
         hasNext = true
+        consecutiveEmptyPages = 0
         loadedSeasonIds.clear()
         requestToken++
         dpadGridController?.clearPendingFocusAfterLoadMore()
@@ -347,6 +360,7 @@ class PgcRecommendGridFragment : Fragment(), RefreshKeyHandler, TabSwitchFocusTa
         if (isLoadingMore || !hasNext) return
         val token = requestToken
         isLoadingMore = true
+        var retryAfterEmptyPage = false
         viewLifecycleOwner.lifecycleScope.launch {
             try {
                 val fetched = source.fetch(nextKey)
@@ -357,6 +371,17 @@ class PgcRecommendGridFragment : Fragment(), RefreshKeyHandler, TabSwitchFocusTa
 
                 val filtered = fetched.items.filter { loadedSeasonIds.add(it.seasonId) }
                 if (isRefresh) adapter.submit(filtered) else adapter.append(filtered)
+                if (isRefresh) {
+                    consecutiveEmptyPages = 0
+                } else if (filtered.isEmpty()) {
+                    // The recommendation endpoint can repeat a page while its cursor still moves.
+                    // Skip a few empty pages before treating the source as exhausted.
+                    consecutiveEmptyPages++
+                    retryAfterEmptyPage = fetched.hasNext && consecutiveEmptyPages < MAX_EMPTY_PGC_PAGES
+                    if (!retryAfterEmptyPage) hasNext = false
+                } else {
+                    consecutiveEmptyPages = 0
+                }
 
                 _binding?.let { b ->
                     b.recycler.postIfAlive(isAlive = { _binding === b && isResumed }) {
@@ -377,20 +402,27 @@ class PgcRecommendGridFragment : Fragment(), RefreshKeyHandler, TabSwitchFocusTa
                                     dpadGridController?.unparkFocusAfterDataSetReset()
                                 },
                             )
+                            viewportFillMonitor?.scheduleCheck()
                             return@postIfAlive
                         }
                         maybeConsumePendingFocusFirstCard()
                         dpadGridController?.consumePendingFocusAfterLoadMore()
+                        viewportFillMonitor?.scheduleCheck()
                     }
                 }
                 restoreFocusIfNeeded()
             } catch (t: Throwable) {
                 if (t is CancellationException) throw t
                 AppLog.e("PgcRecommend", "load failed source=${source.logName} key=$nextKey", t)
-                context?.let { AppToast.show(it, "加载失败，可查看 Logcat(标签 BLBL)") }
+                context?.let { AppToast.show(it, getString(R.string.error_load_retry)) }
             } finally {
                 if (token == requestToken) _binding?.swipeRefresh?.isRefreshing = false
                 isLoadingMore = false
+                if (retryAfterEmptyPage && token == requestToken) {
+                    _binding?.recycler?.postIfAlive(isAlive = { _binding != null && isResumed }) {
+                        loadNextPage()
+                    }
+                }
             }
         }
     }
@@ -468,6 +500,8 @@ class PgcRecommendGridFragment : Fragment(), RefreshKeyHandler, TabSwitchFocusTa
         pendingFocusFirstCardFromContentSwitch = false
         dpadGridController?.release()
         dpadGridController = null
+        viewportFillMonitor?.release()
+        viewportFillMonitor = null
         _binding = null
         super.onDestroyView()
     }
@@ -480,6 +514,7 @@ class PgcRecommendGridFragment : Fragment(), RefreshKeyHandler, TabSwitchFocusTa
         private const val KIND_CINEMA = 2
         private const val KIND_SEARCH_BANGUMI = 3
         private const val KIND_SEARCH_CINEMA = 4
+        private const val MAX_EMPTY_PGC_PAGES = 3
 
         private fun sourceFromArguments(args: Bundle): PgcGridSource {
             val keyword = args.getString(ARG_SEARCH_KEYWORD).orEmpty().trim()

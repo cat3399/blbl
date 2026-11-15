@@ -1,5 +1,6 @@
 package blbl.cat3399.feature.my
 
+import blbl.cat3399.R
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
@@ -168,7 +169,7 @@ class MyFavFoldersFragment : Fragment(), MyTabSwitchFocusTarget, RefreshKeyHandl
             } catch (t: Throwable) {
                 if (t is CancellationException) throw t
                 AppLog.e("MyFav", "load failed", t)
-                context?.let { AppToast.show(it, "加载失败，可查看 Logcat(标签 BLBL)") }
+                context?.let { AppToast.show(it, getString(R.string.error_load_retry)) }
             } finally {
                 if (token == requestToken) _binding?.swipeRefresh?.isRefreshing = false
             }

@@ -7,8 +7,6 @@ import okhttp3.MediaType
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import okhttp3.RequestBody
-import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import okhttp3.ResponseBody
 import okio.BufferedSink
@@ -25,13 +23,14 @@ fun Request.requestMethod(): String = method
 fun Request.requestUrl(): HttpUrl = url
 
 fun HttpUrl.urlHost(): String = host
+fun HttpUrl.urlIsHttps(): Boolean = isHttps
+fun HttpUrl.urlPort(): Int = port
 fun HttpUrl.urlEncodedPath(): String = encodedPath
 fun HttpUrl.urlQuery(): String? = query
 fun HttpUrl.urlFragment(): String? = fragment
 
 fun String.parseHttpUrl(): HttpUrl? = toHttpUrlOrNull()
 fun String.toMediaTypeCompat(): MediaType = toMediaType()
-fun String.toRequestBodyCompat(contentType: MediaType): RequestBody = toRequestBody(contentType)
 
 fun OkHttpClient.evictConnectionPool() = connectionPool.evictAll()
 
@@ -46,4 +45,3 @@ fun Cookie.cookieHostOnly(): Boolean = hostOnly
 fun Cookie.cookiePersistent(): Boolean = persistent
 
 fun Sink.bufferCompat(): BufferedSink = buffer()
-

@@ -46,7 +46,6 @@ class SettingsLeftAdapter(
             val clickedPosition = holder.bindingAdapterPosition
             if (clickedPosition == RecyclerView.NO_POSITION) return@bind
 
-            setSelected(clickedPosition)
             onClick(clickedPosition)
         }
     }

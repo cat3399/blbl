@@ -19,6 +19,7 @@ import blbl.cat3399.core.ui.uiScaler
 import blbl.cat3399.core.ui.userScaledContext
 import blbl.cat3399.databinding.ActivityPlayerBinding
 import blbl.cat3399.feature.video.VideoCardAdapter
+import blbl.cat3399.feature.video.comment.VideoCommentsAdapter
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -154,7 +155,7 @@ internal object PlayerUiMode {
             }
 
             if (prefSize == AppPrefs.PLAYER_VIDEOSHOT_PREVIEW_SIZE_OFF) {
-                binding.videoShotPreview.visibility = View.GONE
+                (activity as? PlayerActivity)?.hideVideoShotPreviewNow()
             }
         }
 
@@ -651,6 +652,7 @@ internal object PlayerUiMode {
 
     private fun applySidePanelsSizing(binding: ActivityPlayerBinding, scale: Float) {
         val s = scale.takeIf { it.isFinite() && it > 0f } ?: 1.0f
+        val commentViews = binding.videoCommentsPanelContent()
 
         val state =
             (binding.settingsPanel.getTag(R.id.tag_player_side_panels_base_metrics) as? SidePanelsSizingState)
@@ -736,18 +738,18 @@ internal object PlayerUiMode {
             baseCornerRadiusPx = base.commentsPanelCornerRadiusPx,
             baseElevationPx = base.commentsPanelElevationPx,
         )
-        (binding.rowCommentSort.parent as? View)?.let { applyPadding(it, base.commentsContainerPadding) }
-        applyMargins(binding.commentsContent, base.commentsContentMargins)
-        applyTextView(binding.tvCommentSortLabel, base.commentSortLabel)
-        applyTextView(binding.chipCommentSortHot, base.commentSortHot)
-        applyTextView(binding.chipCommentSortNew, base.commentSortNew)
-        applyPadding(binding.recyclerComments, base.commentsRecyclerPadding)
-        applyPadding(binding.recyclerCommentThread, base.commentsThreadRecyclerPadding)
-        applyTextView(binding.tvCommentsHint, base.commentsHint)
+        (commentViews.rowCommentSort.parent as? View)?.let { applyPadding(it, base.commentsContainerPadding) }
+        applyMargins(commentViews.commentsContent, base.commentsContentMargins)
+        applyTextView(commentViews.tvCommentSortLabel, base.commentSortLabel)
+        applyTextView(commentViews.chipCommentSortHot, base.commentSortHot)
+        applyTextView(commentViews.chipCommentSortNew, base.commentSortNew)
+        applyPadding(commentViews.recyclerComments, base.commentsRecyclerPadding)
+        applyPadding(commentViews.recyclerCommentThread, base.commentsThreadRecyclerPadding)
+        applyTextView(commentViews.tvCommentsHint, base.commentsHint)
 
         (binding.recyclerSettings.adapter as? PlayerSettingsAdapter)?.invalidateSizing()
-        (binding.recyclerComments.adapter as? PlayerCommentsAdapter)?.invalidateSizing()
-        (binding.recyclerCommentThread.adapter as? PlayerCommentsAdapter)?.invalidateSizing()
+        (commentViews.recyclerComments.adapter as? VideoCommentsAdapter)?.invalidateSizing()
+        (commentViews.recyclerCommentThread.adapter as? VideoCommentsAdapter)?.invalidateSizing()
     }
 
     private fun captureBottomListPanelBaseMetrics(binding: ActivityPlayerBinding): ListPanelBaseMetrics {
@@ -842,7 +844,8 @@ internal object PlayerUiMode {
         }
 
         val settingsContainer = (binding.recyclerSettings.parent as? View) ?: binding.recyclerSettings
-        val commentsContainer = (binding.rowCommentSort.parent as? View) ?: binding.rowCommentSort
+        val commentViews = binding.videoCommentsPanelContent()
+        val commentsContainer = (commentViews.rowCommentSort.parent as? View) ?: commentViews.rowCommentSort
 
         return SidePanelsBaseMetrics(
             settingsPanelWidthPx = binding.settingsPanel.layoutParams?.width ?: 0,
@@ -856,13 +859,13 @@ internal object PlayerUiMode {
             commentsPanelCornerRadiusPx = binding.commentsPanel.radius,
             commentsPanelElevationPx = binding.commentsPanel.cardElevation,
             commentsContainerPadding = capturePadding(commentsContainer),
-            commentsContentMargins = captureMargins(binding.commentsContent),
-            commentSortLabel = captureTextViewMetrics(binding.tvCommentSortLabel),
-            commentSortHot = captureTextViewMetrics(binding.chipCommentSortHot),
-            commentSortNew = captureTextViewMetrics(binding.chipCommentSortNew),
-            commentsRecyclerPadding = capturePadding(binding.recyclerComments),
-            commentsThreadRecyclerPadding = capturePadding(binding.recyclerCommentThread),
-            commentsHint = captureTextViewMetrics(binding.tvCommentsHint),
+            commentsContentMargins = captureMargins(commentViews.commentsContent),
+            commentSortLabel = captureTextViewMetrics(commentViews.tvCommentSortLabel),
+            commentSortHot = captureTextViewMetrics(commentViews.chipCommentSortHot),
+            commentSortNew = captureTextViewMetrics(commentViews.chipCommentSortNew),
+            commentsRecyclerPadding = capturePadding(commentViews.recyclerComments),
+            commentsThreadRecyclerPadding = capturePadding(commentViews.recyclerCommentThread),
+            commentsHint = captureTextViewMetrics(commentViews.tvCommentsHint),
         )
     }
 

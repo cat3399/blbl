@@ -191,7 +191,6 @@ object WebCookieMaintainer {
         val existing = BiliClient.cookies.getCookie("bili_ticket")
         if (existing != null && existing.cookieExpiresAt() - nowMs > 6 * 60 * 60 * 1000) return
         if (BiliClient.prefs.biliTicketCheckedEpochDay == epochDay) return
-        BiliClient.prefs.biliTicketCheckedEpochDay = epochDay
 
         runCatching {
             val ts = (nowMs / 1000).toString()
@@ -217,7 +216,7 @@ object WebCookieMaintainer {
             val ticket = data.optString("ticket", "").trim()
             val createdAt = data.optLong("created_at", 0L)
             val ttl = data.optLong("ttl", 0L)
-            if (ticket.isBlank() || createdAt <= 0L || ttl <= 0L) return@runCatching
+            check(ticket.isNotBlank() && createdAt > 0L && ttl > 0L) { "GenWebTicket returned incomplete data" }
 
             val expiresSec = createdAt + ttl
             val expiresAt = expiresSec * 1000L
@@ -228,6 +227,7 @@ object WebCookieMaintainer {
                 ),
             )
             AppLog.i(TAG, "bili_ticket updated")
+            BiliClient.prefs.biliTicketCheckedEpochDay = epochDay
         }.onFailure {
             AppLog.w(TAG, "ensureBiliTicket failed", it)
         }
@@ -276,13 +276,14 @@ object WebCookieMaintainer {
                 if (newRefreshToken.isNotBlank()) BiliClient.prefs.webRefreshToken = newRefreshToken
 
                 val newBiliJct = BiliClient.cookies.getCookieValue("bili_jct")?.takeIf { it.isNotBlank() } ?: biliJct
+                val confirmRefreshToken = newRefreshToken.ifBlank { refreshToken }
                 runCatching {
                     BiliClient.postFormJson(
                         "https://passport.bilibili.com/x/passport-login/web/confirm/refresh",
                         form =
                             mapOf(
                                 "csrf" to newBiliJct,
-                                "refresh_token" to refreshToken,
+                                "refresh_token" to confirmRefreshToken,
                             ),
                     )
                 }

@@ -12,6 +12,7 @@ import blbl.cat3399.core.model.Following
 import blbl.cat3399.core.model.HistoryEntry
 import blbl.cat3399.core.model.LiveAreaParent
 import blbl.cat3399.core.model.LiveRoomCard
+import blbl.cat3399.core.model.LiveSuperChat
 import blbl.cat3399.core.model.VideoCard
 import blbl.cat3399.core.model.VideoTag
 import blbl.cat3399.core.prefs.AppPrefs
@@ -33,10 +34,11 @@ import blbl.cat3399.core.api.video.VideoPlayRequest
 import blbl.cat3399.core.api.video.VideoPlayStream
 import blbl.cat3399.core.api.video.VideoPopularRequest
 import blbl.cat3399.core.api.video.VideoRecommendRequest
-import blbl.cat3399.core.api.video.VideoRegionLatestRequest
+import blbl.cat3399.core.api.video.VideoRegionRankRequest
 import blbl.cat3399.core.api.video.VideoSeriesArchivesRequest
 import blbl.cat3399.core.api.video.VideoShotInfo
 import blbl.cat3399.core.api.video.VideoShotRequest
+import blbl.cat3399.core.api.video.VideoSubtitle
 import blbl.cat3399.core.api.video.VideoTagsRequest
 import blbl.cat3399.core.net.BiliClient
 import blbl.cat3399.core.net.PiliWebHeaders
@@ -403,6 +405,9 @@ object BiliApi {
         LiveApi.livePlayUrl(roomId = roomId, qn = qn, highBitrateEnabled = highBitrateEnabled)
 
     suspend fun liveDanmuInfo(roomId: Long): LiveDanmuInfo = LiveApi.liveDanmuInfo(roomId = roomId)
+
+    suspend fun liveSuperChats(roomId: Long): List<LiveSuperChat> =
+        LiveApi.liveSuperChats(roomId = roomId)
 
     suspend fun historyCursor(
         max: Long = 0,
@@ -1217,62 +1222,6 @@ object BiliApi {
         return CursorPage(items = items, hasNext = hasNext, nextCursor = nextCursor)
     }
 
-    private fun parsePgcPcBangumiTabToBangumiSeasons(data: JSONObject): CursorPage<BangumiSeason> {
-        val hasNext = data.optInt("has_next", 0) == 1
-        val nextCursor = data.optString("next_cursor", "").trim().takeIf { it.isNotBlank() && hasNext }
-        val modules = data.optJSONArray("modules") ?: JSONArray()
-
-        val items =
-            run {
-                val out = ArrayList<BangumiSeason>(128)
-                val seen = HashSet<Long>(256)
-                for (i in 0 until modules.length()) {
-                    val module = modules.optJSONObject(i) ?: continue
-                    val moduleTitle = module.optString("title", "").trim()
-                    if (!moduleTitle.contains("猜你喜欢")) continue
-                    val list = module.optJSONArray("items") ?: continue
-                    for (j in 0 until list.length()) {
-                        val obj = list.optJSONObject(j) ?: continue
-                        val seasonId = obj.optLong("season_id").takeIf { it > 0 } ?: continue
-                        if (!seen.add(seasonId)) continue
-                        val title = obj.optString("title", "").trim()
-                        if (title.isBlank()) continue
-
-                        val cover = obj.optString("cover", "").trim().takeIf { it.isNotBlank() }
-                        val seasonType = obj.optInt("season_type", 0).takeIf { it > 0 }
-                        val typeName = seasonType?.let(::pgcSeasonTypeName)
-                        val badge = normalizeBadgeText(obj.optJSONObject("badge_info")?.optString("text"))
-                        val badgeEp = normalizeBadgeText(obj.optJSONObject("bottom_right_badge")?.optString("text"))
-                        val newEpIndexShow = obj.optJSONObject("new_ep")?.optString("index_show", "")?.trim().takeIf { !it.isNullOrBlank() }
-                        val followView = obj.optJSONObject("stat")?.optString("follow_view", "")?.trim().takeIf { !it.isNullOrBlank() }
-                        val desc = obj.optString("desc", "").trim().takeIf { it.isNotBlank() }
-                        val subTitle = obj.optString("sub_title", "").trim().takeIf { it.isNotBlank() }
-                        val progressText = badgeEp ?: newEpIndexShow ?: followView ?: desc ?: subTitle
-
-                        out.add(
-                            BangumiSeason(
-                                seasonId = seasonId,
-                                seasonTypeName = typeName,
-                                title = title,
-                                coverUrl = cover,
-                                badge = badge,
-                                badgeEp = badgeEp,
-                                progressText = progressText,
-                                totalCount = null,
-                                lastEpIndex = null,
-                                lastEpId = null,
-                                newestEpIndex = null,
-                                isFinish = null,
-                            ),
-                        )
-                    }
-                }
-                out
-            }
-
-        return CursorPage(items = items, hasNext = hasNext, nextCursor = nextCursor)
-    }
-
     suspend fun pgcBangumiPage(cursor: String? = null, build: Int = PGC_PAGE_BUILD_DEFAULT): CursorPage<BangumiSeason> {
         val safeCursor = cursor?.trim()?.takeIf { it.isNotBlank() } ?: "0"
         val params = LinkedHashMap<String, String>(4)
@@ -1282,7 +1231,7 @@ object BiliApi {
         params["cursor"] = safeCursor
         val url =
             BiliClient.withQuery(
-                "https://api.bilibili.com/pgc/page/pc/bangumi/tab",
+                "https://api.bilibili.com/pgc/page/bangumi",
                 params,
             )
         val json = BiliClient.getJson(url)
@@ -1291,8 +1240,7 @@ object BiliApi {
             val msg = json.optString("message", json.optString("msg", ""))
             throw BiliApiException(apiCode = code, apiMessage = msg)
         }
-        val data = json.optJSONObject("data") ?: JSONObject()
-        return withContext(Dispatchers.Default) { parsePgcPcBangumiTabToBangumiSeasons(data) }
+        return withContext(Dispatchers.Default) { parsePgcPageToBangumiSeasons(json) }
     }
 
     suspend fun pgcCinemaTabPage(cursor: String? = null, build: Int = PGC_PAGE_BUILD_DEFAULT): CursorPage<BangumiSeason> {
@@ -1329,16 +1277,16 @@ object BiliApi {
             .popular(VideoPopularRequest(pn = pn, ps = ps))
             .toHasMorePage()
 
-    suspend fun regionLatest(rid: Int, pn: Int = 1, ps: Int = 20): List<VideoCard> =
-        regionLatestPage(rid = rid, pn = pn, ps = ps).items
+    suspend fun regionRank(rid: Int, pn: Int = 1, ps: Int = 20): List<VideoCard> =
+        regionRankPage(rid = rid, pn = pn, ps = ps).items
 
-    suspend fun regionLatestPage(
+    suspend fun regionRankPage(
         rid: Int,
         pn: Int = 1,
         ps: Int = 20,
     ): HasMorePage<VideoCard> =
         VideoApiGateway
-            .regionLatest(VideoRegionLatestRequest(rid = rid, pn = pn, ps = ps))
+            .regionRank(VideoRegionRankRequest(rid = rid, pn = pn, ps = ps))
             .toHasMorePage()
 
     suspend fun dynamicTag(
@@ -1444,6 +1392,9 @@ object BiliApi {
 
     suspend fun videoPlayerInfo(bvid: String, cid: Long): VideoPlayerInfo =
         VideoApiGateway.playerInfo(VideoPlayerInfoRequest(bvid = bvid, cid = cid))
+
+    suspend fun dmViewSubtitles(aid: Long, cid: Long): List<VideoSubtitle> =
+        blbl.cat3399.core.api.video.app.DmViewGrpcApi.subtitles(aid = aid, cid = cid)
 
     suspend fun historyReport(aid: Long, cid: Long, progressSec: Long, platform: String = "android") =
         VideoApi.historyReport(aid = aid, cid = cid, progressSec = progressSec, platform = platform)

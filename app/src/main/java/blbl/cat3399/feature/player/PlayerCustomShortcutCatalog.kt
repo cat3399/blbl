@@ -44,13 +44,13 @@ internal object PlayerCustomShortcutCatalog {
             PlayerCustomShortcutActionOption(PlayerCustomShortcutAction.TYPE_TOGGLE_DEBUG_OVERLAY, "调试信息 开/关", requiresValue = false),
             PlayerCustomShortcutActionOption(PlayerCustomShortcutAction.TYPE_TOGGLE_PERSISTENT_BOTTOM_PROGRESS, "底部常驻进度条 开/关", requiresValue = false),
             PlayerCustomShortcutActionOption(PlayerCustomShortcutAction.TYPE_SET_PLAYBACK_SPEED, "播放速度", requiresValue = true),
-            PlayerCustomShortcutActionOption(PlayerCustomShortcutAction.TYPE_SET_RESOLUTION_QN, "分辨率", requiresValue = true),
-            PlayerCustomShortcutActionOption(PlayerCustomShortcutAction.TYPE_SET_AUDIO_ID, "音轨", requiresValue = true),
+            PlayerCustomShortcutActionOption(PlayerCustomShortcutAction.TYPE_SET_RESOLUTION_QN, "画质", requiresValue = true),
+            PlayerCustomShortcutActionOption(PlayerCustomShortcutAction.TYPE_SET_AUDIO_ID, "音质", requiresValue = true),
             PlayerCustomShortcutActionOption(PlayerCustomShortcutAction.TYPE_SET_CODEC, "视频编码", requiresValue = true),
             PlayerCustomShortcutActionOption(PlayerCustomShortcutAction.TYPE_SET_PLAYBACK_MODE, "播放模式", requiresValue = true),
             PlayerCustomShortcutActionOption(PlayerCustomShortcutAction.TYPE_SET_SUBTITLE_LANG, "字幕语言", requiresValue = true),
             PlayerCustomShortcutActionOption(PlayerCustomShortcutAction.TYPE_SET_SUBTITLE_TEXT_SIZE, "字幕字体大小", requiresValue = true),
-            PlayerCustomShortcutActionOption(PlayerCustomShortcutAction.TYPE_SET_DANMAKU_OPACITY, "弹幕透明度", requiresValue = true),
+            PlayerCustomShortcutActionOption(PlayerCustomShortcutAction.TYPE_SET_DANMAKU_OPACITY, "弹幕不透明度", requiresValue = true),
             PlayerCustomShortcutActionOption(PlayerCustomShortcutAction.TYPE_SET_DANMAKU_TEXT_SIZE, "弹幕字体大小", requiresValue = true),
             PlayerCustomShortcutActionOption(PlayerCustomShortcutAction.TYPE_SET_DANMAKU_SPEED, "弹幕速度", requiresValue = true),
             PlayerCustomShortcutActionOption(PlayerCustomShortcutAction.TYPE_SET_DANMAKU_AREA, "弹幕区域", requiresValue = true),
@@ -102,8 +102,8 @@ internal object PlayerCustomShortcutCatalog {
             PlayerCustomShortcutAction.ToggleDebugOverlay -> "调试信息：开/关"
             PlayerCustomShortcutAction.TogglePersistentBottomProgress -> "底部常驻进度条：开/关"
             is PlayerCustomShortcutAction.SetPlaybackSpeed -> "播放速度：${String.format(Locale.US, "%.2fx", action.speed)}"
-            is PlayerCustomShortcutAction.SetResolutionQn -> "分辨率：${qnLabel(action.qn)}"
-            is PlayerCustomShortcutAction.SetAudioId -> "音轨：${audioLabel(action.audioId)}"
+            is PlayerCustomShortcutAction.SetResolutionQn -> "画质：${qnLabel(action.qn)}"
+            is PlayerCustomShortcutAction.SetAudioId -> "音质：${audioLabel(action.audioId)}"
             is PlayerCustomShortcutAction.SetCodec -> "视频编码：${action.codec}"
             is PlayerCustomShortcutAction.SetPlaybackMode -> "播放模式：${playbackModeText(action.mode)}"
             is PlayerCustomShortcutAction.SetSubtitleLang -> {
@@ -115,7 +115,7 @@ internal object PlayerCustomShortcutCatalog {
                 }
             }
             is PlayerCustomShortcutAction.SetSubtitleTextSize -> "字幕大小：${action.textSizeSp.toInt()}"
-            is PlayerCustomShortcutAction.SetDanmakuOpacity -> "弹幕透明度：${String.format(Locale.US, "%.2f", action.opacity)}"
+            is PlayerCustomShortcutAction.SetDanmakuOpacity -> "弹幕不透明度：${SettingsText.opacityText(action.opacity)}"
             is PlayerCustomShortcutAction.SetDanmakuTextSize -> "弹幕大小：${action.textSizeSp.toInt()}"
             is PlayerCustomShortcutAction.SetDanmakuSpeed -> "弹幕速度：${action.speedLevel}"
             is PlayerCustomShortcutAction.SetDanmakuArea -> "弹幕区域：${areaText(action.area)}"
@@ -242,7 +242,7 @@ internal object PlayerCustomShortcutCatalog {
                 val current = (currentAction as? PlayerCustomShortcutAction.SetDanmakuOpacity)?.opacity
                 val checked = options.indices.minByOrNull { idx -> abs(options[idx] - (current ?: 1f)) } ?: 0
                 PlayerCustomShortcutValuePickerConfig(
-                    choices = options.map { PlayerCustomShortcutValueChoice(String.format(Locale.US, "%.2f", it), PlayerCustomShortcutAction.SetDanmakuOpacity(opacity = it)) },
+                    choices = options.map { PlayerCustomShortcutValueChoice(SettingsText.opacityText(it), PlayerCustomShortcutAction.SetDanmakuOpacity(opacity = it)) },
                     checkedIndex = checked,
                 )
             }

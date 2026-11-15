@@ -28,7 +28,7 @@ import blbl.cat3399.core.api.video.VideoPlayStream
 import blbl.cat3399.core.api.video.VideoPopularRequest
 import blbl.cat3399.core.api.video.VideoRecommendPage
 import blbl.cat3399.core.api.video.VideoRecommendRequest
-import blbl.cat3399.core.api.video.VideoRegionLatestRequest
+import blbl.cat3399.core.api.video.VideoRegionRankRequest
 import blbl.cat3399.core.api.video.VideoSeriesArchivesRequest
 import blbl.cat3399.core.api.video.VideoShotInfo
 import blbl.cat3399.core.api.video.VideoShotRequest
@@ -149,7 +149,7 @@ internal class AppVideoApi(
 
     override suspend fun popular(request: VideoPopularRequest): VideoCardPage<VideoPopularRequest> = notImplemented()
 
-    override suspend fun regionLatest(request: VideoRegionLatestRequest): VideoCardPage<VideoRegionLatestRequest> = notImplemented()
+    override suspend fun regionRank(request: VideoRegionRankRequest): VideoCardPage<VideoRegionRankRequest> = notImplemented()
 
     override suspend fun dynamicTag(request: VideoDynamicTagRequest): VideoCardPage<VideoDynamicTagRequest> = notImplemented()
 

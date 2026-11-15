@@ -1,0 +1,169 @@
+name: Android API19 Build
+
+on:
+  push:
+    branches:
+      - mtga-api19-main
+  workflow_dispatch:
+    inputs:
+      version_name:
+        description: "Version name used in the APK metadata"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+concurrency:
+  group: api19-public-build-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-api19:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - name: Install Android package tools
+        run: |
+          set -euo pipefail
+          sdk_root="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          test -n "$sdk_root"
+          sdkmanager="$(command -v sdkmanager || true)"
+          if [[ -z "$sdkmanager" && -d "$sdk_root/cmdline-tools" ]]; then
+            sdkmanager="$(find "$sdk_root/cmdline-tools" -type f -name sdkmanager -perm -u+x | sort -V | tail -n 1 || true)"
+          fi
+          test -x "$sdkmanager"
+          yes | "$sdkmanager" --licenses >/dev/null || true
+          "$sdkmanager" "build-tools;35.0.0"
+
+      - name: Prepare release signing
+        env:
+          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${RELEASE_KEYSTORE_BASE64:-}" ]]; then
+            echo "RELEASE_KEYSTORE_BASE64 is required for an installable API19 APK." >&2
+            exit 1
+          fi
+          mkdir -p keystore
+          printf '%s' "$RELEASE_KEYSTORE_BASE64" | base64 --decode > keystore/release.keystore
+          test -s keystore/release.keystore
+
+      - name: Build KitKat release APK
+        env:
+          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+          INPUT_VERSION_NAME: ${{ inputs.version_name }}
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          version_name="${INPUT_VERSION_NAME:-}"
+          if [[ -z "$version_name" || "$version_name" == "ci" ]]; then
+            version_name="$(sed -nE 's/^##[[:space:]]+v?([0-9]+\.[0-9]+\.[0-9]+).*/\1/p' CHANGELOG.md | head -n 1)"
+            if [[ -z "$version_name" ]]; then
+              echo "Unable to determine the current version from CHANGELOG.md" >&2
+              exit 1
+            fi
+          fi
+          version_name="${version_name#v}"
+          if [[ "$version_name" != *-api19 ]]; then
+            version_name="${version_name}-api19"
+          fi
+          ./gradlew :app:assembleKitkatRelease \
+            -PversionName="$version_name"
+
+      - name: Inspect APK
+        run: |
+          set -euo pipefail
+          apk="$(find app/build/outputs/apk -type f -name '*.apk' | sort | tail -n 1)"
+          test -n "$apk"
+          test -s "$apk"
+          sdk_root="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          aapt="$(command -v aapt2 || true)"
+          apksigner="$(command -v apksigner || true)"
+          if [[ -z "$aapt" && -d "$sdk_root/build-tools" ]]; then
+            aapt="$(find "$sdk_root/build-tools" -name aapt2 -perm -u+x | sort -V | tail -n 1 || true)"
+          fi
+          if [[ -z "$apksigner" && -d "$sdk_root/build-tools" ]]; then
+            apksigner="$(find "$sdk_root/build-tools" -name apksigner -perm -u+x | sort -V | tail -n 1 || true)"
+          fi
+          echo "aapt2: ${aapt:-missing}"
+          echo "apksigner: ${apksigner:-missing}"
+          test -x "$aapt"
+          test -x "$apksigner"
+          badging="$RUNNER_TEMP/api19-badging.txt"
+          "$aapt" dump badging "$apk" > "$badging" || true
+          cat "$badging"
+          grep -F "minSdkVersion:'19'" "$badging"
+          echo "Native libraries in APK:"
+          unzip -Z1 "$apk" | grep '^lib/' || true
+          unzip -l "$apk" | grep -F "lib/armeabi-v7a/libijkplayer.so"
+          if unzip -l "$apk" | grep -E "lib/(arm64-v8a|x86|x86_64)/"; then
+            echo "Unexpected non-ARM32 native library found in API19 APK." >&2
+            exit 1
+          fi
+
+          "$apksigner" verify --verbose "$apk"
+          "$apksigner" verify --print-certs "$apk"
+          signature_status="signed"
+          apk_sha256="$(sha256sum "$apk" | awk '{print $1}')"
+          {
+            echo "## API19 APK"
+            echo
+            printf '%s\n' "- Path: $apk"
+            printf '%s\n' "- SHA-256: $apk_sha256"
+            printf '%s\n' "- Signature: $signature_status"
+            printf '%s\n' "- ABI: armeabi-v7a"
+            printf '%s\n' "- minSdk: 19"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload KitKat release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: blbl-api19-kitkat-release-${{ github.sha }}
+          path: app/build/outputs/apk/**/*.apk
+          if-no-files-found: error
+
+      - name: Publish public rolling APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          apk="$(find app/build/outputs/apk -type f -name '*.apk' | sort | tail -n 1)"
+          test -s "$apk"
+
+          release_tag="api19-latest"
+          asset_name="blbl-api19-kitkat-latest.apk"
+          asset_path="$RUNNER_TEMP/$asset_name"
+          cp "$apk" "$asset_path"
+
+          if gh release view "$release_tag" >/dev/null 2>&1; then
+            gh release edit "$release_tag" \
+              --title "Blbl API19 最新构建" \
+              --notes "由 mtga-api19-main 的 GitHub Actions 自动更新。此滚动构建用于公开下载。" \
+              --target "$GITHUB_SHA"
+          else
+            gh release create "$release_tag" \
+              --title "Blbl API19 最新构建" \
+              --notes "由 mtga-api19-main 的 GitHub Actions 自动更新。此滚动构建用于公开下载。" \
+              --prerelease \
+              --target "$GITHUB_SHA"
+          fi
+
+          gh release upload "$release_tag" "$asset_path" --clobber
+          {
+            echo "## Public APK"
+            echo
+            echo "- Download: https://github.com/${GITHUB_REPOSITORY}/releases/download/${release_tag}/${asset_name}"
+            echo "- Release: https://github.com/${GITHUB_REPOSITORY}/releases/tag/${release_tag}"
+          } >> "$GITHUB_STEP_SUMMARY"

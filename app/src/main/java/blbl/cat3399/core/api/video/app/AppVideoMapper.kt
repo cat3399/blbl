@@ -17,6 +17,7 @@ import blbl.cat3399.core.api.video.VideoPlayRequest
 import blbl.cat3399.core.api.video.VideoPlayResume
 import blbl.cat3399.core.api.video.VideoPlayStream
 import blbl.cat3399.core.api.video.VideoProgressiveStream
+import blbl.cat3399.core.api.video.VideoResumeTimeUnit
 import blbl.cat3399.core.api.video.VideoSegmentBase
 import blbl.cat3399.core.api.video.VideoSupportFormat
 import blbl.cat3399.core.api.video.VideoTrack
@@ -81,6 +82,7 @@ internal class AppVideoMapper(
                 ?.let { progress ->
                     VideoPlayResume(
                         rawTime = progress,
+                        timeUnit = VideoResumeTimeUnit.SECONDS,
                         lastCid = reply.history.currentVideo.lastPlayCid.takeIf { it > 0L },
                     )
                 },
@@ -113,7 +115,7 @@ internal class AppVideoMapper(
         val resume =
             reply.business.userStatus.watchProgress.progress
                 .takeIf { it > 0L }
-                ?.let { VideoPlayResume(rawTime = it, lastCid = null) }
+                ?.let { VideoPlayResume(rawTime = it, timeUnit = VideoResumeTimeUnit.SECONDS, lastCid = null) }
         return VideoPlayStream(
             source = source,
             request = request,

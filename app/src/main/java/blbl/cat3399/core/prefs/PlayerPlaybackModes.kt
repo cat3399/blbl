@@ -36,7 +36,7 @@ internal object PlayerPlaybackModes {
             AppPrefs.PLAYER_PLAYBACK_MODE_RECOMMEND -> "播放推荐视频"
             AppPrefs.PLAYER_PLAYBACK_MODE_LOOP_ONE -> "循环该视频"
             AppPrefs.PLAYER_PLAYBACK_MODE_EXIT -> "退出播放器"
-            else -> "什么都不做"
+            else -> "播完后停留"
         }
     }
 }

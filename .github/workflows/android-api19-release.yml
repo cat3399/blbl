@@ -19,8 +19,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: blbl-api19
       - uses: actions/setup-java@v4
         with:
           distribution: "temurin"
@@ -28,6 +26,16 @@ jobs:
           cache: "gradle"
       - name: Grant execute permission for gradlew
         run: chmod +x ./gradlew
+      - name: Normalize API19 version
+        env:
+          INPUT_VERSION_NAME: ${{ inputs.version_name }}
+        run: |
+          set -euo pipefail
+          clean_version="${INPUT_VERSION_NAME#v}"
+          clean_version="${clean_version%-api19}"
+          version_name="${clean_version}-api19"
+          echo "CLEAN_VERSION=${clean_version}" >> "$GITHUB_ENV"
+          echo "API19_VERSION_NAME=${version_name}" >> "$GITHUB_ENV"
       - name: Mark API19 app label
         run: |
           set -euo pipefail
@@ -41,7 +49,32 @@ jobs:
           RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
           RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
           RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
-        run: ./gradlew :app:assembleKitkatRelease -PversionName=${{ inputs.version_name }} -PversionCode=${{ github.run_number }}
+        run: ./gradlew :app:assembleKitkatRelease -PversionName="$API19_VERSION_NAME"
+      - name: Verify release signing
+        run: |
+          set -euo pipefail
+          sdk_root="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          apksigner="$(find "$sdk_root/build-tools" -type f -name apksigner -perm -u+x | sort -V | tail -n 1)"
+          test -x "$apksigner"
+          "$apksigner" verify --verbose app/build/outputs/apk/kitkat/release/app-kitkat-release.apk
+      - name: Archive release mapping
+        env:
+          VERSION_NAME: ${{ inputs.version_name }}
+        run: |
+          set -euo pipefail
+          CLEAN_VERSION="${VERSION_NAME#v}"
+          CLEAN_VERSION="${CLEAN_VERSION%-api19}"
+          MAPPING_SOURCE="app/build/outputs/mapping/kitkatRelease/mapping.txt"
+          test -s "${MAPPING_SOURCE}"
+          DOWNLOAD_MAPPING="app/build/outputs/mapping/kitkatRelease/blbl-${CLEAN_VERSION}-api19-mapping.txt"
+          cp "${MAPPING_SOURCE}" "${DOWNLOAD_MAPPING}"
+          echo "DOWNLOAD_MAPPING=${DOWNLOAD_MAPPING}" >> "${GITHUB_ENV}"
+      - name: Upload release mapping artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: blbl-${{ inputs.version_name }}-api19-mapping
+          path: ${{ env.DOWNLOAD_MAPPING }}
+          if-no-files-found: error
       - name: Upload API19 release APK to R2 (optional)
         env:
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
@@ -49,7 +82,6 @@ jobs:
           R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID || vars.R2_ACCOUNT_ID }}
           R2_BUCKET: ${{ secrets.R2_BUCKET || vars.R2_BUCKET }}
           R2_PREFIX: ${{ vars.R2_PREFIX || secrets.R2_PREFIX }}
-          VERSION_NAME: ${{ inputs.version_name }}
         run: |
           set -euo pipefail
           if [ -z "${R2_ACCESS_KEY_ID:-}" ] || [ -z "${R2_SECRET_ACCESS_KEY:-}" ] || [ -z "${R2_ACCOUNT_ID:-}" ] || [ -z "${R2_BUCKET:-}" ]; then
@@ -68,7 +100,6 @@ jobs:
           export AWS_EC2_METADATA_DISABLED=true
           ENDPOINT="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
 
-          CLEAN_VERSION="${VERSION_NAME#v}"
           KEY_PREFIX="${R2_PREFIX:-blbl}"
           KEY_PREFIX="${KEY_PREFIX%/}"
           if [ -n "${KEY_PREFIX}" ]; then
@@ -93,13 +124,16 @@ jobs:
       - name: Publish API19 release APK to GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION_NAME: ${{ inputs.version_name }}
-          RELEASE_TAG: ${{ startsWith(inputs.version_name, 'v') && inputs.version_name || format('v{0}', inputs.version_name) }}
           CHANGELOG: ${{ inputs.changelog }}
         run: |
           set -euo pipefail
           BUILD_SHA="$(git rev-parse HEAD)"
           APK_PATH="app/build/outputs/apk/kitkat/release/app-kitkat-release.apk"
+          VERSIONED_APK="app/build/outputs/apk/kitkat/release/blbl-android-${CLEAN_VERSION}-api19-release.apk"
+          LATEST_APK="app/build/outputs/apk/kitkat/release/blbl-latest-api19-release.apk"
+          RELEASE_TAG="v${CLEAN_VERSION}-api19"
+          cp "$APK_PATH" "$VERSIONED_APK"
+          cp "$APK_PATH" "$LATEST_APK"
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             if [ -n "${CHANGELOG:-}" ]; then
               printf '%s' "$CHANGELOG" > changelog.md
@@ -113,4 +147,27 @@ jobs:
               gh release create "$RELEASE_TAG" --title "$RELEASE_TAG" --generate-notes --target "$BUILD_SHA"
             fi
           fi
-          gh release upload "$RELEASE_TAG" "${APK_PATH}#blbl-android-${VERSION_NAME}-api19-release.apk" --clobber
+          gh release upload "$RELEASE_TAG" \
+            "$VERSIONED_APK" \
+            "$LATEST_APK" \
+            "$DOWNLOAD_MAPPING" \
+            --clobber
+
+          # Keep the fixed URL used as the API19 updater fallback synchronized with the
+          # latest signed manual release. This tag is a prerelease by design.
+          ROLLING_TAG="api19-latest"
+          ROLLING_APK="app/build/outputs/apk/kitkat/release/blbl-api19-kitkat-latest.apk"
+          cp "$APK_PATH" "$ROLLING_APK"
+          if gh release view "$ROLLING_TAG" >/dev/null 2>&1; then
+            gh release edit "$ROLLING_TAG" \
+              --title "Blbl API19 最新构建" \
+              --notes "由 API19 Release 工作流自动更新。此滚动构建用于更新兜底下载。" \
+              --target "$BUILD_SHA"
+          else
+            gh release create "$ROLLING_TAG" \
+              --title "Blbl API19 最新构建" \
+              --notes "由 API19 Release 工作流自动更新。此滚动构建用于更新兜底下载。" \
+              --prerelease \
+              --target "$BUILD_SHA"
+          fi
+          gh release upload "$ROLLING_TAG" "$ROLLING_APK" --clobber

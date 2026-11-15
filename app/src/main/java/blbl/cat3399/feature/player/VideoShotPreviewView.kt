@@ -42,6 +42,7 @@ class VideoShotPreviewView @JvmOverloads constructor(
             field = value
             invalidate()
         }
+    internal var onFrameDrawFailure: ((Throwable) -> Unit)? = null
 
     internal fun setShortEdge(shortEdgePx: Int) {
         val target = shortEdgePx.coerceAtLeast(1)
@@ -105,20 +106,25 @@ class VideoShotPreviewView @JvmOverloads constructor(
         super.onDraw(canvas)
         val frame = spriteFrame ?: return
 
-        val bitmap: Bitmap = frame.spriteSheet
+        val bitmap: Bitmap = frame.bitmap
 
-        updateDrawSourceRect(frame.srcRect)
+        updateDrawSourceRect(bitmap)
 
         dstRect.set(0, 0, width, height)
 
-        canvas.drawBitmap(bitmap, srcRect, dstRect, paint)
+        try {
+            canvas.drawBitmap(bitmap, srcRect, dstRect, paint)
+        } catch (t: RuntimeException) {
+            spriteFrame = null
+            onFrameDrawFailure?.invoke(t)
+        }
     }
 
-    private fun updateDrawSourceRect(cellRect: Rect) {
-        srcRect.set(cellRect)
+    private fun updateDrawSourceRect(bitmap: Bitmap) {
+        srcRect.set(0, 0, bitmap.width, bitmap.height)
 
-        val sourceWidth = cellRect.width().coerceAtLeast(1)
-        val sourceHeight = cellRect.height().coerceAtLeast(1)
+        val sourceWidth = srcRect.width().coerceAtLeast(1)
+        val sourceHeight = srcRect.height().coerceAtLeast(1)
         val targetAspect = aspectWidth.toFloat() / aspectHeight.coerceAtLeast(1).toFloat()
         val sourceAspect = sourceWidth.toFloat() / sourceHeight.toFloat()
 
@@ -127,14 +133,14 @@ class VideoShotPreviewView @JvmOverloads constructor(
         if (sourceAspect > targetAspect) {
             val croppedWidth = (sourceHeight * targetAspect).roundToInt().coerceIn(1, sourceWidth)
             val inset = ((sourceWidth - croppedWidth) / 2).coerceAtLeast(0)
-            srcRect.left = cellRect.left + inset
+            srcRect.left = inset
             srcRect.right = srcRect.left + croppedWidth
             return
         }
 
         val croppedHeight = (sourceWidth / targetAspect.coerceAtLeast(0.0001f)).roundToInt().coerceIn(1, sourceHeight)
         val inset = ((sourceHeight - croppedHeight) / 2).coerceAtLeast(0)
-        srcRect.top = cellRect.top + inset
+        srcRect.top = inset
         srcRect.bottom = srcRect.top + croppedHeight
     }
 }

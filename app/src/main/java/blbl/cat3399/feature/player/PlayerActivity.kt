@@ -76,8 +76,6 @@ import blbl.cat3399.core.prefs.AppPrefs
 import blbl.cat3399.core.ui.ActivityStackLimiter
 import blbl.cat3399.core.ui.AppToast
 import blbl.cat3399.core.ui.BaseActivity
-import blbl.cat3399.core.ui.CompatThemedBackgrounds
-import blbl.cat3399.core.ui.DpadGridController
 import blbl.cat3399.core.ui.DoubleBackToExitHandler
 import blbl.cat3399.core.ui.FocusReturn
 import blbl.cat3399.core.ui.FocusTreeUtils
@@ -89,6 +87,7 @@ import blbl.cat3399.feature.player.danmaku.DanmakuSessionSettings
 import blbl.cat3399.feature.player.danmaku.DanmakuFontWeight
 import blbl.cat3399.feature.player.danmaku.DanmakuLaneDensity
 import blbl.cat3399.feature.player.engine.BlblPlayerEngine
+import blbl.cat3399.feature.player.engine.DashPlaybackCatalogResolver
 import blbl.cat3399.feature.player.engine.ExoPlayerEngine
 import blbl.cat3399.feature.player.engine.IjkPlayerEngine
 import blbl.cat3399.feature.player.engine.IjkPlayerPlugin
@@ -98,6 +97,8 @@ import blbl.cat3399.feature.player.engine.createHttpDataSourceFactory
 import blbl.cat3399.feature.player.engine.PlaybackSource
 import blbl.cat3399.feature.settings.SettingsActivity
 import blbl.cat3399.feature.video.VideoDetailActivity
+import blbl.cat3399.feature.video.comment.VideoCommentImageViewerController
+import blbl.cat3399.feature.video.comment.VideoCommentsPanelController
 import blbl.cat3399.databinding.ActivityPlayerBinding
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -150,8 +151,8 @@ class PlayerActivity : BaseActivity() {
     internal var pendingIntentResumeCandidate: ResumeCandidate? = null
     internal var pendingIntentResumeCid: Long? = null
     internal var pendingIntentResumeEpId: Long? = null
-    internal val sidePanelFocusReturn = FocusReturn()
-    internal val commentImageViewerFocusReturn = FocusReturn()
+    internal var videoCommentsController: VideoCommentsPanelController? = null
+    internal var videoCommentImageViewerController: VideoCommentImageViewerController? = null
     internal var debugJob: kotlinx.coroutines.Job? = null
     internal val debug = PlayerDebugMetrics()
     internal var progressJob: kotlinx.coroutines.Job? = null
@@ -175,6 +176,7 @@ class PlayerActivity : BaseActivity() {
     internal var holdSeekJob: kotlinx.coroutines.Job? = null
     internal var seekHintJob: kotlinx.coroutines.Job? = null
     internal var keyScrubEndJob: kotlinx.coroutines.Job? = null
+    internal var videoShotPreviewHideJob: kotlinx.coroutines.Job? = null
     internal val sponsorSubmitPanelState = SponsorSubmitPanelState()
     internal var sponsorSubmitUploadJob: Job? = null
     internal var keyScrubPendingSeekToMs: Long? = null
@@ -208,6 +210,7 @@ class PlayerActivity : BaseActivity() {
     internal var socialStateFetchToken: Int = 0
     internal var likeButtonHoldController: HoldToTriggerController? = null
     internal var touchController: PlayerTouchController? = null
+    internal val osdFocusReturn = FocusReturn()
     private var topBarBasePadding = ViewPaddingState(0, 0, 0, 0)
     private var topBarBaseMargins = ViewMarginState(0, 0, 0, 0)
     private var cardUpQuickBaseMargins = ViewMarginState(0, 0, 0, 0)
@@ -221,29 +224,6 @@ class PlayerActivity : BaseActivity() {
     private var recommendPanelBaseMargins = ViewMarginState(0, 0, 0, 0)
     private var settingsPanelBaseMargins = ViewMarginState(0, 0, 0, 0)
     private var commentsPanelBaseMargins = ViewMarginState(0, 0, 0, 0)
-
-    internal var commentSort: Int = COMMENT_SORT_HOT
-    internal var commentsFetchJob: kotlinx.coroutines.Job? = null
-    internal var commentsFetchToken: Int = 0
-    internal var commentsPage: Int = 1
-    internal var commentsTotalCount: Int = -1
-    internal var commentsEndReached: Boolean = false
-    internal val commentsItems: ArrayList<PlayerCommentsAdapter.Item> = ArrayList()
-    internal val expandedCommentRpids: HashSet<Long> = HashSet()
-    internal var commentImageViewerUrls: List<String> = emptyList()
-    internal var commentImageViewerIndex: Int = 0
-
-    internal var commentThreadRootRpid: Long = 0L
-    internal var commentThreadReturnFocusRpid: Long = 0L
-    internal var commentThreadFetchJob: kotlinx.coroutines.Job? = null
-    internal var commentThreadFetchToken: Int = 0
-    internal var commentThreadPage: Int = 1
-    internal var commentThreadTotalCount: Int = -1
-    internal var commentThreadEndReached: Boolean = false
-    internal val commentThreadItems: ArrayList<PlayerCommentsAdapter.Item> = ArrayList()
-
-    internal var commentsDpadController: DpadGridController? = null
-    internal var commentThreadDpadController: DpadGridController? = null
 
     private val doubleBackToExit by lazy {
         DoubleBackToExitHandler(context = this, windowMs = BACK_DOUBLE_PRESS_WINDOW_MS) {
@@ -269,17 +249,14 @@ class PlayerActivity : BaseActivity() {
         SeekTransient,
     }
 
-    internal enum class PanelDismissTarget {
-        ResumeOsd,
-        Fullscreen,
-    }
-
     internal var osdMode: OsdMode = OsdMode.Hidden
     internal var menuRevealedPanelSessionActive: Boolean = false
 
     internal var currentBvid: String = ""
     internal var currentCid: Long = -1L
     internal var currentVideoIsPortrait: Boolean? = null
+    internal var seamlessQualitySwitchDisabledForPlayback: Boolean = false
+    internal var pendingResolutionSuccessHintQn: Int? = null
     internal var currentEpId: Long? = null
     internal var currentAid: Long? = null
     internal var currentSeasonId: Long? = null
@@ -316,7 +293,6 @@ class PlayerActivity : BaseActivity() {
     internal var settingsPanelMenu: PlayerSettingsMenu = PlayerSettingsMenu.ROOT
     internal var bottomCardPanelKind: PlayerVideoListKind = PlayerVideoListKind.PAGE
     internal var bottomCardPanelPreferContentFocus: Boolean = false
-    internal var bottomCardPanelRestoreFocus: WeakReference<View>? = null
 
     internal data class RelatedVideosCache(
         val bvid: String,
@@ -326,10 +302,12 @@ class PlayerActivity : BaseActivity() {
     internal var relatedVideosCache: RelatedVideosCache? = null
     internal var relatedVideosFetchJob: kotlinx.coroutines.Job? = null
     internal var relatedVideosFetchToken: Int = 0
+    internal var currentVideoDetail: VideoDetail? = null
     internal var subtitleAvailabilityKnown: Boolean = false
     internal var subtitleAvailable: Boolean = false
     internal var subtitleConfig: MediaItem.SubtitleConfiguration? = null
     internal var subtitleItems: List<SubtitleItem> = emptyList()
+    internal var subtitleLoadJob: Job? = null
     internal var lastAvailableQns: List<Int> = emptyList()
     internal var lastAvailableAudioIds: List<Int> = emptyList()
     private var danmakuSegmentSizeMs: Int = DANMAKU_DEFAULT_SEGMENT_MS
@@ -396,6 +374,8 @@ class PlayerActivity : BaseActivity() {
     internal var currentVideoShot: VideoShot? = null
     internal var videoShotImageCache: VideoShotImageCache? = null
     internal var videoShotFetchJob: Job? = null
+    internal var videoShotPreviewRequestId: Long = 0L
+    internal var startupEnhancementJob: Job? = null
     internal var currentVideoContentWidth: Int? = null
     internal var currentVideoContentHeight: Int? = null
 
@@ -660,9 +640,8 @@ class PlayerActivity : BaseActivity() {
 
     private fun enqueueExitProgressReport(reason: String) {
         val trace = trace
-        // If auto-resume is pending, the player is briefly at position ~= 0.
-        // Reporting during this window can overwrite server-side history to "1s" and cause a restart-from-beginning loop
-        // after Activity recreation.
+        // Keep the resumed position uncommitted during the short undo window, so pressing BACK to restart from zero
+        // cannot race with an immediate history report of the resumed position.
         if (autoResumeHintVisible) {
             trace?.log("report:skip", "autoResumeHint=1 reason=$reason")
             return
@@ -756,6 +735,7 @@ class PlayerActivity : BaseActivity() {
         PlayerUiMode.applyVideo(this, binding)
         captureSystemBarAvoidanceBaseState()
         installSystemBarAvoidance()
+        binding.topBar.setBackgroundResource(R.drawable.bg_player_top_scrim_strong)
         ensureBottomBarConstraintSets()
 
         binding.bottomBar.visibility = View.GONE
@@ -854,8 +834,9 @@ class PlayerActivity : BaseActivity() {
         session = PlayerSessionSettings(
             playbackSpeed = prefs.playerSpeed,
             preferCodec = prefs.playerPreferredCodec,
+            seamlessQualitySwitchEnabled = prefs.playerSeamlessQualitySwitchEnabled,
             preferAudioId = prefs.playerPreferredAudioId,
-            preferredQn = prefs.playerPreferredQn,
+            preferredQn = if (isPgcLikePlayback()) prefs.playerPreferredQnPgc else prefs.playerPreferredQn,
             targetQn = 0,
             playbackModeOverride = null,
             subtitleEnabled = prefs.subtitleEnabledDefault,
@@ -893,21 +874,37 @@ class PlayerActivity : BaseActivity() {
 
         val desiredEngineKind = session.engineKind
         val engineKind =
-            if (desiredEngineKind == PlayerEngineKind.IjkPlayer && !IjkPlayerPlugin.isInstalled(this)) {
-                val status = IjkPlayerPlugin.status(this)
-                val text =
-                    if (status == IjkPlayerPlugin.InstallStatus.NeedsUpdate) {
-                        "IjkPlayer 插件需要更新，已临时使用 ExoPlayer"
-                    } else {
-                        "IjkPlayer 插件未安装，已临时使用 ExoPlayer"
-                    }
-                AppToast.showLong(this, text)
-                IjkPlayerPluginUi.ensureInstalled(this) {
-                    if (!isFinishing && !isDestroyed) recreate()
+            when {
+                Build.VERSION.SDK_INT < 21 && desiredEngineKind == PlayerEngineKind.ExoPlayer -> {
+                    AppLog.i("PlayerActivity", "ExoPlayer requires API 21+, falling back to IjkPlayer")
+                    // Also persist the correction so the toast doesn't repeat every launch.
+                    prefs.playerEngineKind = blbl.cat3399.core.prefs.AppPrefs.PLAYER_ENGINE_IJK
+                    PlayerEngineKind.IjkPlayer
                 }
-                PlayerEngineKind.ExoPlayer
-            } else {
-                desiredEngineKind
+                Build.VERSION.SDK_INT < 21 &&
+                    desiredEngineKind == PlayerEngineKind.IjkPlayer &&
+                    !IjkPlayerPlugin.isInstalled(this) -> {
+                    AppToast.showLong(this, "IjkPlayer 插件未安装，无法在 Android 4.4 播放")
+                    IjkPlayerPluginUi.ensureInstalled(this) {
+                        if (!isFinishing && !isDestroyed) recreate()
+                    }
+                    PlayerEngineKind.IjkPlayer
+                }
+                desiredEngineKind == PlayerEngineKind.IjkPlayer && !IjkPlayerPlugin.isInstalled(this) -> {
+                    val status = IjkPlayerPlugin.status(this)
+                    val text =
+                        if (status == IjkPlayerPlugin.InstallStatus.NeedsUpdate) {
+                            "IjkPlayer 插件需要更新，已临时使用 ExoPlayer"
+                        } else {
+                            "IjkPlayer 插件未安装，已临时使用 ExoPlayer"
+                        }
+                    AppToast.showLong(this, text)
+                    IjkPlayerPluginUi.ensureInstalled(this) {
+                        if (!isFinishing && !isDestroyed) recreate()
+                    }
+                    PlayerEngineKind.ExoPlayer
+                }
+                else -> desiredEngineKind
             }
         if (session.engineKind != engineKind) {
             session = session.copy(engineKind = engineKind)
@@ -960,6 +957,17 @@ class PlayerActivity : BaseActivity() {
                     AppLog.e("Player", "onPlayerError", error)
                     val playbackException = error as? PlaybackException
                     if (playbackException != null) {
+                        if (engine.isSeamlessQualitySource && !seamlessQualitySwitchDisabledForPlayback) {
+                            seamlessQualitySwitchDisabledForPlayback = true
+                            AppLog.w(
+                                "Player",
+                                "seamless DASH playback failed; fallback to legacy source error=${playbackException.errorCodeName}",
+                                playbackException,
+                            )
+                            trace?.log("player:seamlessFallback", "error=${playbackException.errorCodeName}")
+                            reloadStream(keepPosition = true, resetConstraints = false, reason = "seamless_player_error")
+                            return
+                        }
                         val httpCode = findHttpResponseCode(playbackException)
                         trace?.log("player:error", "type=${playbackException.errorCodeName} http=${httpCode ?: -1}")
                         if (maybeReloadExpiredUrlAfterResume(playbackException, httpCode)) return
@@ -1057,17 +1065,14 @@ class PlayerActivity : BaseActivity() {
                     binding.videoShotPreview.setContentAspectRatio(width, height)
                     if (engine.kind != PlayerEngineKind.IjkPlayer) return
                     binding.ijkAspect.setAspectRatio(width.toFloat() / height.toFloat())
-                    when (val view = ijkRenderView) {
-                        is SurfaceView -> {
-                            runCatching { view.holder.setFixedSize(width, height) }
-                        }
+                }
 
-                        is TextureView -> {
-                            val surfaceTexture = view.surfaceTexture
-                            if (surfaceTexture != null) {
-                                runCatching { surfaceTexture.setDefaultBufferSize(width, height) }
-                            }
-                        }
+                override fun onVideoTrackChanged(qn: Int, codecid: Int) {
+                    trace?.log("player:videoTrack", "qn=$qn codecid=$codecid pos=${engine.currentPosition}ms")
+                    applyResolutionFallbackIfNeeded(requestedQn = session.targetQn, actualQn = qn)
+                    pendingResolutionSuccessHintQn?.let {
+                        pendingResolutionSuccessHintQn = null
+                        showSeekHint("已切换到 ${qnLabel(qn)}", hold = false)
                     }
                 }
 
@@ -1162,7 +1167,6 @@ class PlayerActivity : BaseActivity() {
         updateDebugOverlay()
         initPlayerInfoPanel()
         initSidePanels()
-        initCommentImageViewer()
         initBottomCardPanel()
         initSponsorSubmitPanel()
 
@@ -1172,7 +1176,7 @@ class PlayerActivity : BaseActivity() {
         val uncaughtHandler =
             CoroutineExceptionHandler { _, t ->
                 AppLog.e("Player", "uncaught", t)
-                AppToast.showLong(this@PlayerActivity, "播放失败：${t.message}")
+                AppToast.showLong(this@PlayerActivity, "播放失败：${t.message?.takeIf { it.isNotBlank() } ?: "未知错误"}")
                 finish()
             }
         playbackUncaughtHandler = uncaughtHandler
@@ -1799,7 +1803,7 @@ class PlayerActivity : BaseActivity() {
                 // Close the recommend panel first; never exit the player while it's visible.
                 if (event.action == KeyEvent.ACTION_DOWN) {
                     finishOnBackKeyUp = false
-                    hideBottomCardPanel(restoreFocus = true)
+                    hideBottomCardPanel()
                 }
                 return true
             }
@@ -1826,6 +1830,33 @@ class PlayerActivity : BaseActivity() {
             }
         }
 
+        if (event.action == KeyEvent.ACTION_DOWN && isInteractionKey(keyCode)) noteUserInteraction()
+
+        when (val shortcutResult = dispatchPlayerCustomShortcutIfNeeded(event)) {
+            PlayerCustomShortcutDispatchResult.NotHandled -> Unit
+            PlayerCustomShortcutDispatchResult.Consumed -> return true
+            is PlayerCustomShortcutDispatchResult.RunDefaultShortPress -> {
+                return dispatchDefaultPlayerShortPress(
+                    downEvent = shortcutResult.downEvent,
+                    upEvent = shortcutResult.upEvent,
+                )
+            }
+        }
+
+        return dispatchPlayerKeyEventWithoutCustomShortcut(event)
+    }
+
+    private fun dispatchDefaultPlayerShortPress(downEvent: KeyEvent, upEvent: KeyEvent): Boolean {
+        return PlayerDefaultShortPressDispatcher.dispatchAndConsume(
+            context = this,
+            downEvent = downEvent,
+            upEvent = upEvent,
+            dispatchDefaultEvent = ::dispatchPlayerKeyEventWithoutCustomShortcut,
+        )
+    }
+
+    private fun dispatchPlayerKeyEventWithoutCustomShortcut(event: KeyEvent): Boolean {
+        val keyCode = event.keyCode
         if (event.action == KeyEvent.ACTION_UP) {
             if (
                 keyCode == KeyEvent.KEYCODE_BACK ||
@@ -1867,23 +1898,15 @@ class PlayerActivity : BaseActivity() {
 
         if (event.action != KeyEvent.ACTION_DOWN) return super.dispatchKeyEvent(event)
 
-        if (isInteractionKey(keyCode)) noteUserInteraction()
-
-        if (dispatchPlayerCustomShortcutIfNeeded(event)) return true
-
         when (keyCode) {
             KeyEvent.KEYCODE_MENU,
             KeyEvent.KEYCODE_SETTINGS,
             -> {
                 if (menuRevealedPanelSessionActive && isOverlayPanelVisible()) {
                     when {
-                        isCommentsPanelVisible() -> hideCommentsPanel(dismissTarget = PanelDismissTarget.Fullscreen)
-                        isSettingsPanelVisible() -> hideSettingsPanel(dismissTarget = PanelDismissTarget.Fullscreen)
-                        isBottomCardPanelVisible() ->
-                            hideBottomCardPanel(
-                                restoreFocus = false,
-                                dismissTarget = PanelDismissTarget.Fullscreen,
-                            )
+                        isCommentsPanelVisible() -> hideCommentsPanel()
+                        isSettingsPanelVisible() -> hideSettingsPanel()
+                        isBottomCardPanelVisible() -> hideBottomCardPanel()
                         else -> {
                             menuRevealedPanelSessionActive = false
                             setControlsVisible(false)
@@ -1911,8 +1934,13 @@ class PlayerActivity : BaseActivity() {
             KeyEvent.KEYCODE_INFO,
             KeyEvent.KEYCODE_GUIDE,
             -> {
+                val wasHidden = osdMode == OsdMode.Hidden
                 setControlsVisible(true)
-                focusFirstControl()
+                if (wasHidden) {
+                    restoreLastOsdFocusOr { focusFirstControl() }
+                } else {
+                    focusFirstControl()
+                }
                 return true
             }
 
@@ -1943,7 +1971,7 @@ class PlayerActivity : BaseActivity() {
                         "back:down action=side_panel",
                         "settings=${if (isSettingsPanelVisible()) 1 else 0} comments=${if (isCommentsPanelVisible()) 1 else 0} thread=${if (isCommentThreadVisible()) 1 else 0}",
                     )
-                    return onSidePanelBackPressed(dismissTarget = PanelDismissTarget.ResumeOsd)
+                    return onSidePanelBackPressed()
                 }
                 if (osdMode != OsdMode.Hidden) {
                     exitTraceLog("back:down action=hide_osd", "osd=$osdMode")
@@ -1962,14 +1990,19 @@ class PlayerActivity : BaseActivity() {
 
             KeyEvent.KEYCODE_DPAD_UP -> {
                 if (isSidePanelVisible()) return super.dispatchKeyEvent(event)
+                val wasHidden = osdMode == OsdMode.Hidden
                 // TV-style shortcut: when OSD is hidden, UP directly opens the playlist (video list)
                 // instead of first bringing up the OSD.
-                if (osdMode == OsdMode.Hidden) {
+                if (wasHidden) {
                     if (showListPanelFromShortcut()) return true
                 }
                 setControlsVisible(true)
                 if (!binding.seekProgress.isFocused) {
-                    focusSeekBar()
+                    if (wasHidden) {
+                        restoreLastOsdFocusOr { focusSeekBar() }
+                    } else {
+                        focusSeekBar()
+                    }
                     return true
                 }
             }
@@ -2003,18 +2036,18 @@ class PlayerActivity : BaseActivity() {
                     if (osdMode == OsdMode.Hidden) {
                         binding.btnPlayPause.performClick()
                         if (osdMode != OsdMode.Hidden) {
-                            focusFirstControl()
+                            restoreLastOsdFocusOr { focusFirstControl() }
                         }
                         return true
                     }
                     setControlsVisible(true)
-                    focusFirstControl()
+                    restoreLastOsdFocusOr { focusFirstControl() }
                     return true
                 }
                 if (osdMode == OsdMode.Hidden && !isSidePanelVisible()) {
                     binding.btnPlayPause.performClick()
                     if (osdMode != OsdMode.Hidden) {
-                        focusFirstControl()
+                        restoreLastOsdFocusOr { focusFirstControl() }
                     }
                     return true
                 }
@@ -2087,7 +2120,11 @@ class PlayerActivity : BaseActivity() {
 
                 if (event.repeatCount > 0) {
                     clearKeySeekPending()
-                    startHoldSeek(direction = +1, showControls = false)
+                    if (binding.seekProgress.isFocused) {
+                        startHoldScrub(direction = +1, showControls = false)
+                    } else {
+                        startHoldSeek(direction = +1, showControls = false)
+                    }
                     return true
                 }
 
@@ -2102,6 +2139,7 @@ class PlayerActivity : BaseActivity() {
 
     override fun onStop() {
         touchController?.onStop()
+        cancelPlayerCustomShortcutPending()
         cancelDeferredKeySeekPreview()
         exitTraceStopAtMs = SystemClock.elapsedRealtime()
         if (exitCleanupRequested || isFinishing) {
@@ -2232,16 +2270,23 @@ class PlayerActivity : BaseActivity() {
         holdSeekJob?.cancel()
         seekHintJob?.cancel()
         keyScrubEndJob?.cancel()
+        videoShotPreviewHideJob?.cancel()
         sponsorSubmitUploadJob?.cancel()
+        startupEnhancementJob?.cancel()
+        startupEnhancementJob = null
+        subtitleLoadJob?.cancel()
+        subtitleLoadJob = null
         releaseTouchGestures()
         videoShotFetchJob?.cancel()
         videoShotFetchJob = null
         videoShotImageCache?.clear()
         videoShotImageCache = null
         currentVideoShot = null
+        currentVideoDetail = null
         relatedVideosFetchJob?.cancel()
-        commentsFetchJob?.cancel()
-        commentThreadFetchJob?.cancel()
+        videoCommentsController?.release()
+        videoCommentsController = null
+        videoCommentImageViewerController = null
         releaseUpQuickCardJobs()
         pageListLoadMoreJob?.cancel()
         partsListLoadMoreJob?.cancel()
@@ -2362,6 +2407,9 @@ class PlayerActivity : BaseActivity() {
         binding.btnAdvanced.setOnClickListener {
             toggleSettingsPanel()
         }
+        binding.btnClosePlayer.setOnClickListener {
+            binding.btnBack.performClick()
+        }
 
         installLikeButtonHoldInteraction()
         binding.btnLike.setOnClickListener { onLikeButtonClicked() }
@@ -2446,10 +2494,9 @@ class PlayerActivity : BaseActivity() {
                             currentVideoShot != null &&
                                 BiliClient.prefs.playerVideoShotPreviewSize != AppPrefs.PLAYER_VIDEOSHOT_PREVIEW_SIZE_OFF
                         if (hasVideoShot) {
-                            binding.videoShotPreview.visibility = View.VISIBLE
-                            updateVideoShotPreview(progress, SEEK_MAX, previewPos, binding.seekProgress)
+                            showVideoShotPreviewForSeek(progress, SEEK_MAX, previewPos, binding.seekProgress)
                         } else {
-                            binding.videoShotPreview.visibility = View.GONE
+                            hideVideoShotPreviewNow()
                         }
                     }
 
@@ -2490,6 +2537,7 @@ class PlayerActivity : BaseActivity() {
                     requestDanmakuSegmentsForPosition(seekTo, immediate = true)
                     scrubbing = false
                     keyScrubEndJob?.cancel()
+                    scheduleHideVideoShotPreviewAfterSeek()
                     setControlsVisible(true)
                     lifecycleScope.launch { reportProgressOnce(force = true, reason = "user_seek_end") }
                 }
@@ -2632,7 +2680,7 @@ class PlayerActivity : BaseActivity() {
         if (!shouldReportAnyProgressNow()) return
         val token = reportToken
         val exo = player ?: return
-        // Prevent a premature "sec=1" report when auto-resume is about to seek to the real position.
+        // Do not commit the resumed position until the user-facing restart-from-zero window has closed.
         if (autoResumeHintVisible) {
             trace?.log("report:skip", "autoResumeHint=1 reason=$reason force=${if (force) 1 else 0}")
             return
@@ -2737,7 +2785,7 @@ class PlayerActivity : BaseActivity() {
 
     internal fun toggleSubtitles(exo: ExoPlayer) {
         if (!subtitleAvailabilityKnown) {
-            AppToast.show(this, "字幕信息加载中")
+            loadAndEnableSubtitlesOnDemand(exo)
             return
         }
         if (!subtitleAvailable) {
@@ -2745,6 +2793,93 @@ class PlayerActivity : BaseActivity() {
             return
         }
         applySubtitleEnabledSetting(!session.subtitleEnabled, exo)
+    }
+
+    internal fun loadAndEnableSubtitlesOnDemand(exo: ExoPlayer) {
+        if (subtitleLoadJob?.isActive == true) {
+            AppToast.show(this, "字幕加载中")
+            return
+        }
+        val detail = currentVideoDetail
+        val bvid = currentBvid.trim()
+        val cid = currentCid
+        if (detail == null || bvid.isBlank() || cid <= 0L) {
+            AppToast.show(this, "字幕信息暂不可用")
+            return
+        }
+        AppToast.show(this, "正在加载字幕")
+        startSubtitleLoad(
+            detail = detail,
+            bvid = bvid,
+            cid = cid,
+            expectedPlaybackToken = autoResumeToken,
+            enableWhenLoaded = true,
+            persistEnable = true,
+            showUnavailableToast = true,
+            reason = "manual",
+            exo = exo,
+        )
+    }
+
+    internal fun startSubtitleLoad(
+        detail: VideoDetail,
+        bvid: String,
+        cid: Long,
+        expectedPlaybackToken: Int,
+        enableWhenLoaded: Boolean,
+        persistEnable: Boolean,
+        showUnavailableToast: Boolean,
+        reason: String,
+        exo: ExoPlayer? = null,
+    ) {
+        if (subtitleLoadJob?.isActive == true) {
+            trace?.log("subtitle:load:skip", "reason=already_running")
+            return
+        }
+        subtitleLoadJob =
+            lifecycleScope.launch {
+                try {
+                    trace?.log("subtitle:load:start", "reason=$reason")
+                    val config =
+                        withContext(Dispatchers.IO) {
+                            prepareSubtitleConfig(detail, bvid, cid, currentAid, trace)
+                        }
+                    if (expectedPlaybackToken != autoResumeToken || currentBvid != bvid || currentCid != cid) {
+                        trace?.log("subtitle:load:skip", "reason=stale")
+                        return@launch
+                    }
+                    subtitleConfig = config
+                    subtitleAvailabilityKnown = true
+                    subtitleAvailable = config != null
+                    trace?.log("subtitle:load:done", "reason=$reason ok=${config != null}")
+                    updateSubtitleButton()
+                    (binding.recyclerSettings.adapter as? PlayerSettingsAdapter)?.let { refreshSettings(it) }
+                    if (config == null) {
+                        if (showUnavailableToast) AppToast.show(this@PlayerActivity, "该视频暂无字幕")
+                        return@launch
+                    }
+
+                    val activeExo = exo ?: (player as? ExoPlayerEngine)?.exoPlayer
+                    if (activeExo == null) return@launch
+                    if (enableWhenLoaded) {
+                        if (persistEnable) {
+                            applySubtitleEnabledSetting(true, activeExo)
+                        } else {
+                            applySubtitleEnabled(activeExo)
+                            updateSubtitleButton()
+                            (binding.recyclerSettings.adapter as? PlayerSettingsAdapter)?.let { refreshSettings(it) }
+                        }
+                        reloadStream(keepPosition = true)
+                    } else {
+                        applySubtitleEnabled(activeExo)
+                    }
+                } catch (throwable: Throwable) {
+                    if (throwable is CancellationException) throw throwable
+                    trace?.log("subtitle:load:done", "reason=$reason ok=false")
+                    AppLog.w("Player", "load subtitle failed reason=$reason bvid=$bvid cid=$cid", throwable)
+                    if (showUnavailableToast) AppToast.show(this@PlayerActivity, "字幕加载失败")
+                }
+            }
     }
 
     internal fun applySubtitleEnabled(exo: ExoPlayer) {
@@ -3153,7 +3288,22 @@ class PlayerActivity : BaseActivity() {
                     val audioUrl = audioUrlCandidates.firstOrNull().orEmpty()
                     val videoTrackInfo = dashTrackInfoOf(picked.info)
                     val audioTrackInfo = dashTrackInfoOf(audioPicked.track.info)
-                    return Playable.Dash(
+                    val orderedVideoItems = listOf(picked) + videoItems.filterNot { it == picked }
+                    val videoRepresentations =
+                        orderedVideoItems.mapNotNull { video ->
+                            val representationUrls = selectCdnUrls(video.urls, preference = BiliClient.prefs.playerCdnPreference)
+                            val primaryUrl = representationUrls.firstOrNull() ?: return@mapNotNull null
+                            Playable.DashVideoRepresentation(
+                                videoUrl = primaryUrl,
+                                videoUrlCandidates = representationUrls,
+                                videoMediaRequestProfile = video.mediaRequestProfile,
+                                videoTrackInfo = dashTrackInfoOf(video.info),
+                                qn = video.qn,
+                                codecid = video.codecid,
+                                isDolbyVision = video.isDolbyVision,
+                            )
+                        }
+                    val playable = Playable.Dash(
                         videoUrl = videoUrl,
                         audioUrl = audioUrl,
                         videoUrlCandidates = videoUrlCandidates,
@@ -3167,7 +3317,13 @@ class PlayerActivity : BaseActivity() {
                         audioId = audioPicked.id,
                         audioKind = audioPicked.kind,
                         isDolbyVision = pickedIsDolbyVision,
+                        videoRepresentations = videoRepresentations,
                     )
+                    return if (session.seamlessQualitySwitchEnabled) {
+                        DashPlaybackCatalogResolver.resolve(playable)
+                    } else {
+                        playable
+                    }
                 }
             }
         }
@@ -3284,11 +3440,16 @@ class PlayerActivity : BaseActivity() {
         return DefaultMediaSourceFactory(DefaultDataSource.Factory(this, factory)).createMediaSource(item)
     }
 
-    internal fun reloadStream(keepPosition: Boolean, resetConstraints: Boolean = true, autoPlay: Boolean = true) {
+    internal fun reloadStream(
+        keepPosition: Boolean,
+        resetConstraints: Boolean = true,
+        autoPlay: Boolean = true,
+        reason: String = "unspecified",
+    ) {
         // Defensive: Player/ExoPlayer must only be accessed on main thread.
         if (Thread.currentThread() !== Looper.getMainLooper().thread) {
             lifecycleScope.launch(Dispatchers.Main.immediate) {
-                reloadStream(keepPosition = keepPosition, resetConstraints = resetConstraints, autoPlay = autoPlay)
+                reloadStream(keepPosition = keepPosition, resetConstraints = resetConstraints, autoPlay = autoPlay, reason = reason)
             }
             return
         }
@@ -3297,6 +3458,12 @@ class PlayerActivity : BaseActivity() {
         val bvid = currentBvid
         if (cid <= 0 || bvid.isBlank()) return
         val pos = engine.currentPosition
+        val reloadStartedAtMs = SystemClock.elapsedRealtime()
+        AppLog.i(
+            "QualitySwitch",
+            "reload start reason=$reason keepPosition=$keepPosition resetConstraints=$resetConstraints autoPlay=$autoPlay " +
+                "savedPos=$pos currentQn=${session.actualQn} targetQn=${session.targetQn} seamlessSource=${engine.isSeamlessQualitySource}",
+        )
         lifecycleScope.launch {
             try {
                 val (qn, fnval) = playUrlParamsForSession()
@@ -3315,6 +3482,13 @@ class PlayerActivity : BaseActivity() {
                         fnval = fnval,
                         constraints = playbackConstraints,
                     )
+                val positionBeforeCommit = engine.currentPosition
+                AppLog.i(
+                    "QualitySwitch",
+                    "reload fetched reason=$reason costMs=${SystemClock.elapsedRealtime() - reloadStartedAtMs} " +
+                        "savedPos=$pos positionBeforeCommit=$positionBeforeCommit driftMs=${positionBeforeCommit - pos} " +
+                        "picked=${playable.javaClass.simpleName} pickedQn=${when (playable) { is Playable.Dash -> playable.qn; is Playable.VideoOnly -> playable.qn; is Playable.Progressive -> -1 }}",
+                )
                 playStream.durationMs?.let { currentViewDurationMs = it }
                 showRiskControlBypassHintIfNeeded(playStream)
                 lastAvailableQns = parseDashVideoQnList(playStream)
@@ -3329,7 +3503,15 @@ class PlayerActivity : BaseActivity() {
                         lastPickedDash = playable
                         debug.cdnHost = runCatching { Uri.parse(playable.videoUrl).host }.getOrNull()
                         logPickedPlayable(source = "reload", playable = playable)
-                        engine.setSource(PlaybackSource.Vod(playable = playable, subtitle = subtitleConfig, durationMs = currentViewDurationMs))
+                        engine.setSource(
+                            PlaybackSource.Vod(
+                                playable = playable,
+                                subtitle = subtitleConfig,
+                                durationMs = currentViewDurationMs,
+                                initialPositionMs = pos.takeIf { keepPosition },
+                                seamlessQualitySwitchEnabled = session.seamlessQualitySwitchEnabled && !seamlessQualitySwitchDisabledForPlayback,
+                            ),
+                        )
                         applyResolutionFallbackIfNeeded(requestedQn = session.targetQn, actualQn = playable.qn)
                         applyAudioFallbackIfNeeded(requestedAudioId = session.targetAudioId, actualAudioId = playable.audioId)
                     }
@@ -3339,7 +3521,15 @@ class PlayerActivity : BaseActivity() {
                         (binding.recyclerSettings.adapter as? PlayerSettingsAdapter)?.let { refreshSettings(it) }
                         debug.cdnHost = runCatching { Uri.parse(playable.videoUrl).host }.getOrNull()
                         logPickedPlayable(source = "reload", playable = playable)
-                        engine.setSource(PlaybackSource.Vod(playable = playable, subtitle = subtitleConfig, durationMs = currentViewDurationMs))
+                        engine.setSource(
+                            PlaybackSource.Vod(
+                                playable = playable,
+                                subtitle = subtitleConfig,
+                                durationMs = currentViewDurationMs,
+                                initialPositionMs = pos.takeIf { keepPosition },
+                                seamlessQualitySwitchEnabled = session.seamlessQualitySwitchEnabled && !seamlessQualitySwitchDisabledForPlayback,
+                            ),
+                        )
                         applyResolutionFallbackIfNeeded(requestedQn = session.targetQn, actualQn = playable.qn)
                     }
                     is Playable.Progressive -> {
@@ -3348,18 +3538,30 @@ class PlayerActivity : BaseActivity() {
                         (binding.recyclerSettings.adapter as? PlayerSettingsAdapter)?.let { refreshSettings(it) }
                         debug.cdnHost = runCatching { Uri.parse(playable.url).host }.getOrNull()
                         logPickedPlayable(source = "reload", playable = playable)
-                        engine.setSource(PlaybackSource.Vod(playable = playable, subtitle = subtitleConfig, durationMs = currentViewDurationMs))
+                        engine.setSource(
+                            PlaybackSource.Vod(
+                                playable = playable,
+                                subtitle = subtitleConfig,
+                                durationMs = currentViewDurationMs,
+                                initialPositionMs = pos.takeIf { keepPosition },
+                                seamlessQualitySwitchEnabled = session.seamlessQualitySwitchEnabled && !seamlessQualitySwitchDisabledForPlayback,
+                            ),
+                        )
                     }
                 }
                 schedulePlayUrlAutoRefresh(playable, reason = "reload_stream")
+                AppLog.i(
+                    "QualitySwitch",
+                    "reload commit reason=$reason seekTarget=${if (keepPosition) pos else -1L} positionBeforePrepare=${engine.currentPosition} " +
+                        "seamlessSource=${engine.isSeamlessQualitySource}",
+                )
                 engine.prepare()
                 (engine as? ExoPlayerEngine)?.exoPlayer?.let { applySubtitleEnabled(it) }
-                if (keepPosition) engine.seekTo(pos)
                 engine.playWhenReady = autoPlay
             } catch (t: Throwable) {
                 AppLog.e("Player", "reloadStream failed", t)
                 if (!handlePlayUrlErrorIfNeeded(t)) {
-                    AppToast.show(this@PlayerActivity, "切换失败：${t.message}")
+                    AppToast.show(this@PlayerActivity, "切换失败：${t.message?.takeIf { it.isNotBlank() } ?: "未知错误"}")
                 }
             }
         }
@@ -3369,10 +3571,11 @@ class PlayerActivity : BaseActivity() {
         detail: VideoDetail,
         bvid: String,
         cid: Long,
+        aid: Long?,
         trace: PlaybackTrace?,
     ): MediaItem.SubtitleConfiguration? {
         trace?.log("subtitle:items:start")
-        val items = fetchSubtitleItems(detail, bvid, cid, trace)
+        val items = fetchSubtitleItems(detail, bvid, cid, aid, trace)
         trace?.log("subtitle:items:done", "count=${items.size}")
         subtitleItems = items
         val chosen = pickSubtitleItem(items) ?: return null
@@ -3408,16 +3611,32 @@ class PlayerActivity : BaseActivity() {
         detail: VideoDetail,
         bvid: String,
         cid: Long,
+        aid: Long?,
         trace: PlaybackTrace?,
     ): List<SubtitleItem> {
         trace?.log("subtitle:videoPlayerInfo:start")
         val playerInfo = runCatching { BiliApi.videoPlayerInfo(bvid = bvid, cid = cid) }.getOrNull()
         trace?.log("subtitle:videoPlayerInfo:done", "ok=${playerInfo != null}")
         val playerSubtitles = playerInfo?.subtitles.orEmpty()
-        if (playerSubtitles.isEmpty() && playerInfo?.needLoginSubtitle == true && !BiliClient.cookies.hasSessData()) {
-            return emptyList()
-        }
         if (playerSubtitles.isEmpty()) {
+            val safeAid = aid?.takeIf { it > 0L } ?: detail.aid?.takeIf { it > 0L }
+            if (safeAid != null) {
+                trace?.log("subtitle:dmView:start", "aid=$safeAid cid=$cid")
+                val dmSubtitles =
+                    runCatching { BiliApi.dmViewSubtitles(aid = safeAid, cid = cid) }
+                        .onFailure { AppLog.w("Player", "dmView subtitle failed aid=$safeAid cid=$cid", it) }
+                        .getOrDefault(emptyList())
+                trace?.log("subtitle:dmView:done", "count=${dmSubtitles.size}")
+                if (dmSubtitles.isNotEmpty()) {
+                    return dmSubtitles.map { subtitle ->
+                        SubtitleItem(
+                            lan = subtitle.language.ifBlank { "unknown" },
+                            lanDoc = subtitle.languageDoc.ifBlank { subtitle.language },
+                            url = normalizeUrl(subtitle.url),
+                        )
+                    }
+                }
+            }
             // Fallback: try older view payload (some responses may include it).
             if (detail.subtitles.isEmpty()) return emptyList()
             return detail.subtitles.map { subtitle ->
@@ -3883,6 +4102,7 @@ class PlayerActivity : BaseActivity() {
         internal const val AUTO_NEXT_PREVIEW_WINDOW_MS = 5_000L
         internal const val AUTO_NEXT_TITLE_MAX_CHARS = 18
         internal const val SEEK_OSD_HIDE_DELAY_MS = 1_500L
+        internal const val VIDEOSHOT_PREVIEW_HIDE_AFTER_SEEK_MS = 500L
         internal const val AUTO_SKIP_START_WINDOW_MS = 1_000L
         internal const val AUTO_SKIP_DELAY_MS = 2_000L
         internal const val AUTO_RESUME_BACK_RESTART_WINDOW_MS = 3_000L
@@ -4003,8 +4223,6 @@ class PlayerActivity : BaseActivity() {
     }
 
     private fun applyPostInflateCompatUi() {
-        binding.btnUpQuickProfile.background = CompatThemedBackgrounds.playerUpQuickChip(this)
-        binding.btnUpQuickFollow.background = CompatThemedBackgrounds.playerUpQuickFollow(this)
         if (Build.VERSION.SDK_INT >= 21) {
             val tint = ContextCompat.getColorStateList(this, R.color.blbl_text)
             binding.progressBuffering.indeterminateTintList = tint
@@ -4017,8 +4235,9 @@ class PlayerActivity : BaseActivity() {
             binding.tabPageList.stateListAnimator = android.animation.AnimatorInflater.loadStateListAnimator(this, R.animator.blbl_focus_scale)
             binding.tabPartsList.stateListAnimator = android.animation.AnimatorInflater.loadStateListAnimator(this, R.animator.blbl_focus_scale)
             binding.tabRecommendList.stateListAnimator = android.animation.AnimatorInflater.loadStateListAnimator(this, R.animator.blbl_focus_scale)
-            binding.chipCommentSortHot.stateListAnimator = android.animation.AnimatorInflater.loadStateListAnimator(this, R.animator.blbl_focus_scale)
-            binding.chipCommentSortNew.stateListAnimator = android.animation.AnimatorInflater.loadStateListAnimator(this, R.animator.blbl_focus_scale)
+            val commentViews = binding.videoCommentsPanelContent()
+            commentViews.chipCommentSortHot.stateListAnimator = android.animation.AnimatorInflater.loadStateListAnimator(this, R.animator.blbl_focus_scale)
+            commentViews.chipCommentSortNew.stateListAnimator = android.animation.AnimatorInflater.loadStateListAnimator(this, R.animator.blbl_focus_scale)
         }
         if (Build.VERSION.SDK_INT >= 26) {
             binding.root.defaultFocusHighlightEnabled = false

@@ -1,5 +1,6 @@
 package blbl.cat3399.feature.player
 
+import blbl.cat3399.core.log.AppLog
 import androidx.lifecycle.lifecycleScope
 import blbl.cat3399.core.net.BiliClient
 import blbl.cat3399.core.ui.AppToast
@@ -80,6 +81,7 @@ private fun PlayerActivity.onLikeButtonLongPressed() {
                 AppToast.show(activity, result.toastMessage())
             } catch (t: Throwable) {
                 if (t is CancellationException) return@launch
+                AppLog.w("VideoAction", "triple action failed bvid=$requestBvid aid=$requestAid", t)
                 AppToast.show(activity, t.userMessage(defaultMessage = "操作失败"))
             } finally {
                 tripleActionJob = null

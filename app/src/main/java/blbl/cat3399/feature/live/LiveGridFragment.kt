@@ -1,5 +1,6 @@
 package blbl.cat3399.feature.live
 
+import blbl.cat3399.R
 import android.content.Intent
 import android.os.Bundle
 import android.os.SystemClock
@@ -304,7 +305,7 @@ class LiveGridFragment : Fragment(), LivePageFocusTarget, RefreshKeyHandler {
             } catch (t: Throwable) {
                 if (t is CancellationException) throw t
                 AppLog.e("LiveGrid", "load failed src=$source page=$startPage", t)
-                context?.let { AppToast.show(it, "加载失败，可查看 Logcat(标签 BLBL)") }
+                context?.let { AppToast.show(it, getString(R.string.error_load_retry)) }
             } finally {
                 if (isRefresh && paging.snapshot().generation == startGen) _binding?.swipeRefresh?.isRefreshing = false
             }
