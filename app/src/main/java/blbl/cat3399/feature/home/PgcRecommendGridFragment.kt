@@ -109,6 +109,7 @@ class PgcRecommendGridFragment : Fragment(), RefreshKeyHandler, TabSwitchFocusTa
     private var nextKey: PgcPagingKey = PgcPagingKey()
     private var hasNext: Boolean = true
     private var isLoadingMore: Boolean = false
+    private var consecutiveEmptyPages: Int = 0
     private var requestToken: Int = 0
     private var initialLoadTriggered: Boolean = false
 
@@ -341,6 +342,7 @@ class PgcRecommendGridFragment : Fragment(), RefreshKeyHandler, TabSwitchFocusTa
         isLoadingMore = false
         nextKey = PgcPagingKey()
         hasNext = true
+        consecutiveEmptyPages = 0
         loadedSeasonIds.clear()
         requestToken++
         dpadGridController?.clearPendingFocusAfterLoadMore()
@@ -358,6 +360,7 @@ class PgcRecommendGridFragment : Fragment(), RefreshKeyHandler, TabSwitchFocusTa
         if (isLoadingMore || !hasNext) return
         val token = requestToken
         isLoadingMore = true
+        var retryAfterEmptyPage = false
         viewLifecycleOwner.lifecycleScope.launch {
             try {
                 val fetched = source.fetch(nextKey)
@@ -368,10 +371,16 @@ class PgcRecommendGridFragment : Fragment(), RefreshKeyHandler, TabSwitchFocusTa
 
                 val filtered = fetched.items.filter { loadedSeasonIds.add(it.seasonId) }
                 if (isRefresh) adapter.submit(filtered) else adapter.append(filtered)
-                if (!isRefresh && filtered.isEmpty()) {
-                    // The endpoint may advance its cursor while returning the same modules again.
-                    // Stop at the first page that contributes no new seasons.
-                    hasNext = false
+                if (isRefresh) {
+                    consecutiveEmptyPages = 0
+                } else if (filtered.isEmpty()) {
+                    // The recommendation endpoint can repeat a page while its cursor still moves.
+                    // Skip a few empty pages before treating the source as exhausted.
+                    consecutiveEmptyPages++
+                    retryAfterEmptyPage = fetched.hasNext && consecutiveEmptyPages < MAX_EMPTY_PGC_PAGES
+                    if (!retryAfterEmptyPage) hasNext = false
+                } else {
+                    consecutiveEmptyPages = 0
                 }
 
                 _binding?.let { b ->
@@ -409,6 +418,11 @@ class PgcRecommendGridFragment : Fragment(), RefreshKeyHandler, TabSwitchFocusTa
             } finally {
                 if (token == requestToken) _binding?.swipeRefresh?.isRefreshing = false
                 isLoadingMore = false
+                if (retryAfterEmptyPage && token == requestToken) {
+                    _binding?.recycler?.postIfAlive(isAlive = { _binding != null && isResumed }) {
+                        loadNextPage()
+                    }
+                }
             }
         }
     }
@@ -500,6 +514,7 @@ class PgcRecommendGridFragment : Fragment(), RefreshKeyHandler, TabSwitchFocusTa
         private const val KIND_CINEMA = 2
         private const val KIND_SEARCH_BANGUMI = 3
         private const val KIND_SEARCH_CINEMA = 4
+        private const val MAX_EMPTY_PGC_PAGES = 3
 
         private fun sourceFromArguments(args: Bundle): PgcGridSource {
             val keyword = args.getString(ARG_SEARCH_KEYWORD).orEmpty().trim()
