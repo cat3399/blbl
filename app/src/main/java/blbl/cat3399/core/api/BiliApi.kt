@@ -1222,60 +1222,6 @@ object BiliApi {
         return CursorPage(items = items, hasNext = hasNext, nextCursor = nextCursor)
     }
 
-    private fun parsePgcPcBangumiTabToBangumiSeasons(data: JSONObject): CursorPage<BangumiSeason> {
-        val hasNext = data.optInt("has_next", 0) == 1
-        val nextCursor = data.optString("next_cursor", "").trim().takeIf { it.isNotBlank() && hasNext }
-        val modules = data.optJSONArray("modules") ?: JSONArray()
-
-        val items =
-            run {
-                val out = ArrayList<BangumiSeason>(128)
-                val seen = HashSet<Long>(256)
-                for (i in 0 until modules.length()) {
-                    val module = modules.optJSONObject(i) ?: continue
-                    val list = module.optJSONArray("items") ?: continue
-                    for (j in 0 until list.length()) {
-                        val obj = list.optJSONObject(j) ?: continue
-                        val seasonId = obj.optLong("season_id").takeIf { it > 0 } ?: continue
-                        if (!seen.add(seasonId)) continue
-                        val title = obj.optString("title", "").trim()
-                        if (title.isBlank()) continue
-
-                        val cover = obj.optString("cover", "").trim().takeIf { it.isNotBlank() }
-                        val seasonType = obj.optInt("season_type", 0).takeIf { it > 0 }
-                        val typeName = seasonType?.let(::pgcSeasonTypeName)
-                        val badge = normalizeBadgeText(obj.optJSONObject("badge_info")?.optString("text"))
-                        val badgeEp = normalizeBadgeText(obj.optJSONObject("bottom_right_badge")?.optString("text"))
-                        val newEpIndexShow = obj.optJSONObject("new_ep")?.optString("index_show", "")?.trim().takeIf { !it.isNullOrBlank() }
-                        val followView = obj.optJSONObject("stat")?.optString("follow_view", "")?.trim().takeIf { !it.isNullOrBlank() }
-                        val desc = obj.optString("desc", "").trim().takeIf { it.isNotBlank() }
-                        val subTitle = obj.optString("sub_title", "").trim().takeIf { it.isNotBlank() }
-                        val progressText = badgeEp ?: newEpIndexShow ?: followView ?: desc ?: subTitle
-
-                        out.add(
-                            BangumiSeason(
-                                seasonId = seasonId,
-                                seasonTypeName = typeName,
-                                title = title,
-                                coverUrl = cover,
-                                badge = badge,
-                                badgeEp = badgeEp,
-                                progressText = progressText,
-                                totalCount = null,
-                                lastEpIndex = null,
-                                lastEpId = null,
-                                newestEpIndex = null,
-                                isFinish = null,
-                            ),
-                        )
-                    }
-                }
-                out
-            }
-
-        return CursorPage(items = items, hasNext = hasNext, nextCursor = nextCursor)
-    }
-
     suspend fun pgcBangumiPage(cursor: String? = null, build: Int = PGC_PAGE_BUILD_DEFAULT): CursorPage<BangumiSeason> {
         val safeCursor = cursor?.trim()?.takeIf { it.isNotBlank() } ?: "0"
         val params = LinkedHashMap<String, String>(4)
@@ -1285,7 +1231,7 @@ object BiliApi {
         params["cursor"] = safeCursor
         val url =
             BiliClient.withQuery(
-                "https://api.bilibili.com/pgc/page/pc/bangumi/tab",
+                "https://api.bilibili.com/pgc/page/bangumi",
                 params,
             )
         val json = BiliClient.getJson(url)
@@ -1294,8 +1240,7 @@ object BiliApi {
             val msg = json.optString("message", json.optString("msg", ""))
             throw BiliApiException(apiCode = code, apiMessage = msg)
         }
-        val data = json.optJSONObject("data") ?: JSONObject()
-        return withContext(Dispatchers.Default) { parsePgcPcBangumiTabToBangumiSeasons(data) }
+        return withContext(Dispatchers.Default) { parsePgcPageToBangumiSeasons(json) }
     }
 
     suspend fun pgcCinemaTabPage(cursor: String? = null, build: Int = PGC_PAGE_BUILD_DEFAULT): CursorPage<BangumiSeason> {
