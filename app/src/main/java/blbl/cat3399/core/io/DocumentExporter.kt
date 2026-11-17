@@ -4,6 +4,7 @@ import android.content.Context
 import android.database.Cursor
 import android.net.Uri
 import android.provider.OpenableColumns
+import blbl.cat3399.core.log.AppLog
 import java.io.BufferedOutputStream
 import java.io.File
 import java.io.FileOutputStream
@@ -33,12 +34,8 @@ object DocumentExporter {
         val safeFileName = sanitizeFileName(fileName)
         if (safeFileName.isBlank()) throw IOException("导出文件名无效")
 
-        val value =
-            appContext.contentResolver.openOutputStream(uri, "w")?.use { rawOut ->
-                BufferedOutputStream(rawOut, 32 * 1024).use { bufferedOut ->
-                    writeTo(bufferedOut).also { bufferedOut.flush() }
-                }
-            } ?: throw IOException("无法写入导出文件")
+        val output = appContext.contentResolver.openOutputStream(uri, "w") ?: throw IOException("无法写入导出文件")
+        val value = writeAndClose(output, writeTo)
 
         val resolvedName =
             resolveDisplayName(appContext, uri)
@@ -61,17 +58,27 @@ object DocumentExporter {
         val exportDir =
             appContext.getExternalFilesDir(subDir)
                 ?: File(appContext.filesDir, subDir)
-        runCatching { exportDir.mkdirs() }
+        if (!exportDir.isDirectory && !exportDir.mkdirs() && !exportDir.isDirectory) {
+            throw IOException("无法创建导出目录：${exportDir.absolutePath}")
+        }
 
         val outFile = createLocalFile(dir = exportDir, baseName = safeFileName)
-        val value =
-            FileOutputStream(outFile).use { rawOut ->
-                BufferedOutputStream(rawOut, 32 * 1024).use { bufferedOut ->
-                    writeTo(bufferedOut).also { bufferedOut.flush() }
-                }
-            }
+        val value = writeAndClose(FileOutputStream(outFile), writeTo)
 
         return LocalExportResult(fileName = outFile.name, file = outFile, value = value)
+    }
+
+    /** Owns the destination. Writers may close wrappers such as ZipOutputStream, not this stream. */
+    internal fun <T> writeAndClose(output: OutputStream, writeTo: (OutputStream) -> T): T {
+        return BufferedOutputStream(output, 32 * 1024).use { buffered ->
+            val borrowed = object : OutputStream() {
+                override fun write(value: Int) = buffered.write(value)
+                override fun write(bytes: ByteArray, offset: Int, length: Int) = buffered.write(bytes, offset, length)
+                override fun flush() = buffered.flush()
+                override fun close() = flush()
+            }
+            writeTo(borrowed)
+        }
     }
 
     private fun createLocalFile(
@@ -84,8 +91,9 @@ object DocumentExporter {
             val file = File(dir, name)
             try {
                 if (file.createNewFile()) return file
-            } catch (_: Throwable) {
-                // Try a different file name.
+            } catch (error: IOException) {
+                // Only an existing name warrants a retry. Preserve disk/permission errors.
+                throw IOException("无法创建导出文件：${file.absolutePath}", error)
             }
             attempt++
         }
@@ -117,12 +125,15 @@ object DocumentExporter {
         context: Context,
         uri: Uri,
     ): String? {
-        return runCatching {
+        return try {
             context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
                 if (!cursor.moveToFirst()) return@use null
                 cursor.getStringOrNull(OpenableColumns.DISPLAY_NAME)
             }
-        }.getOrNull()
+        } catch (error: Exception) {
+            AppLog.w("DocumentExporter", "query exported name failed scheme=${uri.scheme} authority=${uri.authority}", error)
+            null
+        }
     }
 
     private fun Cursor.getStringOrNull(columnName: String): String? {

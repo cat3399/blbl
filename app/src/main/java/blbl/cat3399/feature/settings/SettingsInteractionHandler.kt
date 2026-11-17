@@ -22,9 +22,8 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import blbl.cat3399.R
 import blbl.cat3399.BuildConfig
-import blbl.cat3399.core.io.CreateDocumentRequest
 import blbl.cat3399.core.io.DocumentExporter
-import blbl.cat3399.core.io.OpenFileContract
+import blbl.cat3399.core.io.DocumentPickerContract
 import blbl.cat3399.core.log.AppLog
 import blbl.cat3399.core.log.LogExporter
 import blbl.cat3399.core.log.LogUploadClient
@@ -79,14 +78,19 @@ class SettingsInteractionHandler(
     private val activity: SettingsActivity,
     private val state: SettingsState,
     private val gaiaVgateLauncher: ActivityResultLauncher<Intent>,
-    private val exportDocumentLauncher: ActivityResultLauncher<CreateDocumentRequest>,
-    private val importConfigLauncher: ActivityResultLauncher<OpenFileContract.Action>,
+    private val exportDocumentLauncher: ActivityResultLauncher<DocumentPickerContract.Request>,
+    private val importConfigLauncher: ActivityResultLauncher<DocumentPickerContract.Request>,
 ) {
     lateinit var renderer: SettingsRenderer
 
     private data class PreparedLogsExport(
         val fileName: String,
         val nowMs: Long,
+    )
+
+    private data class PendingDocumentExport(
+        val logTag: String,
+        val onUriSelected: (Uri) -> Unit,
     )
 
     private var testUpdateJob: Job? = null
@@ -96,7 +100,7 @@ class SettingsInteractionHandler(
     private var clearCacheJob: Job? = null
     private var cacheSizeJob: Job? = null
     private var configTransferJob: Job? = null
-    private var pendingDocumentExport: ((Uri) -> Unit)? = null
+    private var pendingDocumentExport: PendingDocumentExport? = null
 
     fun onSectionShown(sectionName: String) {
         when (sectionName) {
@@ -118,21 +122,43 @@ class SettingsInteractionHandler(
         renderer.refreshSection(SettingId.GaiaVgate)
     }
 
-    fun onExportDocumentSelected(uri: Uri?) {
+    fun onExportDocumentSelected(result: DocumentPickerContract.Result) {
         val export = pendingDocumentExport
         pendingDocumentExport = null
-        if (uri == null || export == null) return
-        export(uri)
+        when (result) {
+            DocumentPickerContract.Result.Cancelled -> AppLog.i("Settings", "${export?.logTag ?: "document"} export picker cancelled")
+            DocumentPickerContract.Result.MissingUri -> {
+                AppLog.w("Settings", "${export?.logTag ?: "document"} export picker returned OK without a single file URI")
+                AppToast.showLong(activity, "导出失败：文件选择器未返回保存位置，请重试")
+            }
+            is DocumentPickerContract.Result.Failed -> {
+                AppLog.w("Settings", "${export?.logTag ?: "document"} export picker failed resultCode=${result.resultCode}")
+                AppToast.showLong(activity, "导出失败：文件选择器返回异常，请重试")
+            }
+            is DocumentPickerContract.Result.Selected -> {
+                if (export == null) {
+                    AppLog.w("Settings", "export picker returned a URI without a pending export")
+                    AppToast.showLong(activity, "导出任务已失效，请重新导出")
+                    return
+                }
+                AppLog.i("Settings", "${export.logTag} export selected scheme=${result.uri.scheme} authority=${result.uri.authority}")
+                export.onUriSelected(result.uri)
+            }
+        }
     }
 
-    fun onImportConfigSelected(result: OpenFileContract.Result) {
+    fun onImportConfigSelected(result: DocumentPickerContract.Result) {
         when (result) {
-            OpenFileContract.Result.Cancelled -> AppLog.i("Settings", "import config picker cancelled")
-            OpenFileContract.Result.MissingUri -> {
+            DocumentPickerContract.Result.Cancelled -> AppLog.i("Settings", "import config picker cancelled")
+            DocumentPickerContract.Result.MissingUri -> {
                 AppLog.w("Settings", "import config picker returned OK without a single file URI")
                 AppToast.showLong(activity, "文件选择器未返回配置文件，请重新选择")
             }
-            is OpenFileContract.Result.Selected -> {
+            is DocumentPickerContract.Result.Failed -> {
+                AppLog.w("Settings", "import config picker failed resultCode=${result.resultCode}")
+                AppToast.showLong(activity, "文件选择器返回异常，请重新选择")
+            }
+            is DocumentPickerContract.Result.Selected -> {
                 AppLog.i("Settings", "import config selected scheme=${result.uri.scheme} authority=${result.uri.authority}")
                 importConfigFromUri(result.uri)
             }
@@ -225,7 +251,7 @@ class SettingsInteractionHandler(
         if (!ensureConfigTransferIdle()) return
         val prepared = prepareConfigExport(mode)
         launchDocumentExport(
-            request = CreateDocumentRequest(mimeType = AppConfigBackup.JSON_MIME, fileName = prepared.fileName),
+            request = DocumentPickerContract.Request.Create(mimeType = AppConfigBackup.JSON_MIME, fileName = prepared.fileName),
             onUriSelected = { uri -> exportConfigToUri(uri = uri, prepared = prepared) },
             onFallbackToLocal = { exportConfigToLocalFile(prepared) },
             logTag = "config",
@@ -277,9 +303,11 @@ class SettingsInteractionHandler(
 
     private fun startImportConfig() {
         if (!ensureConfigTransferIdle()) return
-        for (action in OpenFileContract.Action.entries) {
+        for (action in DocumentPickerContract.OpenAction.entries) {
             try {
-                importConfigLauncher.launch(action)
+                importConfigLauncher.launch(
+                    DocumentPickerContract.Request.Open(action, listOf(AppConfigBackup.JSON_MIME, "text/plain", "application/octet-stream")),
+                )
                 AppLog.i("Settings", "import config picker launched action=${action.intentAction}")
                 return
             } catch (e: ActivityNotFoundException) {
@@ -614,14 +642,15 @@ class SettingsInteractionHandler(
     }
 
     private fun launchDocumentExport(
-        request: CreateDocumentRequest,
+        request: DocumentPickerContract.Request.Create,
         onUriSelected: (Uri) -> Unit,
         onFallbackToLocal: () -> Unit,
         logTag: String,
     ) {
-        pendingDocumentExport = onUriSelected
+        pendingDocumentExport = PendingDocumentExport(logTag, onUriSelected)
         try {
             exportDocumentLauncher.launch(request)
+            AppLog.i("Settings", "$logTag export picker launched action=${Intent.ACTION_CREATE_DOCUMENT} mimeType=${request.mimeType}")
         } catch (e: ActivityNotFoundException) {
             pendingDocumentExport = null
             AppLog.w("Settings", "CreateDocument not supported; fallback to local $logTag export", e)
@@ -664,6 +693,8 @@ class SettingsInteractionHandler(
                 withContext(Dispatchers.IO) { work() }
             }.onSuccess(onSuccess)
                 .onFailure { t ->
+                    // Ignore a cancelled screen, but report an inner export/snapshot timeout.
+                    currentCoroutineContext().ensureActive()
                     AppLog.w("Settings", failureLogMessage, t)
                     AppToast.showLong(activity, "$failureToastPrefix：${throwableMessage(t)}")
                 }
@@ -755,7 +786,7 @@ class SettingsInteractionHandler(
             SettingId.ExportLogs -> {
                 val prepared = prepareLogsExport()
                 launchDocumentExport(
-                    request = CreateDocumentRequest(mimeType = LogExporter.ZIP_MIME, fileName = prepared.fileName),
+                    request = DocumentPickerContract.Request.Create(mimeType = LogExporter.ZIP_MIME, fileName = prepared.fileName),
                     onUriSelected = { uri -> exportLogsToUri(uri = uri, prepared = prepared) },
                     onFallbackToLocal = { exportLogsToLocalFile(prepared) },
                     logTag = "logs",
